@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-size: 15px;
+  }
+  #root {
+    zoom: 1.1;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-xl border border-slate-200;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-0 py-2.5 text-blue-700 font-medium text-sm transition-colors hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-0 py-2 text-slate-600 font-medium text-sm transition-colors hover:text-slate-900;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-0 py-2.5 text-slate-700 font-medium text-sm transition-colors hover:text-slate-950;
+  }
+  .input-field {
+    @apply w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-colors focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-0 py-1 text-xs font-medium;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 font-medium text-sm transition-colors hover:bg-slate-800 hover:text-slate-200 cursor-pointer w-full;
+  }
+  .nav-item-active {
+    @apply text-white border-l-2 border-blue-400 pl-2.5 hover:text-white;
+  }
+
+  button {
+    border-radius: 0 !important;
+    background-color: transparent !important;
+    border-color: transparent !important;
+  }
+
+  button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 3px;
+  }
+
+  .btn-primary {
+    border-bottom: 2px solid currentColor;
+  }
+
+  .btn-outline {
+    border-bottom: 1px solid #cbd5e1;
+  }
+}
+
+button,
+button[class*="bg-"] {
+  background-color: transparent !important;
+  border-radius: 0 !important;
+}
+
+button.text-white {
+  color: #334155 !important;
+}
+
+.login-primary {
+  background-color: #2563eb !important;
+  border: 1px solid #2563eb !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+}
+
+.login-primary:hover {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.login-google {
+  background-color: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #334155 !important;
+  cursor: pointer !important;
+}
+
+.login-google:hover {
+  background-color: #f8fafc !important;
+  border-color: #64748b !important;
+}
+
+.execute-button {
+  color: #bfdbfe !important;
+  border-bottom: 2px solid currentColor;
+  cursor: pointer !important;
+}
+
+.execute-button:hover {
+  color: #ffffff !important;
+  border-bottom-color: #ffffff;
+}
+
+.student-ai-button {
+  background-color: #2563eb !important;
+  border: 1px solid #60a5fa !important;
+  border-radius: 0.75rem !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+}
+
+.student-ai-button:hover {
+  background-color: #3b82f6 !important;
+  border-color: #bfdbfe !important;
+  color: #ffffff !important;
+}
+
+.badge {
+  background-color: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
