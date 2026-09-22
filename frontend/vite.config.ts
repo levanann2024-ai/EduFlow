@@ -13,9 +13,14 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  /* ĐÃ SỬA: Giữ proxy cho máy Localhost để bạn tiện test offline sau này */
   server: {
     proxy: {
-      '/api': 'http://localhost:3001',
+      '/api': {
+        target: 'https://onrender.com', // DÁN LINK RENDER THẬT CỦA BẠN VÀO ĐÂY
+        changeOrigin: true,
+        secure: false,
+      }
     },
   },
 });
