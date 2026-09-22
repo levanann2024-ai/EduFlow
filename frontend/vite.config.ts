@@ -17,7 +17,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://onrender.com', // DÁN LINK RENDER THẬT CỦA BẠN VÀO ĐÂY
+        target: 'https://eduflow-2arq.onrender.com', // DÁN LINK RENDER THẬT CỦA BẠN VÀO ĐÂY
         changeOrigin: true,
         secure: false,
       }

@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://onrender.com*"
+      "destination": "https://eduflow-2arq.onrender.com/api/:path*"
     }
   ]
 }
