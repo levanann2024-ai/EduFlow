@@ -22,14 +22,41 @@ async function testAI(req, res) {
 async function chatAI(req, res) {
   try {
     const message = requireText(req.body?.message, 'Message');
-    const reply = await generateText({
-      type: 'chat',
-      prompt: `Người dùng hỏi: ${message}`,
+    const isStudent = req.body?.role === 'student';
+    const userName = optionalContext(req.body?.userName, 'bạn');
+    const grade = optionalContext(req.body?.grade, 'chưa xác định');
+    const subject = optionalContext(req.body?.subject, 'chưa chọn môn');
+    const explanationStyle = req.body?.explanationStyle === 'concise' ? 'concise' : 'detailed';
+    const generatedReply = await generateText({
+      type: isStudent ? 'student-chat' : 'chat',
+      prompt: isStudent ? [
+        `Tên học sinh: ${userName}.`,
+        `Khối lớp: ${grade}.`,
+        `Môn học từ ngữ cảnh trước (chỉ dùng nếu phù hợp): ${subject}.`,
+        `Cách giải thích: ${explanationStyle === 'concise' ? 'ngắn gọn, tập trung vào ý chính' : 'chi tiết, từng bước và kèm ví dụ phù hợp'}.`,
+        `Câu hỏi của học sinh: ${message}`,
+      ].join('\n') : `Người dùng hỏi: ${message}`,
     });
-    return res.json({ success: true, data: { reply } });
+    if (!isStudent) {
+      return res.json({ success: true, data: { reply: generatedReply } });
+    }
+
+    const subjectMatch = generatedReply.match(/^\[\[SUBJECT:([^\]]+)\]\]\s*/);
+    const allowedSubjects = ['Toán học', 'Ngữ văn', 'Vật lý', 'Hóa học', 'Tiếng Anh', 'Tin học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Giáo dục thể chất', 'Chưa phân loại'];
+    const detectedSubject = subjectMatch && allowedSubjects.includes(subjectMatch[1])
+      ? subjectMatch[1]
+      : 'Chưa phân loại';
+    const reply = subjectMatch ? generatedReply.slice(subjectMatch[0].length).trim() : generatedReply;
+    return res.json({ success: true, data: { reply, subject: detectedSubject } });
   } catch (error) {
     return sendError(res, error, 'Không thể trả lời trợ lý AI.');
   }
+}
+
+function optionalContext(value, fallback) {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, 80)
+    : fallback;
 }
 
 async function generateQuestions(req, res) {

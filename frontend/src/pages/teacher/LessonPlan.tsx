@@ -8,11 +8,6 @@ import 'katex/dist/katex.min.css';
 
 const subjects = ['Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Ngữ văn', 'Lịch sử', 'Địa lý', 'Tiếng Anh'];
 const methods = ['Thuyết trình', 'Thảo luận nhóm', 'Khám phá', 'Dự án', 'Luyện tập'];
-const difficulties = [
-  { value: 'easy', label: 'Dễ', activeClass: 'bg-green-50 border-green-300 text-green-700' },
-  { value: 'medium', label: 'Trung bình', activeClass: 'bg-amber-50 border-amber-300 text-amber-700' },
-  { value: 'hard', label: 'Khó', activeClass: 'bg-rose-50 border-rose-300 text-rose-700' },
-] as const;
 
 interface LessonSection {
   title: string;
@@ -25,7 +20,6 @@ export function LessonPlan() {
   const [grade, setGrade] = useState('Khối 10');
   const [duration, setDuration] = useState(45);
   const [method, setMethod] = useState('Thuyết trình');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [plan, setPlan] = useState<LessonSection[] | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -42,7 +36,7 @@ export function LessonPlan() {
       const response = await fetch('/api/ai/lesson-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, grade, topic, duration, method, difficulty }),
+        body: JSON.stringify({ subject, grade, topic, duration, method }),
       });
       const result: { success: boolean; data?: string; message?: string } = await response.json();
 
@@ -127,19 +121,11 @@ export function LessonPlan() {
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm font-medium text-slate-600 mb-1.5">Mức độ khó</label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {difficulties.map((d) => (
-                    <button key={d.value} onClick={() => setDifficulty(d.value)}
-                      className={`px-2 py-1.5 rounded-md text-sm font-medium border transition-colors ${difficulty === d.value ? d.activeClass : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button onClick={handleGenerate} disabled={!topic.trim() || generating} className="btn-primary w-full py-2">
+              <button
+                onClick={handleGenerate}
+                disabled={!topic.trim() || generating}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600 disabled:opacity-60"
+              >
                 {generating ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Đang tạo...</> : <><Wand2 className="w-3.5 h-3.5" /> Tạo giáo án</>}
               </button>
             </div>

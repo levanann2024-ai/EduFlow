@@ -81,7 +81,7 @@ export function LessonSlides() {
       pptSlide.background = { color: 'F8FAFC' };
       pptSlide.addText(`SLIDE ${index + 1}`, {
         x: 0.55, y: 0.35, w: 1.3, h: 0.25,
-        fontFace: 'Aptos', fontSize: 10, bold: true, color: '7C3AED',
+        fontFace: 'Aptos', fontSize: 10, bold: true, color: '2563EB',
         margin: 0,
       });
       pptSlide.addText(slide.title || 'Slide không có tiêu đề', {
@@ -91,12 +91,12 @@ export function LessonSlides() {
       });
       pptSlide.addShape(pptxgen.ShapeType.rect, {
         x: 9.05, y: 0.55, w: 3.6, h: 2.05,
-        rectRadius: 0.08, fill: { color: 'EDE9FE' },
-        line: { color: 'DDD6FE', width: 1 },
+        rectRadius: 0.08, fill: { color: 'DBEAFE' },
+        line: { color: 'BFDBFE', width: 1 },
       });
       pptSlide.addText('HÌNH MINH HỌA', {
         x: 9.35, y: 1.2, w: 3, h: 0.35,
-        fontFace: 'Aptos', fontSize: 11, bold: true, color: '7C3AED',
+        fontFace: 'Aptos', fontSize: 11, bold: true, color: '2563EB',
         align: 'center', margin: 0,
       });
       pptSlide.addText(slide.detail || 'Chưa có nội dung', {
@@ -118,8 +118,8 @@ export function LessonSlides() {
       <div className="grid xl:grid-cols-[360px_1fr] gap-5 items-start">
         <section className="card p-5">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-violet-600" />
+            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-blue-600" />
             </div>
             <div>
               <h2 className="font-semibold text-slate-900">Tạo slide bằng AI</h2>
@@ -145,7 +145,11 @@ export function LessonSlides() {
                 <select value={style} onChange={(event) => setStyle(event.target.value)} className="input-field mt-1.5"><option>Trực quan</option><option>Tối giản</option><option>Học thuật</option></select>
               </label>
             </div>
-            <button onClick={handleGenerate} disabled={generating || !topic.trim()} className="btn-primary w-full">
+            <button
+              onClick={handleGenerate}
+              disabled={generating || !topic.trim()}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600 disabled:opacity-60"
+            >
               <WandSparkles className="w-4 h-4" /> {generating ? 'Đang tạo...' : 'Tạo cấu trúc slide'}
             </button>
           </div>
@@ -154,7 +158,7 @@ export function LessonSlides() {
         <section className="card p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-violet-600 font-medium">BẢN NHÁP AI</p>
+              <p className="text-sm text-blue-600 font-medium">BẢN NHÁP</p>
               <h2 className="text-lg font-semibold text-slate-900 mt-1">{topic || 'Bài giảng mới'}</h2>
               <p className="text-sm text-slate-500 mt-1">{generatedSlides.length > 0 ? content : 'Chưa có cấu trúc slide'}</p>
             </div>
@@ -169,12 +173,12 @@ export function LessonSlides() {
           </div>
           <div className="grid sm:grid-cols-2 gap-3 mt-5">
             {error ? <p className="text-sm text-rose-600">{error}</p> : generatedSlides.map((slide, index) => (
-              <div key={`${slide.title}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4 hover:border-violet-300 transition-colors">
+              <div key={`${slide.title}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4 hover:border-blue-300 transition-colors">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-violet-600">SLIDE {index + 1}</span>
+                  <span className="text-sm font-semibold text-blue-600">SLIDE {index + 1}</span>
                   <LayoutTemplate className="w-4 h-4 text-slate-300" />
                 </div>
-                <div className="mt-4 rounded-md border border-violet-200 bg-violet-50/70 h-28 overflow-hidden">
+                <div className="mt-4 rounded-md border border-blue-200 bg-blue-50/70 h-28 overflow-hidden">
                   <SlideImage title={slide.title} index={index} className="h-full w-full" />
                 </div>
                 <label className="block mt-4">
@@ -183,7 +187,7 @@ export function LessonSlides() {
                     value={slide.title}
                     onChange={(event) => updateSlide(index, 'title', event.target.value)}
                     rows={2}
-                    className="w-full resize-none bg-transparent font-medium text-slate-800 border border-transparent rounded-md p-1 hover:border-slate-200 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    className="w-full resize-none bg-transparent font-medium text-slate-800 border border-transparent rounded-md p-1 hover:border-slate-200 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                     aria-label={`Tiêu đề slide ${index + 1}`}
                   />
                 </label>
@@ -193,7 +197,7 @@ export function LessonSlides() {
                     value={slide.detail}
                     onChange={(event) => updateSlide(index, 'detail', event.target.value)}
                     rows={5}
-                    className="w-full resize-y bg-transparent text-sm text-slate-500 leading-relaxed border border-transparent rounded-md p-1 hover:border-slate-200 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    className="w-full resize-y bg-transparent text-sm text-slate-500 leading-relaxed border border-transparent rounded-md p-1 hover:border-slate-200 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                     aria-label={`Nội dung slide ${index + 1}`}
                   />
                 </label>
@@ -220,7 +224,7 @@ export function LessonSlides() {
           <div className="w-full max-w-6xl aspect-video rounded-xl overflow-hidden bg-white shadow-2xl flex flex-col">
             <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[1.35fr_1fr]">
               <div className="p-6 sm:p-10 lg:p-14 flex flex-col justify-center min-w-0">
-                <span className="text-xs sm:text-sm font-semibold tracking-widest text-violet-600">
+                <span className="text-xs sm:text-sm font-semibold tracking-widest text-blue-600">
                   SLIDE {previewIndex + 1} / {generatedSlides.length}
                 </span>
                 <h2 className="mt-4 text-2xl sm:text-4xl lg:text-5xl font-bold leading-tight text-slate-900 break-words">
@@ -231,7 +235,7 @@ export function LessonSlides() {
                 </div>
                 <p className="mt-auto pt-4 text-xs sm:text-sm text-slate-400 truncate">{topic}</p>
               </div>
-              <div className="m-5 sm:m-8 rounded-xl bg-violet-100 border border-violet-200 overflow-hidden">
+              <div className="m-5 sm:m-8 rounded-xl bg-blue-100 border border-blue-200 overflow-hidden">
                 <SlideImage
                   title={generatedSlides[previewIndex].title}
                   index={previewIndex}

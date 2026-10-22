@@ -1,18 +1,36 @@
+import { useState, type FormEvent } from 'react';
 import {
+  ArrowRight,
   BarChart3,
   Bell,
   BookOpen,
-  BookMarked,
+  Bookmark,
+  CalendarDays,
   ClipboardCheck,
+  ClipboardList,
   FileText,
+  Eye,
   GraduationCap,
+  History,
   LayoutDashboard,
   LogOut,
+  Menu as MenuIcon,
   MessageSquare,
-  Search,
+  MessageSquareText,
+  DoorOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Puzzle,
+  PenLine,
   Settings,
+  ShieldAlert,
   Sparkles,
+  Target,
+  Trophy,
+  UserRound,
   Users,
+  ScanLine,
+  Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Page, Role } from '@/types';
@@ -22,13 +40,9 @@ interface SidebarProps {
   onNavigate: (page: Page) => void;
   role: Role;
   onLogout: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
-
-const roleLabels: Record<Role, string> = {
-  admin: 'Quản trị viên',
-  lecturer: 'Giáo viên',
-  student: 'Học sinh',
-};
 
 const roleInitials: Record<Role, string> = {
   admin: 'AD',
@@ -38,113 +52,228 @@ const roleInitials: Record<Role, string> = {
 
 const menuIcons: Record<Page, LucideIcon> = {
   dashboard: LayoutDashboard,
+  'ai-learning': Sparkles,
   classes: GraduationCap,
   lectures: BookOpen,
   'lesson-plan': FileText,
   'lesson-slides': Sparkles,
+  'lesson-builder': PenLine,
+  'question-bank': Puzzle,
+  lessons: BookOpen,
+  exams: ClipboardList,
+  'exam-monitor': Eye,
+  appeals: ShieldAlert,
+  'ai-grading': ScanLine,
   'ai-quiz': ClipboardCheck,
+  'ai-practice': Target,
   grading: ClipboardCheck,
   analytics: BarChart3,
   'ai-chat': MessageSquare,
   assignments: ClipboardCheck,
+  schedule: CalendarDays,
   'my-classes': GraduationCap,
-  'my-lessons': BookMarked,
   'my-results': BarChart3,
+  leaderboard: Trophy,
+  saved: Bookmark,
+  feedback: MessageSquareText,
   users: Users,
   notifications: Bell,
   settings: Settings,
+  profile: UserRound,
+  'practice-history': History,
+  'online-exams': DoorOpen,
 };
 
-const menus: Record<Role, { id: Page; label: string }[]> = {
+interface MenuItem {
+  id: Page;
+  label: string;
+  highlight?: boolean;
+}
+
+interface MenuSection {
+  label: string;
+  items: MenuItem[];
+}
+
+const menus: Record<Role, MenuSection[]> = {
   lecturer: [
-    { id: 'dashboard', label: 'Tổng quan' },
-    { id: 'classes', label: 'Lớp học của tôi' },
-    { id: 'lectures', label: 'Bài giảng' },
-    { id: 'lesson-plan', label: 'Tạo giáo án' },
-    { id: 'lesson-slides', label: 'Tạo slide bài giảng' },
-    { id: 'ai-quiz', label: 'Tạo câu hỏi' },
-    { id: 'grading', label: 'Chấm điểm' },
-    { id: 'analytics', label: 'Phân tích tiến độ học tập' },
-    { id: 'ai-chat', label: 'Trợ lý AI' },
+    { label: 'TỔNG QUAN', items: [
+      { id: 'dashboard', label: 'Trang chủ' },
+    ] },
+    { label: 'QUẢN LÝ LỚP HỌC', items: [
+      { id: 'classes', label: 'Lớp học' },
+    ] },
+    { label: 'SOẠN BÀI & ĐỀ THI', items: [
+      { id: 'lesson-builder', label: 'Soạn bài với AI', highlight: true },
+      { id: 'exams', label: 'Ngân hàng câu hỏi & Đề thi' },
+      { id: 'lessons', label: 'Tài liệu bài giảng' },
+    ] },
+    { label: 'GIÁM SÁT & CHẤM ĐIỂM', items: [
+      { id: 'ai-grading', label: 'Chấm bài & Phân tích' },
+      { id: 'exam-monitor', label: 'Giám sát phòng thi' },
+    ] },
   ],
   student: [
-    { id: 'dashboard', label: 'Tổng quan' },
-    { id: 'my-classes', label: 'Lớp học của tôi' },
-    { id: 'my-lessons', label: 'Bài học của tôi' },
-    { id: 'assignments', label: 'Bài tập / Bài kiểm tra'},
-    { id: 'ai-chat', label: 'Trợ lý học tập' },
-    { id: 'my-results', label: 'Kết quả học tập'},
+    { label: 'Tổng quan', items: [
+      { id: 'dashboard', label: 'Trang chủ' },
+      { id: 'schedule', label: 'Thời khóa biểu & Lịch thi' },
+    ] },
+    { label: 'Học tập', items: [
+      { id: 'my-classes', label: 'Môn học của tôi' },
+      { id: 'online-exams', label: 'Phòng thi trực tuyến' },
+    ] },
+    { label: 'Trợ lý AI', items: [
+      { id: 'ai-learning', label: 'AI học tập', highlight: true },
+    ] },
+    { label: 'Tiến độ & Thi đua', items: [
+      { id: 'my-results', label: 'Kết quả học tập' },
+    ] },
+    { label: 'Hỗ trợ & Tiện ích', items: [
+      { id: 'saved', label: 'Đã lưu' },
+      { id: 'feedback', label: 'Góp ý & Báo lỗi' },
+    ] },
   ],
   admin: [
-    { id: 'dashboard', label: 'Tổng quan' },
-    { id: 'users', label: 'Quản lý người dùng' },
-    { id: 'lectures', label: 'Quản lý lưu trữ hệ thống' },
-    { id: 'analytics', label: 'Thống kê hệ thống' },
+    { label: 'Điều hướng', items: [
+      { id: 'dashboard', label: 'Tổng quan' },
+      { id: 'users', label: 'Quản lý người dùng' },
+      { id: 'lectures', label: 'Quản lý lưu trữ hệ thống' },
+      { id: 'analytics', label: 'Thống kê hệ thống' },
+    ] },
   ],
 };
 
-export function Sidebar({ current, onNavigate, role, onLogout }: SidebarProps) {
-  const items = menus[role];
+function isMenuItemActive(role: Role, item: MenuItem, current: Page) {
+  if (current === item.id) return true;
+  if (role === 'student' && item.id === 'ai-learning') return current === 'ai-chat' || current === 'ai-practice';
+  if (role !== 'lecturer') return false;
+  if (item.id === 'exams') return current === 'question-bank';
+  if (item.id === 'ai-grading') return current === 'analytics';
+  if (item.id === 'exam-monitor') return current === 'appeals';
+  return false;
+}
+
+export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onToggleCollapsed }: SidebarProps) {
+  const sections = menus[role];
   return (
-    <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-slate-900 border-r border-slate-800 fixed inset-y-0 left-0 z-40">
+    <aside className={`fixed inset-y-0 left-0 z-40 hidden shrink-0 flex-col border-r border-slate-800 bg-slate-900 transition-[width] duration-200 lg:flex ${collapsed ? 'w-16' : role === 'student' ? 'w-48' : 'w-56'}`}>
       {/* 1. Phần Logo cố định ở trên */}
-      <div className="px-5 py-4 border-b border-slate-800 shrink-0">
-        <div className="flex items-center gap-2">
+      <div className={`flex shrink-0 items-center border-b border-slate-800 py-4 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
+        <div className="flex min-w-0 items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
             <BookOpen className="w-[18px] h-[18px] text-white" />
           </div>
-          <span className="font-semibold text-slate-100 text-base tracking-tight">EduFlow</span>
+          {!collapsed && <span className="truncate font-semibold text-slate-100 text-base tracking-tight">EduFlow</span>}
         </div>
+        {!collapsed && (
+          <button type="button" onClick={onToggleCollapsed} aria-label="Thu gọn thanh điều hướng" title="Thu gọn thanh điều hướng" className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
+      {collapsed && (
+        <button type="button" onClick={onToggleCollapsed} aria-label="Mở rộng thanh điều hướng" title="Mở rộng thanh điều hướng" className="mx-auto mt-2 rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      )}
 
       {/* 2. Danh sách menu ở giữa có đường gạch nhỏ (border-t) phía trên mỗi mục */}
-      <nav className="px-3 py-3 space-y-1 overflow-y-auto flex-1">
-        <p className="px-3 py-1 text-[11px] font-semibold text-slate-600 uppercase tracking-wider">Điều hướng</p>
-        {items.map((item, index) => {
-          const active = current === item.id;
-          const Icon = menuIcons[item.id];
-          return (
-            <div key={item.id}>
-              {/* Đường gạch nhỏ phía trên đầu mỗi mục điều hướng */}
-              {index > 0 && <div className="my-1 mx-3 border-t border-slate-800/80" />}
-              <button
-                onClick={() => onNavigate(item.id)}
-                className={`nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  active ? 'bg-blue-600/10 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                }`}
-              >
-                <Icon className="w-[18px] h-[18px] shrink-0" />
-                <span>{item.label}</span>
-              </button>
+      <nav aria-label="Điều hướng chính" className={`flex-1 space-y-1 overflow-y-auto py-3 ${collapsed ? 'px-2' : 'px-3'}`}>
+        {sections.map((section) => (
+          <section key={section.label} className="mb-4">
+            {!collapsed && <h2 className="px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{section.label}</h2>}
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const active = isMenuItemActive(role, item, current);
+                const Icon = menuIcons[item.id];
+                const highlight = item.highlight;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onNavigate(item.id)}
+                    title={collapsed ? item.label : undefined}
+                    aria-label={collapsed ? item.label : undefined}
+                    className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                      collapsed ? 'justify-center px-2' : 'gap-3 px-3 text-left'
+                    } ${
+                      highlight
+                        ? active ? 'bg-violet-500/20 text-violet-200' : 'text-violet-300 hover:text-violet-100 hover:bg-violet-500/10'
+                        : active ? 'bg-blue-600/10 text-blue-400' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <Icon className={`w-[18px] h-[18px] shrink-0 ${highlight ? 'text-violet-400' : ''}`} />
+                    {!collapsed && <span className="leading-5">{item.label}</span>}
+                  </button>
+                );
+              })}
             </div>
-          );
-        })}
+          </section>
+        ))}
       </nav>
 
       {/* 3. Phần Cài đặt & Đăng xuất ép dính chặt ở đáy sidebar */}
-      <div className="shrink-0 px-3 py-3 border-t border-slate-800 space-y-1 bg-slate-900">
-        <button onClick={() => onNavigate('settings')} className="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors">
+      <div className={`shrink-0 space-y-1 border-t border-slate-800 bg-slate-900 py-3 ${collapsed ? 'px-2' : 'px-3'}`}>
+        <button onClick={() => onNavigate('settings')} title={collapsed ? 'Cài đặt' : undefined} aria-label={collapsed ? 'Cài đặt' : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'}`}>
           <Settings className="w-[18px] h-[18px]" />
-          <span>Cài đặt</span>
+          {!collapsed && <span>Cài đặt</span>}
         </button>
-        <div className="my-1 mx-3 border-t border-slate-800/80" />
-        <button onClick={onLogout} className="nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors">
+        {!collapsed && <div className="my-1 mx-3 border-t border-slate-800/80" />}
+        <button onClick={onLogout} title={collapsed ? 'Đăng xuất' : undefined} aria-label={collapsed ? 'Đăng xuất' : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-400 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'}`}>
           <LogOut className="w-[18px] h-[18px]" />
-          <span>Đăng xuất</span>
+          {!collapsed && <span>Đăng xuất</span>}
         </button>
       </div>
     </aside>
   );
 }
 
-export function MobileNav({ current, onNavigate, role }: Omit<SidebarProps, 'onLogout'>) {
-  const items = menus[role].slice(0, 4);
+export function MobileNav({ current, onNavigate, role }: Pick<SidebarProps, 'current' | 'onNavigate' | 'role'>) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const mobilePageIds: Record<Role, Page[]> = {
+    admin: ['dashboard', 'users', 'lectures', 'analytics'],
+    lecturer: ['dashboard', 'classes', 'lesson-builder', 'exams'],
+    student: ['dashboard', 'schedule', 'my-classes', 'ai-learning'],
+  };
+  const allItems = menus[role].flatMap((section) => section.items);
+  const items = mobilePageIds[role].map((id) => allItems.find((item) => item.id === id)).filter((item): item is MenuItem => item !== undefined);
   return (
-    <div className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-900 border-t border-slate-800 z-50 px-2 py-2 flex justify-around">
-      {items.map((item) => {
-        const active = current === item.id;
-        const Icon = menuIcons[item.id];
-        return (
+    <>
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-[55]" onClick={() => setMenuOpen(false)}>
+          <div className="absolute inset-0 bg-slate-950/30" />
+          <nav
+            aria-label="Tất cả trang"
+            className="absolute bottom-20 inset-x-3 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {menus[role].map((section) => (
+              <section key={section.label} className="mb-3 last:mb-0">
+                <h2 className="px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{section.label}</h2>
+                {section.items.map((item) => {
+                  const Icon = menuIcons[item.id];
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => { onNavigate(item.id); setMenuOpen(false); }}
+                      className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium ${
+                        isMenuItemActive(role, item, current) ? 'bg-blue-50 text-blue-700' : item.highlight ? 'text-violet-700' : 'text-slate-700'
+                      }`}
+                    >
+                      <Icon className={`h-[18px] w-[18px] shrink-0 ${item.highlight ? 'text-violet-500' : ''}`} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </section>
+            ))}
+          </nav>
+        </div>
+      )}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-900 border-t border-slate-800 z-50 px-1 py-2 flex justify-around">
+        {items.map((item) => {
+          const active = isMenuItemActive(role, item, current);
+          const Icon = menuIcons[item.id];
+          return (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
@@ -153,36 +282,175 @@ export function MobileNav({ current, onNavigate, role }: Omit<SidebarProps, 'onL
             }`}
           >
             <Icon className="w-5 h-5" />
-            <span className="truncate max-w-[72px]">{item.label.split(' ')[0]}</span>
+            <span className="truncate max-w-[72px]">{item.id === 'ai-learning' ? 'AI học tập' : item.label.split(' ')[0]}</span>
           </button>
-        );
-      })}
-    </div>
+          );
+        })}
+        <button
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-expanded={menuOpen}
+          className={`flex flex-col items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+            menuOpen ? 'text-blue-400' : 'text-slate-500'
+          }`}
+        >
+          <MenuIcon className="w-5 h-5" />
+          <span>Thêm</span>
+        </button>
+      </div>
+    </>
   );
 }
 
-export function TopBar({ title, subtitle, role, onNotifications }: { title: string; subtitle: string; role: Role; onNotifications: () => void }) {
+export function TopBar({
+  role,
+  onNotifications,
+  onNavigate,
+  onLogout,
+  onOpenResources,
+  onOpenAssignments,
+  onAskAI,
+}: {
+  role: Role;
+  onNotifications: () => void;
+  onNavigate: (page: Page) => void;
+  onLogout: () => void;
+  onOpenResources?: (subjectCode: string) => void;
+  onOpenAssignments?: (subjectCode: string) => void;
+  onAskAI?: (prompt: string) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const isStudent = role === 'student';
+  const displayName = isStudent ? 'Lê Văn An' : role === 'lecturer' ? 'Nguyễn Văn An' : 'Quản trị viên';
+  const studentSearchItems: { label: string; detail: string; page?: Page; subjectCode?: string; action?: 'resources' | 'assignments' | 'ask-ai' }[] = [
+    ...[
+      ['Toán học', 'TOAN10'],
+      ['Ngữ văn', 'VAN10'],
+      ['Hóa học', 'HOA10'],
+      ['Vật lý', 'LY10'],
+      ['Tiếng Anh', 'ANH10'],
+      ['Tin học', 'TIN10'],
+      ['Sinh học', 'SINH10'],
+      ['Lịch sử', 'SU10'],
+      ['Địa lý', 'DIA10'],
+      ['Giáo dục thể chất', 'GDTC10'],
+    ].map(([name, code]) => ({ label: name, detail: 'Tài liệu môn học', subjectCode: code, action: 'resources' as const })),
+    { label: 'Bài tập', detail: 'Xem bài cần làm', page: 'assignments' as const },
+    { label: 'Thời khóa biểu', detail: 'Lịch học và lịch thi', page: 'schedule' as const },
+    { label: 'Phòng thi trực tuyến', detail: 'Vào phòng thi', page: 'online-exams' as const },
+    { label: 'Kết quả học tập', detail: 'Điểm và tiến độ', page: 'my-results' as const },
+    { label: 'AI Trợ giảng', detail: 'Hỏi bài với EduBot', page: 'ai-chat' as const },
+    { label: 'AI Ôn luyện', detail: 'Tạo bài luyện', page: 'ai-practice' as const },
+  ];
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase('vi');
+  const matchingSearchItems = normalizedSearch
+    ? studentSearchItems.filter((item) => `${item.label} ${item.detail}`.toLocaleLowerCase('vi').includes(normalizedSearch)).slice(0, 5)
+    : [];
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const firstMatch = matchingSearchItems[0];
+    if (firstMatch) {
+      if (firstMatch.action === 'resources' && firstMatch.subjectCode) onOpenResources?.(firstMatch.subjectCode);
+      else if (firstMatch.action === 'assignments' && firstMatch.subjectCode) onOpenAssignments?.(firstMatch.subjectCode);
+      else if (firstMatch.page) onNavigate(firstMatch.page);
+      setSearchQuery('');
+      setSearchOpen(false);
+      return;
+    }
+    if (normalizedSearch && onAskAI) {
+      onAskAI(searchQuery.trim());
+      setSearchQuery('');
+      setSearchOpen(false);
+    }
+  };
   return (
-    <header className="mb-8 pb-5 border-b border-slate-200 flex items-center justify-between gap-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-        <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
-      </div>
-      <div className="flex items-center gap-2.5">
-        <div className="hidden md:flex items-center relative">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3" />
-        </div>
-        <button onClick={onNotifications} aria-label="Mở thông báo" className="relative p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors">
-          <Bell className="w-[18px] h-[18px] text-slate-500" />
-          <span className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-600" />
+    <header className="relative z-30 -mt-1 mb-3 flex h-14 flex-nowrap items-center gap-3 border-b border-slate-200/80 bg-white/90 px-1 py-2 backdrop-blur sm:px-2">
+      {isStudent && (
+        <form onSubmit={handleSearchSubmit} role="search" className="relative order-1 min-w-0 w-full max-w-[340px] flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => { setSearchQuery(event.target.value); setSearchOpen(true); }}
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); }}
+            aria-label="Tìm kiếm bài học, tài liệu, câu hỏi"
+            aria-expanded={searchOpen && normalizedSearch.length > 0}
+            placeholder="Tìm kiếm bài học, tài liệu, câu hỏi..."
+            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/80 pl-9 pr-3 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+          />
+          {searchOpen && normalizedSearch && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+              {matchingSearchItems.length > 0 ? matchingSearchItems.map((item) => (
+                <button
+                  key={`${item.label}-${item.detail}`}
+                  type="button"
+                  onClick={() => {
+                    if (item.action === 'resources' && item.subjectCode) onOpenResources?.(item.subjectCode);
+                    else if (item.action === 'assignments' && item.subjectCode) onOpenAssignments?.(item.subjectCode);
+                    else if (item.page) onNavigate(item.page);
+                    setSearchQuery('');
+                    setSearchOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-blue-50 focus-visible:bg-blue-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-slate-800">{item.label}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{item.detail}</span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
+                </button>
+              )) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAskAI?.(searchQuery.trim());
+                    setSearchQuery('');
+                    setSearchOpen(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-blue-50"
+                >
+                  <Search className="h-4 w-4 shrink-0 text-blue-600" />
+                  <span className="text-sm text-slate-700">Hỏi EduBot về “{searchQuery.trim()}”</span>
+                </button>
+              )}
+            </div>
+          )}
+        </form>
+      )}
+      <div className="order-2 ml-auto flex shrink-0 items-center gap-2">
+        <button onClick={onNotifications} aria-label="Mở thông báo" className="relative rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-50">
+          <Bell className="h-4 w-4 text-slate-500" />
+          <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-blue-600" />
         </button>
-        <div className="flex items-center gap-2 pl-1">
-          <div className="w-9 h-9 rounded-lg bg-slate-700 flex items-center justify-center text-white text-sm font-medium">
-            {roleInitials[role]}
-          </div>
-          <div className="hidden sm:block">
-            <p className="text-sm font-medium text-slate-700 leading-none">{roleLabels[role]}</p>
-            <p className="text-xs text-slate-400 mt-1">Đang hoạt động</p>
+        <div className="group relative">
+          <button type="button" aria-haspopup="menu" className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-xs font-bold text-white">
+              {isStudent ? 'L' : roleInitials[role]}
+            </span>
+            <span className="hidden text-sm font-semibold text-slate-700 sm:inline">{displayName}</span>
+            <span className="text-xs font-semibold text-slate-400 sm:hidden">{roleInitials[role]}</span>
+            <span aria-hidden="true" className="text-xs text-slate-400">⌄</span>
+          </button>
+          <div role="menu" className="invisible absolute right-0 top-full z-50 mt-1 w-52 translate-y-1 rounded-xl border border-slate-200 bg-white p-1.5 opacity-0 shadow-lg transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+            {isStudent ? (
+              <>
+                <button type="button" role="menuitem" onClick={() => onNavigate('profile')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50">
+                  <UserRound className="h-4 w-4 text-slate-400" /> Hồ sơ cá nhân
+                </button>
+                <button type="button" role="menuitem" onClick={() => onNavigate('practice-history')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50">
+                  <History className="h-4 w-4 text-slate-400" /> Lịch sử làm bài
+                </button>
+              </>
+            ) : (
+              <button type="button" role="menuitem" onClick={() => onNavigate('settings')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50">
+                <Settings className="h-4 w-4 text-slate-400" /> Cài đặt
+              </button>
+            )}
+            <div className="my-1 border-t border-slate-100" />
+            <button type="button" role="menuitem" onClick={onLogout} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-rose-600 hover:bg-rose-50">
+              <LogOut className="h-4 w-4" /> Đăng xuất
+            </button>
           </div>
         </div>
       </div>

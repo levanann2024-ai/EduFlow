@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { Sparkles, Wand2, Copy, Check, RefreshCw, Download, ChevronDown, ChevronRight, BookOpen, GraduationCap, Layers, Target, Lightbulb, Plus, Trash2, FileText } from 'lucide-react';
 import type { QuizQuestion } from '@/types';
 
+interface GeneratedQuestionSet {
+  topic: string;
+  subject: string;
+  grade: string;
+  questions: QuizQuestion[];
+}
+
 const subjects = ['Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Ngữ văn', 'Lịch sử', 'Địa lý', 'Tiếng Anh'];
 const difficulties = [
   { value: 'easy', label: 'Dễ', activeClass: 'bg-green-50 border-green-300 text-green-700' },
@@ -15,7 +22,7 @@ const difficultyStyle: Record<string, { badge: string; dot: string }> = {
   hard: { badge: 'bg-rose-50 text-rose-700', dot: 'bg-rose-500' },
 };
 
-export function AIQuizGenerator() {
+export function AIQuizGenerator({ onSaveQuestions }: { onSaveQuestions: (set: GeneratedQuestionSet) => void }) {
   const [topic, setTopic] = useState('');
   const [subject, setSubject] = useState('Toán học');
   const [grade, setGrade] = useState('Khối 10');
@@ -197,8 +204,8 @@ export function AIQuizGenerator() {
                   <button onClick={handleDownload} className="btn-outline">
                     <Download className="w-3.5 h-3.5" /> Tải xuống
                   </button>
-                  <button className="btn-primary">
-                    <Plus className="w-3.5 h-3.5" /> Lưu bộ đề
+                  <button onClick={() => onSaveQuestions({ topic, subject, grade, questions })} className="btn-primary">
+                    <Plus className="w-3.5 h-3.5" /> Lưu vào ngân hàng
                   </button>
                 </div>
               </div>

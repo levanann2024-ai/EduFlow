@@ -4,19 +4,34 @@ export type Page =
   | 'dashboard'
   | 'classes'
   | 'ai-quiz'
+  | 'ai-learning'
   | 'ai-chat'
   | 'lesson-plan'
   | 'lesson-slides'
+  | 'lesson-builder'
+  | 'question-bank'
+  | 'exams'
+  | 'exam-monitor'
+  | 'appeals'
+  | 'ai-grading'
+  | 'lessons'
   | 'analytics'
   | 'lectures'
   | 'assignments'
+  | 'schedule'
+  | 'ai-practice'
   | 'grading'
   | 'notifications'
   | 'settings'
   | 'users'
+  | 'profile'
+  | 'practice-history'
+  | 'online-exams'
   | 'my-classes'
-  | 'my-lessons'
-  | 'my-results';
+  | 'my-results'
+  | 'leaderboard'
+  | 'saved'
+  | 'feedback';
 
 export interface ClassRoom {
   id: string;
@@ -85,4 +100,5 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   time: string;
+  subject?: string;
 }
