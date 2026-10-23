@@ -69,18 +69,24 @@ export function ExamQuestionWorkspace({
   onNavigate: (page: Page) => void;
 }) {
   return (
-    <WorkspaceTabs
-      currentPage={currentPage}
-      onNavigate={onNavigate}
-      tabs={[
-        { page: 'question-bank', label: 'Ngân hàng câu hỏi', icon: ClipboardList },
-        { page: 'exams', label: 'Đề thi & bài kiểm tra', icon: FileText },
-      ]}
-    >
-      {(activePage) => activePage === 'question-bank'
-        ? <QuestionBank />
-        : <ExamManagement onNavigate={onNavigate} />}
-    </WorkspaceTabs>
+    <div className="space-y-4">
+      <header>
+        <h1 className="text-xl font-bold tracking-tight text-slate-950">Ngân hàng câu hỏi & Đề thi</h1>
+        <p className="mt-1 text-sm text-slate-600">Quản lý nội dung đã lưu để xem lại và sử dụng khi soạn bài tập, đề kiểm tra.</p>
+      </header>
+      <WorkspaceTabs
+        currentPage={currentPage}
+        onNavigate={onNavigate}
+        tabs={[
+          { page: 'question-bank', label: 'Ngân hàng câu hỏi', icon: ClipboardList },
+          { page: 'exams', label: 'Đề thi đã lưu', icon: FileText },
+        ]}
+      >
+        {(activePage) => activePage === 'question-bank'
+          ? <QuestionBank />
+          : <ExamManagement onNavigate={onNavigate} />}
+      </WorkspaceTabs>
+    </div>
   );
 }
 

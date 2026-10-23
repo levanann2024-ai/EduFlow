@@ -55,10 +55,12 @@ function App() {
   const [studentChatSeed, setStudentChatSeed] = useState<{ subject: string; prompt: string } | null>(null);
   const [practiceSeed, setPracticeSeed] = useState<SavedQuiz | null>(null);
   const [resourceSubjectSeed, setResourceSubjectSeed] = useState<string | null>(null);
+  const [lessonBuilderInitialMode, setLessonBuilderInitialMode] = useState<'lesson' | 'exam'>('lesson');
   const [initialSubjectView, setInitialSubjectView] = useState<'lessons' | 'assignments' | null>(null);
   const [initialSubjectTopic, setInitialSubjectTopic] = useState<string | null>(null);
 
   const navigateToPage = (nextPage: Page) => {
+    if (nextPage === 'lesson-builder') setLessonBuilderInitialMode(page === 'exams' ? 'exam' : 'lesson');
     setResourceSubjectSeed(null);
     setInitialSubjectView(null);
     setInitialSubjectTopic(null);
@@ -170,7 +172,7 @@ function App() {
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
               {activePage === 'ai-chat' && <AIChat role={role} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : undefined} />}
               {activePage === 'lessons' && <LessonRepository />}
-              {activePage === 'lesson-builder' && <AILessonBuilder />}
+              {activePage === 'lesson-builder' && <AILessonBuilder initialMode={lessonBuilderInitialMode} />}
               {role === 'lecturer' && (activePage === 'question-bank' || activePage === 'exams') && <ExamQuestionWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
               {role === 'lecturer' && (activePage === 'ai-grading' || activePage === 'analytics') && <GradingAnalyticsWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
               {role === 'lecturer' && (activePage === 'exam-monitor' || activePage === 'appeals') && <ProctoringWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
