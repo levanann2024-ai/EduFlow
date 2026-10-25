@@ -5,6 +5,7 @@ import { getSavedItems, removeSavedItem, saveItem } from '@/pages/student/savedI
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { authenticatedFetch } from '@/auth/authApi';
 import 'katex/dist/katex.min.css';
 const initialMessages: Record<Role, ChatMessage[]> = {
   student: [{
@@ -248,7 +249,7 @@ export function AIChat({ role, initialSubject, initialPrompt, onExit }: { role: 
     setThinking(true);
     setError('');
     try {
-      const response = await fetch('/api/ai/chat', {
+      const response = await authenticatedFetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

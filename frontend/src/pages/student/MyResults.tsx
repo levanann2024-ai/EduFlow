@@ -15,6 +15,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { studentResults as results } from './studentResults';
+import { authenticatedFetch } from '@/auth/authApi';
 
 const subjectOptions = ['Tất cả', 'Toán học', 'Vật lý', 'Ngữ văn'];
 const weeks = ['T.9 - 21', 'T.9 - 28', 'T.10 - 5', 'T.10 - 12', 'T.10 - 19'];
@@ -75,7 +76,7 @@ export function MyResults() {
       const resultSummary = results
         .map((item) => `${item.date} - ${item.subject} - ${item.name}: ${item.score}/10`)
         .join('\n');
-      const response = await fetch('/api/ai/chat', {
+      const response = await authenticatedFetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, BookOpen, Clock3, RefreshCw, Settings2, Sparkles, Target, WandSparkles } from 'lucide-react';
 import type { QuizQuestion } from '@/types';
 import { saveItem } from './savedItems';
+import { authenticatedFetch } from '@/auth/authApi';
 
 type PracticeMode = 'practice' | 'test';
 type PracticePhase = 'setup' | 'ready' | 'answering' | 'results';
@@ -103,7 +104,7 @@ export function AIPractice({
     setGenerating(true);
     setError('');
     try {
-      const response = await fetch('/api/ai/questions', {
+      const response = await authenticatedFetch('/api/ai/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

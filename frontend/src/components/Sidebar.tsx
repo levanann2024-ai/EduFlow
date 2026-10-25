@@ -156,7 +156,7 @@ function isMenuItemActive(role: Role, item: MenuItem, current: Page) {
 export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onToggleCollapsed }: SidebarProps) {
   const sections = menus[role];
   return (
-    <aside className={`fixed inset-y-0 left-0 z-40 hidden shrink-0 flex-col border-r border-slate-800 bg-slate-900 transition-[width] duration-200 lg:flex ${collapsed ? 'w-16' : role === 'student' ? 'w-48' : 'w-56'}`}>
+    <aside className={`fixed inset-y-0 left-0 z-40 hidden shrink-0 flex-col border-r border-slate-800 bg-slate-900 transition-[width] duration-200 lg:flex ${collapsed ? 'w-16' : 'w-56'}`}>
       {/* 1. Phần Logo cố định ở trên */}
       <div className={`flex shrink-0 items-center border-b border-slate-800 py-4 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
         <div className="flex min-w-0 items-center gap-2">
@@ -303,6 +303,7 @@ export function MobileNav({ current, onNavigate, role }: Pick<SidebarProps, 'cur
 
 export function TopBar({
   role,
+  userName,
   onNotifications,
   onNavigate,
   onLogout,
@@ -311,6 +312,7 @@ export function TopBar({
   onAskAI,
 }: {
   role: Role;
+  userName?: string;
   onNotifications: () => void;
   onNavigate: (page: Page) => void;
   onLogout: () => void;
@@ -323,7 +325,7 @@ export function TopBar({
   const isStudent = role === 'student';
   const isLecturer = role === 'lecturer';
   const isFullWidthBar = isStudent || isLecturer;
-  const displayName = isStudent ? 'Lê Văn An' : role === 'lecturer' ? 'Nguyễn Văn An' : 'Quản trị viên';
+  const displayName = userName || (isStudent ? 'Lê Văn An' : role === 'lecturer' ? 'Nguyễn Văn An' : 'Quản trị viên');
   const studentSearchItems: { label: string; detail: string; page?: Page; subjectCode?: string; action?: 'resources' | 'assignments' }[] = [
     ...[
       ['Toán học', 'TOAN10'],
@@ -441,7 +443,7 @@ export function TopBar({
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-xs font-bold text-white">
               {isStudent ? 'L' : roleInitials[role]}
             </span>
-            <span className="hidden text-sm font-semibold text-slate-700 sm:inline">{displayName}</span>
+            <span className="hidden max-w-[120px] truncate text-sm font-semibold text-slate-700 sm:inline">{displayName}</span>
             <span className="text-xs font-semibold text-slate-400 sm:hidden">{roleInitials[role]}</span>
             <span aria-hidden="true" className="text-xs text-slate-400">⌄</span>
           </button>

@@ -4,6 +4,7 @@ import {
   Presentation, Search, Send, Sparkles, Upload, WandSparkles, X,
 } from 'lucide-react';
 import { mockClasses } from '@/data';
+import { authenticatedFetch } from '@/auth/authApi';
 
 type LessonFile = {
   id: string;
@@ -103,7 +104,7 @@ export function LessonRepository() {
     setAiBusy(true);
     setFeedback('');
     try {
-      const response = await fetch('/api/ai', {
+      const response = await authenticatedFetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'lesson-document', prompt: `${requests[action]}\n\n${documentContent}` }),

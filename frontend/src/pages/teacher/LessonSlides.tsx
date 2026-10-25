@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import pptxgen from 'pptxgenjs';
 import { ChevronLeft, ChevronRight, Download, LayoutTemplate, Sparkles, WandSparkles, X } from 'lucide-react';
+import { authenticatedFetch } from '@/auth/authApi';
 
 interface Slide {
   title: string;
@@ -28,7 +29,7 @@ export function LessonSlides() {
     setGenerating(true);
     setError('');
     try {
-      const response = await fetch('/api/ai/slides', {
+      const response = await authenticatedFetch('/api/ai/slides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, content, slideCount, style }),

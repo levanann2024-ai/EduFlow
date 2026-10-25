@@ -26,6 +26,9 @@ import { OnlineExamRooms } from '@/pages/student/OnlineExamRooms';
 import type { SavedQuiz } from '@/pages/student/savedItems';
 import { Users } from '@/pages/staff/Users';
 import { Settings } from '@/pages/Settings';
+import { FirstLoginSetup } from '@/auth/FirstLoginSetup';
+import { InvitationAcceptance } from '@/auth/InvitationAcceptance';
+import { demoLogin, login as authenticate, logout as endSession, restoreSession, type AuthUser } from '@/auth/authApi';
 import type { Page, Role } from '@/types';
 
 const allowedPages: Record<Role, Page[]> = {
@@ -49,6 +52,10 @@ const teacherPageByPath: Record<string, Page> = {
 
 function App() {
   const [role, setRole] = useState<Role | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [page, setPage] = useState<Page>(() => teacherPageByPath[window.location.pathname] ?? 'dashboard');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -73,7 +80,13 @@ function App() {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await endSession();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Không thể thu hồi phiên đăng nhập.');
+    }
+    setAuthUser(null);
     setRole(null);
     window.history.replaceState(null, '', '/');
   };
@@ -125,6 +138,26 @@ function App() {
   }, [page, role]);
 
   useEffect(() => {
+    let cancelled = false;
+    restoreSession()
+      .then((user) => {
+        if (!cancelled && user) {
+          setAuthUser(user);
+          setRole(user.role);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setAuthError(error instanceof Error ? error.message : 'Không thể khôi phục phiên đăng nhập.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     const syncTeacherRoute = () => {
       const nextPage = teacherPageByPath[window.location.pathname];
       if (role === 'lecturer' && nextPage) setPage(nextPage);
@@ -133,14 +166,75 @@ function App() {
     return () => window.removeEventListener('popstate', syncTeacherRoute);
   }, [role]);
 
-  if (!role) {
-    return <Login onLogin={(r) => {
-      setRole(r);
-      const requestedPage = r === 'lecturer' ? teacherPageByPath[window.location.pathname] : undefined;
+  if (authLoading) {
+    return <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Đang khôi phục phiên đăng nhập…</div>;
+  }
+
+  const invitationToken = new URLSearchParams(window.location.hash.slice(1)).get('invite');
+  if (invitationToken) {
+    return (
+      <InvitationAcceptance
+        token={invitationToken}
+        onAccepted={(user) => {
+          setAuthUser(user);
+          setRole(user.role);
+          setPage('dashboard');
+          window.history.replaceState(null, '', window.location.pathname);
+        }}
+      />
+    );
+  }
+
+  if (!role || !authUser) {
+    const completeLogin = (user: AuthUser) => {
+      setAuthUser(user);
+      setRole(user.role);
+      setAuthError('');
+      const requestedPage = user.role === 'lecturer' ? teacherPageByPath[window.location.pathname] : undefined;
       setPage(requestedPage ?? 'dashboard');
-      if (r === 'lecturer' && !requestedPage) window.history.replaceState(null, '', '/teacher/dashboard');
-      if (r !== 'lecturer') window.history.replaceState(null, '', '/');
-    }} />;
+      if (user.role === 'lecturer' && !requestedPage) window.history.replaceState(null, '', '/teacher/dashboard');
+      if (user.role !== 'lecturer') window.history.replaceState(null, '', '/');
+    };
+    return (
+      <Login
+        error={authError}
+        busy={authBusy}
+        onLogin={async (email, password) => {
+          setAuthBusy(true);
+          setAuthError('');
+          try {
+            completeLogin(await authenticate(email, password));
+          } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Không thể đăng nhập.');
+          } finally {
+            setAuthBusy(false);
+          }
+        }}
+        onDemoLogin={async (demoRole) => {
+          setAuthBusy(true);
+          setAuthError('');
+          try {
+            completeLogin(await demoLogin(demoRole));
+          } catch (error) {
+            setAuthError(error instanceof Error ? error.message : 'Không thể vào chế độ demo.');
+          } finally {
+            setAuthBusy(false);
+          }
+        }}
+      />
+    );
+  }
+
+  if (authUser.mustChangePassword || !authUser.profileComplete) {
+    return (
+      <FirstLoginSetup
+        user={authUser}
+        onComplete={(user) => {
+          setAuthUser(user);
+          setRole(user.role);
+        }}
+      />
+    );
   }
 
   const activePage = allowedPages[role].includes(page) ? page : 'dashboard';
@@ -154,9 +248,10 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
-      <div className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'lg:ml-16' : role === 'student' ? 'lg:ml-48' : 'lg:ml-56'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-56'}`}>
         <TopBar
           role={role}
+          userName={authUser.fullName}
           onNotifications={() => setNotificationsOpen(true)}
           onNavigate={navigateToPage}
           onLogout={logout}
@@ -219,10 +314,10 @@ function App() {
                 />
               )}
               {activePage === 'feedback' && <StudentFeedback />}
-              {activePage === 'profile' && <StudentProfile onLogout={logout} />}
+              {activePage === 'profile' && <StudentProfile user={authUser} onLogout={logout} />}
               {activePage === 'practice-history' && <PracticeHistory onBackToSaved={() => navigateToPage('saved')} />}
               {activePage === 'online-exams' && <OnlineExamRooms onOpenHistory={() => navigateToPage('practice-history')} />}
-              {activePage === 'users' && <Users />}
+              {activePage === 'users' && <Users currentUser={authUser} />}
               {activePage === 'settings' && <Settings role={role} />}
             </>
           )}

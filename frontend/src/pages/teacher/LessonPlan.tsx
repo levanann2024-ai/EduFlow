@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { authenticatedFetch } from '@/auth/authApi';
 
 const subjects = ['Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Ngữ văn', 'Lịch sử', 'Địa lý', 'Tiếng Anh'];
 const methods = ['Thuyết trình', 'Thảo luận nhóm', 'Khám phá', 'Dự án', 'Luyện tập'];
@@ -33,7 +34,7 @@ export function LessonPlan() {
     setError('');
 
     try {
-      const response = await fetch('/api/ai/lesson-plan', {
+      const response = await authenticatedFetch('/api/ai/lesson-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject, grade, topic, duration, method }),

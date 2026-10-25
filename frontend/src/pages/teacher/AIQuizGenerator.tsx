@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Sparkles, Wand2, Copy, Check, RefreshCw, Download, ChevronDown, ChevronRight, BookOpen, GraduationCap, Layers, Target, Lightbulb, Plus, Trash2, FileText } from 'lucide-react';
 import type { QuizQuestion } from '@/types';
+import { authenticatedFetch } from '@/auth/authApi';
 
 interface GeneratedQuestionSet {
   topic: string;
@@ -215,7 +216,7 @@ export function AIQuizGenerator({
         ].filter(Boolean).join('\n')
         : topic;
       const quantity = examMode ? totalExamQuestions : numQuestions;
-      const response = await fetch('/api/ai/questions', {
+      const response = await authenticatedFetch('/api/ai/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject, grade, topic: requestTopic, quantity, difficulty }),
