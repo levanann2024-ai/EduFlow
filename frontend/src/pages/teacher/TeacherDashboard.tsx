@@ -15,8 +15,6 @@ interface TeacherDashboardProps {
   onNavigate: (page: Page) => void;
 }
 
-const workload = { submitted: 36, awaitingSubmission: 4, awaitingGrading: 2, appeals: 2 };
-
 const quickFunctions: { label: string; description: string; page: Page; icon: LucideIcon; color: string }[] = [
   { label: 'Soạn bài nhanh', description: 'Lên kế hoạch giảng dạy', page: 'lesson-builder', icon: PenLine, color: 'emerald' },
   { label: 'Tạo đề kiểm tra', description: 'Sinh đề từ ngân hàng câu hỏi', page: 'exams', icon: FileCheck2, color: 'amber' },
@@ -81,7 +79,7 @@ export function TeacherDashboard({ onNavigate }: TeacherDashboardProps) {
                 <div>
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-rose-700"><AlertTriangle className="h-3.5 w-3.5" /> Ưu tiên hôm nay</span>
                   <h2 id="teacher-priority-title" className="mt-0.5 text-lg font-extrabold text-slate-950 sm:text-xl">Bài cần chấm</h2>
-                  <p className="mt-0.5 text-sm text-slate-700">{workload.awaitingGrading} bài nộp đang chờ chấm</p>
+                  <p className="mt-0.5 text-sm text-slate-700">Chưa có API cung cấp số liệu bài chờ chấm.</p>
                 </div>
               </div>
               <button type="button" onClick={() => onNavigate('ai-grading')} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-800">
@@ -93,12 +91,12 @@ export function TeacherDashboard({ onNavigate }: TeacherDashboardProps) {
           <div className="grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => onNavigate('classes')} className="flex min-h-[82px] items-center gap-3 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-3 text-left transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700"><Users className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-900">Bài tập đã nộp</span><span className="mt-0.5 block text-sm text-slate-700"><strong>{workload.submitted} bài</strong> - cần xem và phản hồi</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-900">Bài tập đã nộp</span><span className="mt-0.5 block text-sm text-slate-700">Chưa có dữ liệu tổng hợp từ API.</span></span>
               <ArrowRight className="h-4 w-4 shrink-0 text-blue-700" />
             </button>
             <button type="button" onClick={() => onNavigate('appeals')} className="flex min-h-[82px] items-center gap-3 rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-3 text-left transition hover:-translate-y-0.5 hover:border-amber-200 hover:shadow-md">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700"><AlertTriangle className="h-5 w-5" /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-900">Phúc khảo &amp; sự cố</span><span className="mt-0.5 block text-sm text-slate-700"><strong>{workload.appeals} yêu cầu</strong> - cần kiểm tra</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-900">Phúc khảo &amp; sự cố</span><span className="mt-0.5 block text-sm text-slate-700">Chưa có dữ liệu tổng hợp từ API.</span></span>
               <ArrowRight className="h-4 w-4 shrink-0 text-amber-700" />
             </button>
           </div>

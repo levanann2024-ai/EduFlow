@@ -54,12 +54,12 @@ async function insertSchool(client, status = 'active') {
   return id;
 }
 
-async function insertUser(client, role, adminScope = null) {
+async function insertUser(client, role, adminScope = null, fullName = 'Integration Test') {
   const id = randomUUID();
   await client.query(
     `INSERT INTO users (id, email, full_name, password_hash, role, admin_scope, profile_completed_at)
-     VALUES ($1, $2, 'Integration Test', 'not-a-real-password-hash', $3, $4, now())`,
-    [id, `${id}@example.invalid`, role, adminScope],
+     VALUES ($1, $2, $3, 'not-a-real-password-hash', $4, $5, now())`,
+    [id, `${id}@example.invalid`, fullName, role, adminScope],
   );
   return id;
 }
@@ -176,11 +176,11 @@ test('PostgreSQL integration tests use an isolated schema and apply the reposito
         WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
       [schemaName],
     );
-    assert.equal(tables.rows[0].count, 12);
+    assert.equal(tables.rows[0].count, 17);
     const migrationRows = await client.query(
       'SELECT count(*)::int AS count FROM eduflow_schema_migrations',
     );
-    assert.equal(migrationRows.rows[0].count, 4);
+    assert.equal(migrationRows.rows[0].count, 6);
   } finally {
     client.release();
   }
@@ -299,6 +299,105 @@ test('teacher assignment history allows regrant and normalizes active subject un
       [classId, teacherId],
     );
     assert.equal(history.rows[0].count, 3);
+  } finally {
+    client.release();
+  }
+});
+
+test('gradebook and assignment submissions persist for the assigned chemistry teacher and five students', {
+  skip: !databaseUrl,
+}, async () => {
+  const client = await connectToSchema();
+  try {
+    const schoolId = await insertSchool(client);
+    const teacherId = await insertUser(client, 'lecturer', null, 'Đức');
+    const teacherMembershipId = await insertSchoolMembership(client, teacherId, schoolId, 'lecturer');
+    await client.query(
+      'INSERT INTO teacher_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
+      [teacherId, teacherMembershipId, schoolId],
+    );
+    const assignedBy = await insertUser(client, 'admin', 'system');
+    const classId = randomUUID();
+    await client.query(
+      `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
+       VALUES ($1, $2, '11A2', '11A2', '11', '2026-2027')`,
+      [classId, schoolId],
+    );
+    await client.query(
+      `INSERT INTO teacher_class_assignments
+         (id, class_id, teacher_user_id, school_id, subject, assigned_by)
+       VALUES ($1, $2, $3, $4, 'Hóa học', $5)`,
+      [randomUUID(), classId, teacherId, schoolId, assignedBy],
+    );
+
+    const studentNames = ['Văn An', 'Chí Bằng', 'Tuấn Minh', 'Duy Phan', 'Trần Anh'];
+    const studentIds = [];
+    for (const fullName of studentNames) {
+      const studentId = await insertUser(client, 'student', null, fullName);
+      const membershipId = await insertSchoolMembership(client, studentId, schoolId, 'student');
+      await client.query(
+        'INSERT INTO student_profiles (user_id, membership_id, school_id, grade) VALUES ($1, $2, $3, $4)',
+        [studentId, membershipId, schoolId, '11'],
+      );
+      await client.query(
+        `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
+         VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), classId, studentId, schoolId],
+      );
+      studentIds.push(studentId);
+    }
+
+    const classroomService = require('../services/school.service');
+    const teacherAuth = { userId: teacherId, role: 'lecturer', schoolIds: [schoolId] };
+    const input = {
+      academicYear: '2026-2027',
+      semester: 'Kỳ 1',
+      subject: 'Hóa học',
+    };
+    await classroomService.saveStudentGrades(teacherAuth, classId, studentIds[0], {
+      ...input,
+      regular: [8, 9, null, null],
+      midterm: 8.5,
+      final: null,
+    });
+    const assignment = await classroomService.createClassAssignment(teacherAuth, classId, {
+      ...input,
+      chapter: 'Chương 1',
+      lesson: 'Bài 1',
+      title: 'Bài tập cấu tạo nguyên tử',
+      description: 'Trả lời các câu hỏi ôn tập.',
+      dueAt: '2030-10-25T23:59:00.000Z',
+    });
+    const resource = await classroomService.createClassLearningResource(teacherAuth, classId, {
+      ...input,
+      chapter: 'Chương 1',
+      lesson: 'Bài 1',
+      period: 'Tiết 1',
+      title: 'Cấu tạo nguyên tử - ghi chú bổ trợ',
+      content: 'Nội dung ôn tập do giáo viên biên soạn.',
+      note: '',
+    });
+    assert.equal((await classroomService.listClassLearningResources(teacherAuth, classId))[0].id, resource.id);
+    const gradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
+    assert.deepEqual(gradebook.map((student) => student.fullName), studentNames);
+    assert.deepEqual(gradebook[0].grades.regular, [8, 9, null, null]);
+    assert.equal(gradebook[0].assignments.total, 1);
+    assert.equal(gradebook[0].assignments.submitted, 0);
+    assert.equal(gradebook[0].assignments.overdueMissing, 0);
+
+    const firstStudentAuth = { userId: studentIds[0], role: 'student', schoolIds: [schoolId] };
+    const listedAssignments = await classroomService.listStudentAssignments(firstStudentAuth);
+    assert.equal(listedAssignments.length, 1);
+    assert.equal(listedAssignments[0].id, assignment.id);
+    const studentResources = await classroomService.listStudentLearningResources(firstStudentAuth);
+    assert.equal(studentResources.length, 1);
+    assert.equal(studentResources[0].id, resource.id);
+    assert.equal(studentResources[0].teacherName, 'Đức');
+    await classroomService.submitClassAssignment(firstStudentAuth, assignment.id, 'Bài làm của Văn An.');
+
+    const updatedGradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
+    assert.equal(updatedGradebook[0].assignments.submitted, 1);
+    assert.equal(updatedGradebook[1].assignments.submitted, 0);
   } finally {
     client.release();
   }

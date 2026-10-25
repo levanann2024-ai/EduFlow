@@ -1,10 +1,18 @@
-import { useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import {
-  BookOpen, Check, Clock3, CloudUpload, FileText, FileVideo2, FolderOpen, MoreVertical,
+  BookOpen, Check, Clock3, CloudUpload, FileText, FileVideo2, FolderOpen,
   Presentation, Search, Send, Sparkles, Upload, WandSparkles, X,
 } from 'lucide-react';
-import { mockClasses } from '@/data';
 import { authenticatedFetch } from '@/auth/authApi';
+import {
+  createClassAssignment,
+  createClassLearningResource,
+  listClassAssignments,
+  listClassLearningResources,
+  listClassSubjects,
+  listClasses,
+  type SchoolClass,
+} from '@/api/schoolApi';
 
 type LessonFile = {
   id: string;
@@ -21,31 +29,6 @@ type LessonFile = {
   uploadedAt: string;
 };
 
-const classLabels: Record<string, string> = {
-  c1: '10A1',
-  c2: '11B3',
-  c3: '12A2',
-  c5: '10B2',
-  c6: '11A1',
-};
-
-const initialRecentFiles: LessonFile[] = [
-  { id: 'recent-1', name: 'Bài giảng Chương 2 - Hàm số bậc hai.pdf', size: 12.4 * 1024 * 1024, className: '10A2', chapter: 'Chương 2 - Bài 1', lesson: 'Tiết 1', uploadedAt: '08/10/2026 16:42' },
-  { id: 'recent-2', name: 'Bài tập vận dụng - Chương 2.pptx', size: 8.7 * 1024 * 1024, className: '10A1', chapter: 'Chương 2 - Bài 2', lesson: 'Tiết 2', uploadedAt: '08/10/2026 14:20' },
-  { id: 'recent-3', name: 'Đề cương ôn tập Toán 10.docx', size: 1.2 * 1024 * 1024, className: '10A2', chapter: 'Chương 1 - Bài 3', lesson: 'Tiết 1', uploadedAt: '07/10/2026 20:15' },
-  { id: 'recent-4', name: 'Video bài giảng Hàm số.mp4', size: 45.6 * 1024 * 1024, className: '11A1', chapter: 'Chương 2 - Bài 1', lesson: 'Tiết 1', uploadedAt: '06/10/2026 18:30' },
-];
-
-const chapters = [
-  'Chương 1 - Mệnh đề và tập hợp',
-  'Chương 2 - Hàm số bậc hai',
-  'Chương 3 - Phương trình',
-];
-const lessons = [
-  'Bài 1: Hàm số bậc hai và đồ thị',
-  'Bài 2: Dấu của tam thức bậc hai',
-  'Bài 3: Phương trình quy về bậc hai',
-];
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xlsx,.xls,.mp4,.jpg,.jpeg,.png';
 const maxFileSize = 50 * 1024 * 1024;
 const acceptedExtensions = new Set(acceptedTypes.split(',').map((extension) => extension.slice(1)));
@@ -54,6 +37,12 @@ function formatFileSize(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function defaultDueAt() {
+  const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
 }
 
 function fileKind(name: string) {
@@ -68,27 +57,131 @@ function fileKind(name: string) {
 
 export function LessonRepository() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [entryMode, setEntryMode] = useState<'write' | 'upload'>('upload');
+  const [entryMode, setEntryMode] = useState<'write' | 'upload'>('write');
+  const [contentType, setContentType] = useState<'lesson' | 'assignment'>('lesson');
   const [files, setFiles] = useState<LessonFile[]>([]);
-  const [recentFiles, setRecentFiles] = useState(initialRecentFiles);
-  const [selectedClasses, setSelectedClasses] = useState<string[]>(['c1', 'c2']);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [recentEntries, setRecentEntries] = useState<Array<{
+    id: string;
+    title: string;
+    chapter: string;
+    lesson: string;
+    period: string | null;
+    className: string;
+    note: string;
+    kind: 'lesson' | 'assignment';
+    createdAt: string;
+  }>>([]);
   const [classQuery, setClassQuery] = useState('');
-  const [chapter, setChapter] = useState(chapters[1]);
-  const [lesson, setLesson] = useState(lessons[0]);
-  const [period, setPeriod] = useState('Tiết 1');
+  const [chapter, setChapter] = useState('');
+  const [lesson, setLesson] = useState('');
+  const [period, setPeriod] = useState('');
+  const [semester, setSemester] = useState('Kỳ 1');
+  const [dueAt, setDueAt] = useState(defaultDueAt);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [documentContent, setDocumentContent] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const filteredClasses = useMemo(
-    () => [...mockClasses]
-      .sort((first, second) => Number(Boolean(second.isHomeroom)) - Number(Boolean(first.isHomeroom)))
-      .filter((classroom) => classroom.name.toLocaleLowerCase('vi').includes(classQuery.toLocaleLowerCase('vi'))),
-    [classQuery],
+    () => classes.filter((classroom) =>
+      `${classroom.name} ${classroom.code}`.toLocaleLowerCase('vi').includes(classQuery.toLocaleLowerCase('vi'))),
+    [classes, classQuery],
   );
+
+  useEffect(() => {
+    let active = true;
+    listClasses()
+      .then((items) => {
+        if (!active) return;
+        setClasses(items);
+        setSelectedClasses(items[0] ? [items[0].id] : []);
+      })
+      .catch((loadError) => {
+        if (active) setFeedback(loadError instanceof Error ? loadError.message : 'Không thể tải danh sách lớp.');
+      })
+      .finally(() => {
+        if (active) setLoadingClasses(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const classId = selectedClasses[0];
+    if (!classId) {
+      setSubjects([]);
+      setSelectedSubject('');
+      return;
+    }
+    let active = true;
+    listClassSubjects(classId)
+      .then((items) => {
+        if (!active) return;
+        setSubjects(items);
+        setSelectedSubject((current) => items.includes(current) ? current : (items[0] ?? ''));
+      })
+      .catch((loadError) => {
+        if (active) setFeedback(loadError instanceof Error ? loadError.message : 'Không thể tải môn học được phân công.');
+      });
+    return () => { active = false; };
+  }, [selectedClasses]);
+
+  useEffect(() => {
+    const classId = selectedClasses[0];
+    const classroom = classes.find((item) => item.id === classId);
+    if (!classId || !classroom || !selectedSubject) {
+      setRecentEntries([]);
+      return;
+    }
+    let active = true;
+    setLoadingRecent(true);
+    Promise.all([
+      listClassLearningResources(classId),
+      listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
+    ])
+      .then(([resources, assignments]) => {
+        if (!active) return;
+        setRecentEntries([
+          ...resources.filter((resource) => resource.subject === selectedSubject).map((resource) => ({
+            id: resource.id,
+            title: resource.title,
+            chapter: resource.chapter,
+            lesson: resource.lesson,
+            period: resource.period,
+            className: classroom.code,
+            note: resource.note,
+            kind: 'lesson' as const,
+            createdAt: resource.createdAt,
+          })),
+          ...assignments.map((assignment) => ({
+            id: assignment.id,
+            title: assignment.title,
+            chapter: assignment.chapter,
+            lesson: assignment.lesson,
+            period: assignment.period,
+            className: classroom.code,
+            note: assignment.description,
+            kind: 'assignment' as const,
+            createdAt: assignment.createdAt ?? assignment.dueAt,
+          })),
+        ].sort((first, second) => second.createdAt.localeCompare(first.createdAt)).slice(0, 4));
+      })
+      .catch((loadError) => {
+        if (active) setFeedback(loadError instanceof Error ? loadError.message : 'Không thể tải nội dung đã đăng.');
+      })
+      .finally(() => {
+        if (active) setLoadingRecent(false);
+      });
+    return () => { active = false; };
+  }, [classes, selectedClasses, selectedSubject, semester]);
 
   const runDocumentAssistant = async (action: 'latex' | 'polish' | 'check') => {
     if (!documentContent.trim()) {
@@ -157,64 +250,83 @@ export function LessonRepository() {
     addFiles(event.dataTransfer.files);
   };
 
-  const toggleClass = (classId: string) => {
-    setSelectedClasses((selected) => selected.includes(classId)
-      ? selected.filter((id) => id !== classId)
-      : [...selected, classId]);
-  };
-
-  const sendFiles = () => {
-    if (entryMode === 'upload' && files.length === 0) {
-      setFeedback('Chọn ít nhất một tài liệu trước khi gửi.');
+  const sendFiles = async () => {
+    if (entryMode === 'upload') {
+      setFeedback('Hệ thống chưa hỗ trợ lưu tệp lên máy chủ. Hãy chọn “Viết trực tiếp” để đăng nội dung.');
       return;
     }
-    if (entryMode === 'write' && !documentContent.trim()) {
+    if (!documentContent.trim()) {
       setFeedback('Nhập nội dung tài liệu trước khi gửi.');
       return;
     }
-    if (selectedClasses.length === 0) {
+    const classId = selectedClasses[0];
+    const classroom = classes.find((item) => item.id === classId);
+    if (!classId || !classroom) {
       setFeedback('Chọn lớp nhận tài liệu.');
+      return;
+    }
+    if (!selectedSubject) {
+      setFeedback('Chọn môn học được phân công.');
+      return;
+    }
+    if (!chapter.trim() || !lesson.trim()) {
+      setFeedback('Nhập chương và bài học.');
       return;
     }
     if (!title.trim()) {
       setFeedback('Nhập tên tài liệu trước khi gửi.');
       return;
     }
-
-    const uploadedAt = new Intl.DateTimeFormat('vi-VN', {
-      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-    }).format(new Date());
-    const outgoingFiles = entryMode === 'write'
-      ? [{
-        id: `written-${Date.now()}`,
-        name: `${title.trim() || 'Tài liệu'}.txt`,
-        size: new Blob([documentContent]).size,
-        chapter,
-        lesson,
-        uploadedAt: '',
-        content: documentContent,
-      }]
-      : files;
-    const additions = outgoingFiles.map((file, index) => ({
-      ...file,
-      id: `uploaded-${Date.now()}-${index}`,
-      className: selectedClasses.map((id) => classLabels[id] ?? id).join(', '),
-      chapter,
-      lesson,
-      period: period === 'Không chọn' ? undefined : period,
-      displayTitle: title.trim() || file.name,
-      note: note.trim() || undefined,
-      uploadedAt,
-    }));
-    setRecentFiles((current) => [...additions, ...current].slice(0, 8));
-    setFiles([]);
-    setTitle('');
-    setNote('');
-    setDocumentContent('');
-    setFeedback(`Đã cập nhật danh sách: ${additions.length} tài liệu tới ${selectedClasses.length} lớp.`);
+    setPublishing(true);
+    setFeedback('');
+    try {
+      const payload = {
+        academicYear: classroom.academic_year,
+        semester,
+        subject: selectedSubject,
+        chapter: chapter.trim(),
+        lesson: lesson.trim(),
+        period: period.trim() || null,
+      };
+      if (contentType === 'lesson') {
+        await createClassLearningResource(classId, {
+          ...payload, title: title.trim(), content: documentContent.trim(), note: note.trim(),
+        });
+      } else {
+        if (!Number.isFinite(Date.parse(dueAt)) || Date.parse(dueAt) <= Date.now()) {
+          setFeedback('Chọn hạn nộp bài tập trong tương lai.');
+          return;
+        }
+        await createClassAssignment(classId, {
+          ...payload, title: title.trim(), description: documentContent.trim(), dueAt: new Date(dueAt).toISOString(),
+        });
+      }
+      setTitle('');
+      setNote('');
+      setDocumentContent('');
+      setFeedback(contentType === 'lesson' ? 'Bài giảng đã được đăng.' : 'Bài tập đã được giao.');
+      const [resources, assignments] = await Promise.all([
+        listClassLearningResources(classId),
+        listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
+      ]);
+      setRecentEntries([
+        ...resources.filter((resource) => resource.subject === selectedSubject).map((resource) => ({
+          id: resource.id, title: resource.title, chapter: resource.chapter, lesson: resource.lesson,
+          period: resource.period, className: classroom.code, note: resource.note,
+          kind: 'lesson' as const, createdAt: resource.createdAt,
+        })),
+        ...assignments.map((assignment) => ({
+          id: assignment.id, title: assignment.title, chapter: assignment.chapter, lesson: assignment.lesson,
+          period: assignment.period, className: classroom.code, note: assignment.description,
+          kind: 'assignment' as const, createdAt: assignment.createdAt ?? assignment.dueAt,
+        })),
+      ].sort((first, second) => second.createdAt.localeCompare(first.createdAt)).slice(0, 4));
+    } catch (requestError) {
+      setFeedback(requestError instanceof Error ? requestError.message : 'Không thể đăng nội dung.');
+    } finally {
+      setPublishing(false);
+    }
   };
-
-  const allFilteredSelected = filteredClasses.length > 0 && filteredClasses.every(({ id }) => selectedClasses.includes(id));
 
   return (
     <section className="teacher-library flex min-h-0 flex-1 flex-col overflow-hidden bg-sky-50/60">
@@ -225,29 +337,35 @@ export function LessonRepository() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-auto lg:flex-none lg:grid-cols-[minmax(0,1fr)_260px] lg:content-start lg:overflow-hidden">
-        <div className="flex min-h-0 flex-col gap-3">
+      <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_260px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+        <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto lg:pr-1">
           <section className="shrink-0 rounded-xl border border-blue-100 bg-white p-3 shadow-sm">
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-950">
-              <CloudUpload className="h-5 w-5 text-blue-600" /> 1. Tạo tài liệu
+              <CloudUpload className="h-5 w-5 text-blue-600" /> 1. Tạo nội dung
             </h2>
-            <div className="mb-3 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1" role="tablist" aria-label="Cách tạo tài liệu">
-              <button
-                role="tab"
-                aria-selected={entryMode === 'write'}
-                onClick={() => setEntryMode('write')}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${entryMode === 'write' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}
-              >
-                <FileText className="h-3.5 w-3.5" /> Viết trực tiếp
-              </button>
-              <button
-                role="tab"
-                aria-selected={entryMode === 'upload'}
-                onClick={() => setEntryMode('upload')}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${entryMode === 'upload' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}
-              >
-                <Upload className="h-3.5 w-3.5" /> Tải tài liệu lên
-              </button>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex h-10 shrink-0 items-center rounded-lg border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Loại nội dung">
+                <button type="button" onClick={() => setContentType('lesson')} aria-pressed={contentType === 'lesson'} className={`h-full rounded-md px-3 text-xs font-semibold transition-colors ${contentType === 'lesson' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}>Bài giảng</button>
+                <button type="button" onClick={() => setContentType('assignment')} aria-pressed={contentType === 'assignment'} className={`h-full rounded-md px-3 text-xs font-semibold transition-colors ${contentType === 'assignment' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}>Bài tập</button>
+              </div>
+              <div className="inline-flex h-10 shrink-0 items-center rounded-lg border border-slate-200 bg-slate-50 p-1" role="tablist" aria-label="Cách tạo tài liệu">
+                <button
+                  role="tab"
+                  aria-selected={entryMode === 'write'}
+                  onClick={() => setEntryMode('write')}
+                  className={`inline-flex h-full items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors ${entryMode === 'write' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}
+                >
+                  <FileText className="h-3.5 w-3.5" /> Viết trực tiếp
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={entryMode === 'upload'}
+                  onClick={() => setEntryMode('upload')}
+                  className={`inline-flex h-full items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors ${entryMode === 'upload' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}
+                >
+                  <Upload className="h-3.5 w-3.5" /> Tải tài liệu lên
+                </button>
+              </div>
             </div>
             {entryMode === 'write' ? (
               <div className="space-y-2">
@@ -291,7 +409,7 @@ export function LessonRepository() {
                     <FolderOpen className="h-4 w-4" /> Chọn tệp từ máy tính
                   </button>
                   <input ref={fileInputRef} type="file" multiple accept={acceptedTypes} className="hidden" onChange={onFileInput} />
-                  <p className="mt-2 text-[10px] text-slate-500">PDF, PPTX, DOCX, XLSX, MP4, JPG, PNG - Tối đa 50 MB/tệp</p>
+                  <p className="mt-2 text-[10px] text-amber-700">Tệp chỉ xem trước trên máy này, chưa được lưu lên máy chủ. Chọn “Viết trực tiếp” để đăng.</p>
                 </div>
                 {files.length > 0 && (
                   <ul className="mt-2 space-y-1.5">
@@ -315,100 +433,111 @@ export function LessonRepository() {
             <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-blue-950">
               <BookOpen className="h-5 w-5 text-blue-600" /> 2. Gắn chương - bài
             </h2>
-            <p className="mb-2 text-[11px] text-slate-500">Giúp học sinh dễ dàng tìm thấy tài liệu theo chương, bài học.</p>
+            <p className="mb-2 text-[11px] text-slate-500">Gắn thông tin chương, bài và tiết (nếu có) để học sinh dễ tìm.</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <label className="block text-[11px] font-semibold text-slate-600">Chương
-                <select value={chapter} onChange={(event) => setChapter(event.target.value)} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs">
-                  {chapters.map((item) => <option key={item}>{item}</option>)}
-                </select>
+                <input value={chapter} onChange={(event) => setChapter(event.target.value)} maxLength={160} placeholder="Ví dụ: Chương 1" className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
               <label className="block text-[11px] font-semibold text-slate-600">Bài
-                <select value={lesson} onChange={(event) => setLesson(event.target.value)} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs">
-                  {lessons.map((item) => <option key={item}>{item}</option>)}
-                </select>
+                <input value={lesson} onChange={(event) => setLesson(event.target.value)} maxLength={200} placeholder="Ví dụ: Bài 1 - ..." className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
               <label className="block text-[11px] font-semibold text-slate-600">Tiết (nếu có)
-                <select value={period} onChange={(event) => setPeriod(event.target.value)} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs">
-                  {['Tiết 1', 'Tiết 2', 'Tiết 3', 'Không chọn'].map((item) => <option key={item}>{item}</option>)}
-                </select>
+                <input value={period} onChange={(event) => setPeriod(event.target.value)} maxLength={80} placeholder="Nhập tiết (không bắt buộc)" className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
             </div>
           </section>
 
           <section className="shrink-0 rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-950">
-              <FileText className="h-5 w-5 text-blue-600" /> 3. Thêm thông tin tài liệu
+              <FileText className="h-5 w-5 text-blue-600" /> 3. Thông tin {contentType === 'lesson' ? 'bài giảng' : 'bài tập'}
             </h2>
             <div className="grid gap-2 sm:grid-cols-2">
-              <label className="block text-[11px] font-semibold text-slate-600">Tên tài liệu <span className="text-rose-500">*</span> <span className="font-normal text-slate-400">(hiển thị cho học sinh)</span>
-                <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Nhập tên tài liệu" maxLength={120} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
+              <label className="block text-[11px] font-semibold text-slate-600">Tên {contentType === 'lesson' ? 'bài giảng' : 'bài tập'} <span className="text-rose-500">*</span>
+                <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Nhập tên" maxLength={200} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
+              {contentType === 'assignment' && (
+                <label className="block text-[11px] font-semibold text-slate-600">Hạn nộp
+                  <input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
+                </label>
+              )}
               <label className="block text-[11px] font-semibold text-slate-600">Nội dung / Lời nhắn <span className="font-normal text-slate-400">(tùy chọn)</span>
-                <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ghi lời nhắn cho học sinh..." maxLength={500} rows={1} className="input-field mt-1 h-9 min-h-0 resize-none px-2.5 py-1.5 text-xs" />
-                <span className="mt-0.5 block text-right text-[10px] text-slate-400">{note.length}/500</span>
+                <textarea value={contentType === 'lesson' ? note : documentContent} onChange={(event) => contentType === 'lesson' ? setNote(event.target.value) : setDocumentContent(event.target.value)} placeholder={contentType === 'lesson' ? 'Lời nhắn cho học sinh...' : 'Nội dung yêu cầu bài tập...'} maxLength={contentType === 'lesson' ? 500 : 5000} rows={1} className="input-field mt-1 h-9 min-h-0 resize-y px-2.5 py-1.5 text-xs" />
               </label>
             </div>
           </section>
+          {feedback && <p role="status" className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">{feedback}</p>}
           <button
             onClick={sendFiles}
-            className="inline-flex min-h-14 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-md transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200"
+            disabled={publishing}
+            className="inline-flex min-h-14 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-md transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 disabled:opacity-60"
           >
-            <Send className="h-5 w-5" /> Gửi tài liệu
+            <Send className="h-5 w-5" /> {publishing ? 'Đang đăng...' : contentType === 'lesson' ? 'Đăng bài giảng' : 'Giao bài tập'}
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-col justify-between gap-3 lg:h-full">
+        <div className="flex min-h-0 flex-col gap-3 lg:h-full lg:overflow-y-auto lg:pr-1">
           <section className="flex shrink-0 flex-col rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950">
                 <BookOpen className="h-4 w-4 text-blue-600" /> Chọn lớp nhận
               </h2>
-              <button onClick={() => setSelectedClasses(allFilteredSelected ? selectedClasses.filter((id) => !filteredClasses.some((item) => item.id === id)) : Array.from(new Set([...selectedClasses, ...filteredClasses.map(({ id }) => id)])))} className="text-[11px] font-medium text-blue-600 hover:text-blue-800">
-                {allFilteredSelected ? 'Bỏ chọn' : 'Chọn tất cả'}
-              </button>
+              <span className="text-[10px] text-slate-500">Mỗi lần đăng 1 lớp</span>
             </div>
             <label className="relative mt-1.5 block">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input value={classQuery} onChange={(event) => setClassQuery(event.target.value)} placeholder="Tìm lớp học..." className="h-8 w-full rounded-md border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-50" />
             </label>
-            <div className="mt-1.5 space-y-1">
-              {filteredClasses.map((classroom) => {
+            <div className="mt-1.5 max-h-36 min-h-0 space-y-1 overflow-y-auto">
+              {loadingClasses ? <p className="py-4 text-center text-xs text-slate-500">Đang tải lớp...</p> : filteredClasses.map((classroom) => {
                 const selected = selectedClasses.includes(classroom.id);
                 return (
-                  <button key={classroom.id} onClick={() => toggleClass(classroom.id)} className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors ${selected ? 'border-blue-100 bg-blue-50/60' : 'border-slate-100 hover:bg-slate-50'}`}>
+                  <button key={classroom.id} onClick={() => setSelectedClasses([classroom.id])} className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1 text-left transition-colors ${selected ? 'border-blue-100 bg-blue-50/60' : 'border-slate-100 hover:bg-slate-50'}`}>
                     <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white'}`}>{selected && <Check className="h-2.5 w-2.5" />}</span>
-                    <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800">{classroom.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800">{classroom.code} - {classroom.name}</span>
                   </button>
                 );
               })}
-              {filteredClasses.length === 0 && <p className="py-5 text-center text-xs text-slate-400">Không tìm thấy lớp.</p>}
+              {!loadingClasses && filteredClasses.length === 0 && <p className="py-5 text-center text-xs text-slate-400">Không tìm thấy lớp.</p>}
             </div>
-            <p className="mt-1.5 text-[10px] text-slate-500">Đã chọn {selectedClasses.length} lớp</p>
+            {subjects.length > 1 && (
+              <select
+                aria-label="Chọn môn học được phân công"
+                value={selectedSubject}
+                onChange={(event) => setSelectedSubject(event.target.value)}
+                className="input-field mt-2 h-9 !py-1 px-2 text-xs"
+              >
+                {subjects.map((item) => <option key={item}>{item}</option>)}
+              </select>
+            )}
+            <label className="mt-2 block text-[10px] font-semibold text-slate-600">Học kỳ
+              <select value={semester} onChange={(event) => setSemester(event.target.value)} className="input-field mt-1 h-9 !py-1 px-2 text-xs">
+                <option>Kỳ 1</option><option>Kỳ 2</option>
+              </select>
+            </label>
+            <p className="mt-1.5 text-[10px] text-slate-500">Chỉ có thể đăng vào lớp và môn được phân công.</p>
           </section>
 
-          <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
+          <section className="flex shrink-0 flex-col rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><Clock3 className="h-4 w-4 text-blue-600" /> Tài liệu mới đăng</h2>
-              <span className="text-[10px] font-medium text-blue-600">Gần đây</span>
+              <span className="text-[10px] font-medium text-blue-600">{loadingRecent ? 'Đang tải...' : 'Gần đây'}</span>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col divide-y divide-slate-100">
-              {recentFiles.map((file) => {
-                const { color, label, Icon } = fileKind(file.name);
+            <div className="max-h-[300px] divide-y divide-slate-100 overflow-y-auto">
+              {recentEntries.map((entry) => {
+                const { color, Icon } = fileKind(entry.kind === 'assignment' ? 'exercise.txt' : 'lesson.txt');
                 return (
-                  <article key={file.id} className="flex flex-1 items-center gap-1.5 py-1">
+                  <article key={entry.id} className="flex items-center gap-1.5 py-2">
                     <span className={`${color} flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white`}><Icon className="h-3.5 w-3.5" /></span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[10px] font-semibold leading-4 text-slate-800">{file.displayTitle ?? file.name}</p>
-                      <p className="truncate text-[9px] leading-3 text-slate-400">{file.chapter} - {file.lesson} - {label} - {formatFileSize(file.size)} - {file.uploadedAt}</p>
-                      {file.note && <p className="truncate text-[9px] leading-3 text-slate-500">{file.note}</p>}
+                      <p className="truncate text-[10px] font-semibold leading-4 text-slate-800">{entry.title}</p>
+                      <p className="truncate text-[9px] leading-3 text-slate-400">{entry.kind === 'lesson' ? 'Bài giảng' : 'Bài tập'} · {entry.chapter} · {entry.lesson}{entry.period ? ` · ${entry.period}` : ''}</p>
+                      {entry.note && <p className="truncate text-[9px] leading-3 text-slate-500">{entry.note}</p>}
                     </div>
-                    <span className="max-w-16 truncate rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{file.className}</span>
-                    <button onClick={() => setRecentFiles((current) => current.filter((item) => item.id !== file.id))} aria-label={`Xóa ${file.name} khỏi danh sách gần đây`} className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
+                    <span className="max-w-16 truncate rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{entry.className}</span>
                   </article>
                 );
               })}
+              {!loadingRecent && recentEntries.length === 0 && <p className="py-5 text-center text-xs text-slate-400">Chưa có nội dung đã đăng.</p>}
             </div>
           </section>
         </div>

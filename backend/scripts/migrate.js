@@ -80,9 +80,19 @@ const MIGRATIONS = [
     lockTables: ['account_invitations'],
     preflight: null,
   },
+  {
+    name: '005_classroom_learning',
+    file: path.join(__dirname, '..', 'db', 'migrations', '005_classroom_learning.sql'),
+    preflight: null,
+  },
+  {
+    name: '006_class_learning_content',
+    file: path.join(__dirname, '..', 'db', 'migrations', '006_class_learning_content.sql'),
+    preflight: null,
+  },
 ];
 
-const AUTH_TABLES = [
+const CORE_TABLES = [
   'schools',
   'users',
   'school_memberships',
@@ -94,6 +104,14 @@ const AUTH_TABLES = [
   'account_invitations',
   'auth_sessions',
   'auth_refresh_tokens',
+];
+
+const APPLICATION_TABLES = [
+  ...CORE_TABLES,
+  'student_term_grades',
+  'class_assignments',
+  'class_assignment_submissions',
+  'class_learning_resources',
 ];
 
 function assertMigrationStatements(sql, migrationName) {
@@ -142,9 +160,9 @@ async function verifyBaseSchema(client, schemaName) {
        FROM information_schema.tables
       WHERE table_schema = $2 AND table_type = 'BASE TABLE'
         AND table_name = ANY($1::text[])`,
-    [AUTH_TABLES, schemaName],
+    [CORE_TABLES, schemaName],
   );
-  if (result.rowCount !== AUTH_TABLES.length) {
+  if (CORE_TABLES.some((tableName) => !result.rows.some((row) => row.table_name === tableName))) {
     throw new Error('Migration stopped: authentication schema is incomplete.');
   }
 }
@@ -216,7 +234,7 @@ async function applyMigrations(client, { schemaName = 'public', through = null }
       await verifyBaseSchema(client, schemaName);
       const unexpectedTables = applicationTables.rows
         .map(({ table_name: name }) => name)
-        .filter((name) => !AUTH_TABLES.includes(name));
+        .filter((name) => !APPLICATION_TABLES.includes(name));
       if (unexpectedTables.length > 0) {
         throw new Error('Migration stopped: untracked application tables exist in the public schema.');
       }
@@ -274,7 +292,7 @@ async function migrate() {
     client = await pool.connect();
     const pending = await applyMigrations(client);
     if (pending.length === 0) {
-      console.log(`Database migrations are already up to date; verified tables: ${AUTH_TABLES.join(', ')}`);
+      console.log(`Database migrations are already up to date; verified tables: ${APPLICATION_TABLES.join(', ')}`);
     } else {
       console.log(`Applied database migration(s): ${pending.join(', ')}; verified authentication tables.`);
     }
