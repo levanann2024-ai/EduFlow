@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Clock3, Eye, FileCheck2, FileText, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarClock, Check, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, Search, ShieldCheck, Users, X } from 'lucide-react';
 import { demoClasses, demoSampleExam, demoStudents, examRoomDefaults, type ExamRoomRecord } from './examRoomDemoData';
 import { readSavedExams, type SavedExam } from './assessmentStorage';
 import type { Page } from '@/types';
 
 const steps = [
   { label: 'Chọn đề', icon: FileText },
-  { label: 'Phòng thi', icon: Users },
+  { label: 'Thông tin phòng thi', icon: Users },
   { label: 'Lịch thi', icon: CalendarClock },
   { label: 'Quy tắc', icon: FileCheck2 },
   { label: 'Xác nhận', icon: Check },
@@ -53,8 +53,8 @@ export function ExamRoomWizard({
   const [savedExams, setSavedExams] = useState<SavedExam[]>([]);
   const [examLoadError, setExamLoadError] = useState('');
   const [query, setQuery] = useState('');
-  const [subjectFilter, setSubjectFilter] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
+  const [examPage, setExamPage] = useState(0);
   const [selectedExamId, setSelectedExamId] = useState(initialRoom?.examId ?? '');
   const [previewExam, setPreviewExam] = useState<SavedExam | null>(null);
   const [roomTitle, setRoomTitle] = useState(initialRoom?.title ?? '');
@@ -96,14 +96,13 @@ export function ExamRoomWizard({
     const normalized = query.trim().toLocaleLowerCase('vi');
     return savedExams.filter((exam) => (
       (!normalized || `${exam.title} ${exam.topic} ${exam.subject} ${exam.grade}`.toLocaleLowerCase('vi').includes(normalized))
-      && (!subjectFilter || exam.subject === subjectFilter)
       && (!gradeFilter || exam.grade === gradeFilter)
     ));
-  }, [gradeFilter, query, savedExams, subjectFilter]);
-  const showDemoExam = (
-    !query.trim() || `${demoSampleExam.title} ${demoSampleExam.topic} ${demoSampleExam.subject} ${demoSampleExam.grade}`.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi'))
-  ) && (!subjectFilter || demoSampleExam.subject === subjectFilter)
-    && (!gradeFilter || demoSampleExam.grade === gradeFilter);
+  }, [gradeFilter, query, savedExams]);
+  const visibleExams = filteredExams.slice(examPage * 2, examPage * 2 + 2);
+  const sortedDemoClasses = [...demoClasses].sort((a, b) => (
+    Number(a.grade.replace(/\D/g, '')) - Number(b.grade.replace(/\D/g, ''))
+  ));
   const selectedClasses = demoClasses.filter((item) => classIds.includes(item.id));
   const studentCount = selectedClasses.reduce((sum, item) => sum + item.studentCount, 0);
   const selectedDemoStudents = selectedClasses.flatMap((classRoom) => demoStudents.filter((student) => student.classId === classRoom.id && student.status === 'active'));
@@ -168,9 +167,10 @@ export function ExamRoomWizard({
     const previous = initialRoom;
     const room: ExamRoomRecord = {
       id: previous?.id ?? `demo-room-${Date.now()}`,
+      code: previous?.code ?? Date.now().toString(36).slice(-6).toLocaleUpperCase('en'),
       title: roomTitle.trim(),
       instructions: instructions.trim(),
-      organizer: 'Giáo viên (demo frontend)',
+      organizer: 'Giáo viên',
       classIds,
       classNames: selectedClasses.map((item) => item.name),
       studentCount,
@@ -215,7 +215,7 @@ export function ExamRoomWizard({
       <section role="dialog" aria-modal="true" aria-labelledby="room-wizard-title" onClick={(event) => event.stopPropagation()} className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Quy trình tạo phòng · Demo frontend</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Quy trình tạo phòng</p>
             <h2 id="room-wizard-title" className="mt-1 text-xl font-bold text-slate-950">{initialRoom ? 'Tiếp tục cấu hình phòng' : 'Tạo phòng thi'}</h2>
           </div>
           <button type="button" onClick={onCancel} aria-label="Đóng quy trình" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
@@ -223,7 +223,6 @@ export function ExamRoomWizard({
         <nav aria-label="Các bước tạo phòng" className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
           <div className="mb-2 flex items-center justify-between gap-3 text-xs">
             <span className="shrink-0 font-medium text-slate-500">Bước {step + 1}/{steps.length}</span>
-            <span className="truncate font-semibold text-blue-700">{steps[step].label}</span>
           </div>
           <ol className="grid grid-cols-5 gap-2">
             {steps.map(({ label, icon: Icon }, index) => (
@@ -232,11 +231,10 @@ export function ExamRoomWizard({
                   type="button"
                   aria-label={`Bước ${index + 1}: ${label}`}
                   aria-current={step === index ? 'step' : undefined}
-                  disabled={index >= step}
                   onClick={() => { setError(''); setStep(index); }}
-                  className="group flex w-full flex-col items-center gap-1 disabled:cursor-default"
+                  className="group flex w-full flex-col items-center gap-1"
                 >
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${step === index ? 'bg-blue-700 text-white' : step > index ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-400'}`}>
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors group-hover:bg-blue-100 group-hover:text-blue-800 ${step === index ? 'bg-blue-700 text-white group-hover:bg-blue-700 group-hover:text-white' : step > index ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-400'}`}>
                     {step > index ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                   </span>
                   <span className={`hidden text-center text-[10px] leading-4 sm:block ${step === index ? 'font-semibold text-blue-700' : step > index ? 'text-slate-600 group-hover:text-blue-700' : 'text-slate-400'}`}>{label}</span>
@@ -251,14 +249,18 @@ export function ExamRoomWizard({
           {error && step !== 2 && <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
           {step === 0 && (
             <section className="space-y-4">
-              <div>
+              <div className="flex items-center justify-between gap-3">
                 <h3 className="font-semibold text-slate-900">Đề đã lưu</h3>
-                <p className="mt-1 text-sm text-slate-500">Đề đọc từ Ngân hàng đề thi trên thiết bị này. Chỉ đề đã xác nhận mới được chọn.</p>
+                {filteredExams.length > 2 && (
+                  <div className="flex items-center gap-1">
+                    <button type="button" aria-label="Xem các đề trước" disabled={examPage === 0} onClick={() => setExamPage((page) => page - 1)} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                    <button type="button" aria-label="Xem các đề tiếp theo" disabled={(examPage + 1) * 2 >= filteredExams.length} onClick={() => setExamPage((page) => page + 1)} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+                  </div>
+                )}
               </div>
-              <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_180px_160px]">
-                <label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="input-field pl-9" placeholder="Tìm đề thi..." /></label>
-                <select value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)} className="input-field"><option value="">Tất cả môn</option>{[...new Set(savedExams.map((exam) => exam.subject))].map((subject) => <option key={subject}>{subject}</option>)}</select>
-                <select value={gradeFilter} onChange={(event) => setGradeFilter(event.target.value)} className="input-field"><option value="">Tất cả khối</option>{[...new Set(savedExams.map((exam) => exam.grade))].map((grade) => <option key={grade}>{grade}</option>)}</select>
+              <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_160px]">
+                <label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => { setQuery(event.target.value); setExamPage(0); }} className="input-field pl-9" placeholder="Tìm đề thi..." /></label>
+                <select value={gradeFilter} onChange={(event) => { setGradeFilter(event.target.value); setExamPage(0); }} className="input-field"><option value="">Tất cả khối</option>{[...new Set(savedExams.map((exam) => exam.grade))].map((grade) => <option key={grade}>{grade}</option>)}</select>
               </div>
               {filteredExams.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
@@ -269,16 +271,18 @@ export function ExamRoomWizard({
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
-                  {filteredExams.map((exam) => {
+                  {visibleExams.map((exam) => {
                     const ready = examReady(exam);
                     return (
-                      <article key={exam.id} className={`rounded-xl border bg-white p-4 ${selectedExamId === exam.id ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200'}`}>
+                      <article key={exam.id} className={`flex min-h-[164px] flex-col rounded-xl border bg-white p-4 ${selectedExamId === exam.id ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200'}`}>
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0"><h4 className="font-semibold text-slate-900">{exam.title}</h4><p className="mt-1 text-sm text-slate-500">{exam.subject} · {exam.grade}</p></div>
-                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${ready ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{ready ? 'Sẵn sàng' : 'Bản nháp'}</span>
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-slate-900">{exam.title} <span className={`text-sm font-semibold ${ready ? 'text-emerald-700' : 'text-amber-700'}`}>({ready ? 'Sẵn sàng' : 'Bản nháp'})</span></h4>
+                            <p className="mt-1 text-sm text-slate-500">{exam.subject} - {exam.grade}</p>
+                          </div>
                         </div>
-                        <p className="mt-3 text-sm text-slate-600">{exam.questions.length} câu · {exam.questions.reduce((sum, q) => sum + q.points, 0)} điểm · {exam.durationMinutes ? `${exam.durationMinutes} phút` : 'Chưa đặt thời lượng'}</p>
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <p className="mt-3 text-sm text-slate-600">{exam.questions.length} câu, {exam.durationMinutes ? `${exam.durationMinutes} phút` : 'chưa đặt thời lượng'}</p>
+                        <div className="mt-auto flex flex-wrap gap-2 pt-4">
                           <button type="button" onClick={() => setPreviewExam(exam)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4" /> Xem trước</button>
                           {!ready && <button type="button" onClick={() => onNavigate('exams')} className="rounded-lg border border-amber-200 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50">Hoàn thiện đề</button>}
                           <button type="button" disabled={!ready} onClick={() => { setSelectedExamId(exam.id); setRoomTitle((current) => current || exam.title); setError(''); }} className={`ml-auto rounded-lg border px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${selectedExamId === exam.id ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{selectedExamId === exam.id ? 'Đã chọn' : 'Chọn đề'}</button>
@@ -288,43 +292,28 @@ export function ExamRoomWizard({
                   })}
                 </div>
               )}
-              {showDemoExam && (
-                <section className="space-y-3 border-t border-slate-200 pt-4" aria-label="Đề thi mẫu demo">
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-800">Đề mẫu <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">Demo</span></h4>
-                    <p className="mt-1 text-xs text-slate-500">Chỉ dùng thử giao diện, không nằm trong Ngân hàng đề thi.</p>
-                  </div>
-                  <article className={`rounded-xl border bg-white p-4 ${selectedExamId === demoSampleExam.id ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200'}`}>
-                    <div className="flex flex-wrap items-start justify-between gap-3"><div><h5 className="font-semibold text-slate-900">{demoSampleExam.title}</h5><p className="mt-1 text-sm text-slate-500">{demoSampleExam.subject} · {demoSampleExam.grade} · {demoSampleExam.questions.length} câu · {demoSampleExam.questions.reduce((sum, question) => sum + question.points, 0)} điểm</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPreviewExam(demoSampleExam)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4" /> Xem trước</button><button type="button" onClick={() => { setSelectedExamId(demoSampleExam.id); setRoomTitle((current) => current || demoSampleExam.title); setError(''); }} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${selectedExamId === demoSampleExam.id ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{selectedExamId === demoSampleExam.id ? 'Đã chọn' : 'Dùng thử đề'}</button></div></div>
-                  </article>
-                </section>
-              )}
-              {selectedExam && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900">Đang chọn: <strong>{selectedExam.title}</strong></p>}
             </section>
           )}
 
           {step === 1 && (
             <section className="mx-auto max-w-3xl space-y-5">
-              <div><h3 className="font-semibold text-slate-900">Thông tin phòng thi</h3><p className="mt-1 text-sm text-slate-500">Danh sách lớp dưới đây là dữ liệu mẫu hiện có trong frontend.</p></div>
-              <label className="block text-sm font-medium text-slate-700">Tên phòng<input value={roomTitle} onChange={(event) => setRoomTitle(event.target.value)} className="input-field mt-1.5" placeholder="Ví dụ: Kiểm tra chương 2 · 10A1" /></label>
+              <label className="block text-sm font-medium text-slate-700">Tên phòng<input value={roomTitle} onChange={(event) => setRoomTitle(event.target.value)} className="input-field mt-1.5" placeholder="Ví dụ: Kiểm tra chương 2 - 10A1" /></label>
               <label className="block text-sm font-medium text-slate-700">Hướng dẫn làm bài<textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} rows={3} className="input-field mt-1.5" placeholder="Nhập hướng dẫn hiển thị cho học sinh..." /></label>
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-semibold text-slate-800">Lớp tham gia</legend>
-                {demoClasses.map((classRoom) => (
+                {sortedDemoClasses.map((classRoom) => (
                   <label key={classRoom.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50">
                     <input type="checkbox" checked={classIds.includes(classRoom.id)} onChange={() => toggleClass(classRoom.id)} className="accent-blue-700" />
-                    <span className="min-w-0 flex-1"><span className="font-medium text-slate-900">{classRoom.name}</span><span className="ml-2 text-sm text-slate-500">{classRoom.subject} · {classRoom.grade}</span></span>
+                    <span className="min-w-0 flex-1 font-medium text-slate-900">{classRoom.name}</span>
                     <span className="text-sm text-slate-500">{classRoom.studentCount} học sinh</span>
                   </label>
                 ))}
               </fieldset>
-              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Người tổ chức: Giáo viên (demo frontend). Tài khoản đăng nhập/roster chưa kết nối backend.</p>
             </section>
           )}
 
           {step === 2 && (
             <section className="mx-auto max-w-3xl space-y-5">
-              <div><h3 className="font-semibold text-slate-900">Lịch và thời hạn</h3><p className="mt-1 text-sm text-slate-500">Thời gian ở đây dùng đồng hồ trình duyệt để xem trước, chưa được xác minh bởi máy chủ.</p></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-700">Mở phòng<input type="datetime-local" value={opensAt} onChange={(event) => setOpensAt(event.target.value)} className="input-field mt-1.5" /></label>
                 <label className="block text-sm font-medium text-slate-700">Bắt đầu làm bài<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="input-field mt-1.5" /></label>
@@ -333,15 +322,13 @@ export function ExamRoomWizard({
               </div>
               {timeError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{timeError}</p>}
               {checkbox(allowLateEntry, setAllowLateEntry, 'Cho phép học sinh vào muộn', 'Thời gian làm bài kết thúc tại mốc đến trước giữa thời lượng lượt và hạn đóng chung.')}
-              {checkbox(autoSubmitAtDeadline, setAutoSubmitAtDeadline, 'Tự nộp khi hết thời lượng', 'Quy tắc mô phỏng; backend cần thực thi và xác nhận hạn nộp.')}
+              {checkbox(autoSubmitAtDeadline, setAutoSubmitAtDeadline, 'Tự nộp khi hết thời lượng', 'Cần máy chủ thực thi để áp dụng quy tắc này.')}
               {checkbox(closeRoomAtDeadline, setCloseRoomAtDeadline, 'Đóng phòng ở hạn kết thúc chung')}
-              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900"><Clock3 className="mr-1.5 inline h-4 w-4" /> Mở: {formatDate(opensAt)} · Bắt đầu: {formatDate(startsAt)} · Đóng: {formatDate(endsAt)}</div>
             </section>
           )}
 
           {step === 3 && (
             <section className="mx-auto max-w-3xl space-y-5">
-              <div><h3 className="font-semibold text-slate-900">Quy tắc làm bài & giám sát</h3><p className="mt-1 text-sm text-slate-500">Các lựa chọn dưới đây chỉ là cấu hình xem trước, chưa được thi hành bởi backend.</p></div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {checkbox(shuffleQuestions, setShuffleQuestions, 'Trộn thứ tự câu hỏi')}
                 {checkbox(shuffleAnswers, setShuffleAnswers, 'Trộn thứ tự đáp án', 'Cần backend giữ đáp án đúng gắn với lựa chọn.')}
@@ -354,7 +341,7 @@ export function ExamRoomWizard({
                 <label className="block text-sm font-medium text-slate-700">Công bố đáp án<select value={answerRelease} onChange={(event) => setAnswerRelease(event.target.value as typeof answerRelease)} className="input-field mt-1.5"><option value="never">Không công bố</option><option value="after-close">Sau khi đóng phòng</option><option value="manual">Giáo viên công bố</option></select></label>
               </div>
               <div className="space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
-                <div className="flex items-center gap-2 font-semibold text-violet-950"><ShieldCheck className="h-4 w-4" /> Ghi nhận sự kiện (demo)</div>
+                <div className="flex items-center gap-2 font-semibold text-violet-950"><ShieldCheck className="h-4 w-4" /> Ghi nhận sự kiện</div>
                 {checkbox(monitorTabSwitch, setMonitorTabSwitch, 'Ghi nhận chuyển tab / rời màn hình', 'Sự kiện là cảnh báo để giáo viên xem xét, không tự động trừ điểm.')}
                 {checkbox(monitorConnection, setMonitorConnection, 'Theo dõi trạng thái kết nối phiên')}
                 <label className="block text-sm font-medium text-slate-700">Ngưỡng cảnh báo<select value={warningThreshold} onChange={(event) => setWarningThreshold(Number(event.target.value))} className="input-field mt-1.5"><option value={1}>1 sự kiện</option><option value={2}>2 sự kiện</option><option value={3}>3 sự kiện</option><option value={5}>5 sự kiện</option></select></label>
@@ -366,35 +353,35 @@ export function ExamRoomWizard({
 
           {step === 4 && (
             <section className="mx-auto max-w-3xl space-y-4">
-              <div><h3 className="font-semibold text-slate-900">Kiểm tra trước khi tạo</h3><p className="mt-1 text-sm text-slate-500">Tạo ở bước này chỉ thêm phòng vào dữ liệu demo trong bộ nhớ phiên chạy.</p></div>
+              <h3 className="font-semibold text-slate-900">Kiểm tra trước khi tạo</h3>
               <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
                 <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <h4 className="font-semibold text-slate-900">Thông tin phòng</h4>
                   <p><span className="text-slate-500">Tên:</span> <strong>{roomTitle || 'Chưa đặt tên'}</strong></p>
-                  <p><span className="text-slate-500">Đề:</span> {selectedExam?.title ?? 'Chưa chọn'} · {selectedExam?.questions.length ?? 0} câu · {totalPoints} điểm</p>
-                  <p><span className="text-slate-500">Lớp:</span> {selectedClasses.map((item) => item.name).join(', ') || 'Chưa chọn'} · {studentCount} học sinh (mẫu)</p>
-                  <p><span className="text-slate-500">Người tổ chức:</span> Giáo viên (demo)</p>
+                  <p><span className="text-slate-500">Đề:</span> {selectedExam?.title ?? 'Chưa chọn'} - {selectedExam?.questions.length ?? 0} câu - {totalPoints} điểm</p>
+                  <p><span className="text-slate-500">Lớp:</span> {selectedClasses.map((item) => item.name).join(', ') || 'Chưa chọn'} - {studentCount} học sinh</p>
+                  <p><span className="text-slate-500">Người tổ chức:</span> Giáo viên</p>
                   <p><span className="text-slate-500">Mở:</span> {formatDate(opensAt)}</p>
-                  <p><span className="text-slate-500">Bắt đầu:</span> {formatDate(startsAt)} · {durationMinutes} phút/lượt</p>
+                  <p><span className="text-slate-500">Bắt đầu:</span> {formatDate(startsAt)} - {durationMinutes} phút/lượt</p>
                   <p><span className="text-slate-500">Hạn chung:</span> {formatDate(endsAt)}</p>
                 </article>
                 <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <h4 className="font-semibold text-slate-900">Quy tắc</h4>
-                  <p>{maxAttempts} lượt · {shuffleQuestions ? 'Có' : 'Không'} trộn câu · {shuffleAnswers ? 'Có' : 'Không'} trộn đáp án</p>
-                  <p>{allowBackNavigation ? 'Được' : 'Không được'} quay lại · {allowEarlySubmit ? 'Được' : 'Không được'} nộp sớm</p>
+                  <p>{maxAttempts} lượt - {shuffleQuestions ? 'Có' : 'Không'} trộn câu - {shuffleAnswers ? 'Có' : 'Không'} trộn đáp án</p>
+                  <p>{allowBackNavigation ? 'Được' : 'Không được'} quay lại - {allowEarlySubmit ? 'Được' : 'Không được'} nộp sớm</p>
                   <p>Điểm: {scoreRelease === 'immediate' ? 'ngay sau nộp' : scoreRelease === 'after-close' ? 'sau khi đóng' : 'giáo viên công bố'}</p>
                   <p>Đáp án: {answerRelease === 'never' ? 'không công bố' : answerRelease === 'after-close' ? 'sau khi đóng' : 'giáo viên công bố'}</p>
                   <p>Giám sát: {monitorTabSwitch || monitorConnection ? [monitorTabSwitch && 'chuyển tab', monitorConnection && 'kết nối'].filter(Boolean).join(', ') : 'tắt'}</p>
                 </article>
               </div>
-              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900">Bản xem trước không tạo phòng trên server. Dữ liệu sẽ mất khi tải lại ứng dụng; chưa có đăng nhập, roster thực, đồng hồ server hoặc truyền sự kiện.</p>
+              <p className="text-xs leading-5 text-slate-500">Phòng chỉ được giữ trong phiên làm việc hiện tại, chưa đồng bộ lên máy chủ.</p>
             </section>
           )}
           {previewExam && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-3" onClick={() => setPreviewExam(null)}>
               <section role="dialog" aria-modal="true" aria-label="Xem trước đề" onClick={(event) => event.stopPropagation()} className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
                 <header className="flex items-center justify-between border-b border-slate-200 p-4"><div><p className="text-xs text-slate-500">Xem trước đề</p><h3 className="font-semibold text-slate-900">{previewExam.title}</h3></div><button type="button" onClick={() => setPreviewExam(null)} aria-label="Đóng xem trước" className="rounded-lg p-2 hover:bg-slate-100"><X className="h-5 w-5" /></button></header>
-                <div className="overflow-y-auto p-4"><p className="mb-4 text-sm text-slate-500">{previewExam.subject} · {previewExam.grade} · {previewExam.questions.length} câu · {previewExam.durationMinutes ?? '—'} phút</p><div className="space-y-4">{previewExam.questions.map((question, index) => <article key={question.id} className="rounded-xl border border-slate-200 p-3"><p className="text-sm font-medium text-slate-900">Câu {index + 1}. {question.question}</p>{question.options.length > 0 && <ol className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">{question.options.map((option, optionIndex) => <li key={`${question.id}-${optionIndex}`}>{String.fromCharCode(65 + optionIndex)}. {option}</li>)}</ol>}</article>)}</div></div>
+                <div className="overflow-y-auto p-4"><p className="mb-4 text-sm text-slate-500">{previewExam.subject} - {previewExam.grade} - {previewExam.questions.length} câu - {previewExam.durationMinutes ?? '—'} phút</p><div className="space-y-4">{previewExam.questions.map((question, index) => <article key={question.id} className="rounded-xl border border-slate-200 p-3"><p className="text-sm font-medium text-slate-900">Câu {index + 1}. {question.question}</p>{question.options.length > 0 && <ol className="mt-2 grid gap-1 text-sm text-slate-600 sm:grid-cols-2">{question.options.map((option, optionIndex) => <li key={`${question.id}-${optionIndex}`}>{String.fromCharCode(65 + optionIndex)}. {option}</li>)}</ol>}</article>)}</div></div>
               </section>
             </div>
           )}
@@ -403,7 +390,7 @@ export function ExamRoomWizard({
           <button type="button" onClick={() => step === 0 ? onCancel() : (setError(''), setStep((current) => current - 1))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /> {step === 0 ? 'Hủy' : 'Quay lại'}</button>
           <div className="flex min-w-0 flex-wrap justify-end gap-2">
             {step === 4 && <button type="button" onClick={() => save(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Lưu bản nháp</button>}
-            {step < 4 ? <button type="button" onClick={goNext} disabled={step === 0 && (!selectedExam || !examReady(selectedExam))} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Tiếp tục <ArrowRight className="h-4 w-4" /></button> : <button type="button" onClick={() => save(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"><Check className="h-4 w-4" /> Tạo phòng (demo)</button>}
+            {step < 4 ? <button type="button" onClick={goNext} disabled={step === 0 && (!selectedExam || !examReady(selectedExam))} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Tiếp tục <ArrowRight className="h-4 w-4" /></button> : <button type="button" onClick={() => save(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"><Check className="h-4 w-4" /> Tạo phòng</button>}
           </div>
         </footer>
       </section>

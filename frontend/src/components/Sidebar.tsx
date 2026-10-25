@@ -321,8 +321,10 @@ export function TopBar({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const isStudent = role === 'student';
+  const isLecturer = role === 'lecturer';
+  const isFullWidthBar = isStudent || isLecturer;
   const displayName = isStudent ? 'Lê Văn An' : role === 'lecturer' ? 'Nguyễn Văn An' : 'Quản trị viên';
-  const studentSearchItems: { label: string; detail: string; page?: Page; subjectCode?: string; action?: 'resources' | 'assignments' | 'ask-ai' }[] = [
+  const studentSearchItems: { label: string; detail: string; page?: Page; subjectCode?: string; action?: 'resources' | 'assignments' }[] = [
     ...[
       ['Toán học', 'TOAN10'],
       ['Ngữ văn', 'VAN10'],
@@ -342,19 +344,34 @@ export function TopBar({
     { label: 'AI Trợ giảng', detail: 'Hỏi bài với EduBot', page: 'ai-chat' as const },
     { label: 'AI Ôn luyện', detail: 'Tạo bài luyện', page: 'ai-practice' as const },
   ];
+  const lecturerSearchItems: { label: string; detail: string; page: Page }[] = [
+    { label: 'Lớp học', detail: 'Quản lý lớp và học sinh', page: 'classes' },
+    { label: 'Kho bài giảng', detail: 'Tài liệu giảng dạy', page: 'lessons' },
+    { label: 'Soạn bài với AI', detail: 'Tạo nội dung bài giảng', page: 'lesson-builder' },
+    { label: 'Ngân hàng câu hỏi', detail: 'Quản lý câu hỏi và đề thi', page: 'question-bank' },
+    { label: 'Đề thi', detail: 'Tạo và quản lý đề thi', page: 'exams' },
+    { label: 'Giám sát phòng thi', detail: 'Phòng thi và sự cố', page: 'exam-monitor' },
+    { label: 'Kháng nghị', detail: 'Xem yêu cầu phúc khảo', page: 'appeals' },
+    { label: 'Chấm bài', detail: 'Bài nộp cần chấm', page: 'ai-grading' },
+    { label: 'Phân tích kết quả', detail: 'Thống kê học tập', page: 'analytics' },
+  ];
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase('vi');
+  const searchItems = isStudent ? studentSearchItems : lecturerSearchItems;
   const matchingSearchItems = normalizedSearch
-    ? studentSearchItems.filter((item) => `${item.label} ${item.detail}`.toLocaleLowerCase('vi').includes(normalizedSearch)).slice(0, 5)
+    ? searchItems.filter((item) => `${item.label} ${item.detail}`.toLocaleLowerCase('vi').includes(normalizedSearch)).slice(0, 5)
     : [];
+  const activateSearchItem = (item: (typeof searchItems)[number]) => {
+    if ('action' in item && item.action === 'resources' && item.subjectCode) onOpenResources?.(item.subjectCode);
+    else if ('action' in item && item.action === 'assignments' && item.subjectCode) onOpenAssignments?.(item.subjectCode);
+    else if (item.page) onNavigate(item.page);
+    setSearchQuery('');
+    setSearchOpen(false);
+  };
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const firstMatch = matchingSearchItems[0];
     if (firstMatch) {
-      if (firstMatch.action === 'resources' && firstMatch.subjectCode) onOpenResources?.(firstMatch.subjectCode);
-      else if (firstMatch.action === 'assignments' && firstMatch.subjectCode) onOpenAssignments?.(firstMatch.subjectCode);
-      else if (firstMatch.page) onNavigate(firstMatch.page);
-      setSearchQuery('');
-      setSearchOpen(false);
+      activateSearchItem(firstMatch);
       return;
     }
     if (normalizedSearch && onAskAI) {
@@ -364,9 +381,9 @@ export function TopBar({
     }
   };
   return (
-    <header className="relative z-30 -mt-1 mb-3 flex h-14 flex-nowrap items-center gap-3 border-b border-slate-200/80 bg-white/90 px-1 py-2 backdrop-blur sm:px-2">
-      {isStudent && (
-        <form onSubmit={handleSearchSubmit} role="search" className="relative order-1 min-w-0 w-full max-w-[340px] flex-1">
+    <header className={`relative z-30 flex w-full flex-nowrap items-center gap-3 border-b border-slate-200 bg-white px-1 py-2 shadow-sm sm:px-2 ${isFullWidthBar ? 'mb-4 h-16 rounded-b-2xl px-4 sm:px-6' : '-mt-1 mb-3 h-14 bg-white/90 backdrop-blur'}`}>
+      {(isStudent || isLecturer) && (
+        <form onSubmit={handleSearchSubmit} role="search" className="relative order-1 min-w-0 w-full max-w-[440px] flex-1">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="search"
@@ -376,8 +393,8 @@ export function TopBar({
             onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); }}
             aria-label="Tìm kiếm bài học, tài liệu, câu hỏi"
             aria-expanded={searchOpen && normalizedSearch.length > 0}
-            placeholder="Tìm kiếm bài học, tài liệu, câu hỏi..."
-            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/80 pl-9 pr-3 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
+            placeholder={isLecturer ? 'Tìm lớp học, bài giảng, đề thi...' : 'Tìm kiếm bài học, tài liệu, câu hỏi...'}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
           />
           {searchOpen && normalizedSearch && (
             <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
@@ -385,13 +402,7 @@ export function TopBar({
                 <button
                   key={`${item.label}-${item.detail}`}
                   type="button"
-                  onClick={() => {
-                    if (item.action === 'resources' && item.subjectCode) onOpenResources?.(item.subjectCode);
-                    else if (item.action === 'assignments' && item.subjectCode) onOpenAssignments?.(item.subjectCode);
-                    else if (item.page) onNavigate(item.page);
-                    setSearchQuery('');
-                    setSearchOpen(false);
-                  }}
+                  onClick={() => activateSearchItem(item)}
                   className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-blue-50 focus-visible:bg-blue-50"
                 >
                   <span className="min-w-0">
@@ -400,7 +411,7 @@ export function TopBar({
                   </span>
                   <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
                 </button>
-              )) : (
+              )              ) : isStudent && onAskAI ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -413,6 +424,8 @@ export function TopBar({
                   <Search className="h-4 w-4 shrink-0 text-blue-600" />
                   <span className="text-sm text-slate-700">Hỏi EduBot về “{searchQuery.trim()}”</span>
                 </button>
+              ) : (
+                <p className="px-3 py-3 text-sm text-slate-500">Không tìm thấy mục phù hợp.</p>
               )}
             </div>
           )}

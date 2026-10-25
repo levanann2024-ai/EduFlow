@@ -13,16 +13,16 @@ import {
 } from 'lucide-react';
 
 const subjectArtwork = {
-  TOAN10: { Icon: Calculator, wash: 'from-blue-100/90 via-blue-50/70 to-white', ink: 'text-blue-700', marks: [] },
-  VAN10: { Icon: BookOpen, wash: 'from-amber-100/90 via-orange-50/70 to-white', ink: 'text-amber-700', marks: [] },
-  HOA10: { Icon: FlaskConical, wash: 'from-rose-100/90 via-pink-50/70 to-white', ink: 'text-rose-700', marks: [] },
-  LY10: { Icon: Atom, wash: 'from-violet-100/90 via-purple-50/70 to-white', ink: 'text-violet-700', marks: [] },
-  ANH10: { Icon: Globe2, wash: 'from-emerald-100/90 via-teal-50/70 to-white', ink: 'text-emerald-700', marks: [] },
-  TIN10: { Icon: Binary, wash: 'from-cyan-100/90 via-sky-50/70 to-white', ink: 'text-cyan-700', marks: [] },
-  SINH10: { Icon: Dna, wash: 'from-lime-100/90 via-green-50/70 to-white', ink: 'text-green-700', marks: [] },
-  SU10: { Icon: ScrollText, wash: 'from-orange-100/90 via-amber-50/70 to-white', ink: 'text-orange-700', marks: [] },
-  DIA10: { Icon: Map, wash: 'from-blue-100/90 via-sky-50/70 to-white', ink: 'text-sky-700', marks: [] },
-  GDTC10: { Icon: Dumbbell, wash: 'from-emerald-100/90 via-green-50/70 to-white', ink: 'text-emerald-700', marks: [] },
+  TOAN10: { Icon: Calculator, ink: 'text-blue-700' },
+  VAN10: { Icon: BookOpen, ink: 'text-amber-700' },
+  HOA10: { Icon: FlaskConical, ink: 'text-rose-700' },
+  LY10: { Icon: Atom, ink: 'text-violet-700' },
+  ANH10: { Icon: Globe2, ink: 'text-emerald-700' },
+  TIN10: { Icon: Binary, ink: 'text-cyan-700' },
+  SINH10: { Icon: Dna, ink: 'text-green-700' },
+  SU10: { Icon: ScrollText, ink: 'text-orange-700' },
+  DIA10: { Icon: Map, ink: 'text-sky-700' },
+  GDTC10: { Icon: Dumbbell, ink: 'text-emerald-700' },
 } as const;
 
 interface StudentSubjectCardProps {
@@ -54,22 +54,22 @@ export function StudentSubjectCard({
   const { Icon } = artwork;
 
   return (
-    <article className={`relative isolate h-full w-full overflow-hidden rounded-xl border border-slate-100/80 bg-gradient-to-br p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${artwork.wash}`}>
+    <article className="relative isolate h-full w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="relative flex items-center gap-2">
-        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/80 ${artwork.ink}`}>
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-50 ${artwork.ink}`}>
           <Icon className="h-4 w-4 stroke-[2]" />
         </span>
         <h3 className="min-w-0 truncate text-xs font-bold text-slate-900">{name.replace(' 10', '')}</h3>
       </div>
-      <p className="mt-2 truncate text-[9px] text-slate-500">{lessons} tiết · {resources} tài liệu</p>
+      <p className="mt-2 truncate text-[9px] text-slate-500">{lessons} tiết - {resources} tài liệu</p>
       <div className="mt-2 flex items-center gap-1.5">
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onLessonsClick} aria-label={`Mở thời khóa biểu, ${lessons} tiết đã học môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-white/75 text-[8px] text-slate-600 hover:bg-white hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onLessonsClick} aria-label={`Mở thời khóa biểu, ${lessons} tiết đã học môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[8px] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
           <BookOpen className="h-2.5 w-2.5" />{lessons}
         </button>
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onResourcesClick} aria-label={`Mở tài liệu môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-white/75 text-[8px] text-slate-600 hover:bg-white hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onResourcesClick} aria-label={`Mở tài liệu môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[8px] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
           <FileText className="h-2.5 w-2.5" />{resources}
         </button>
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onAssignmentsClick} aria-label={`Mở ${assignments} bài tập môn ${name}`} className={`flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-white/75 text-[8px] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${assignments > 0 ? 'text-rose-700' : 'text-slate-600'}`}>
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onAssignmentsClick} aria-label={`Mở ${assignments} bài tập môn ${name}`} className={`flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[8px] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${assignments > 0 ? 'text-rose-700' : 'text-slate-600'}`}>
           <FileText className="h-2.5 w-2.5" />{assignments}
         </button>
       </div>
@@ -79,7 +79,7 @@ export function StudentSubjectCard({
           <span className="font-semibold text-slate-700">{progress}%</span>
         </div>
         <div
-          className="h-1.5 overflow-hidden rounded-full bg-white/80"
+          className="h-1.5 overflow-hidden rounded-full bg-slate-100"
           role="progressbar"
           aria-label={`Tiến độ môn ${name}`}
           aria-valuemin={0}

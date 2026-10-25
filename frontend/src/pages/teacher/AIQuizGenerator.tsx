@@ -170,10 +170,10 @@ export function AIQuizGenerator({
     ]
     : isEnglish
       ? [
-        `Dạng 1 · Điền từ/cụm từ ngắn: ${englishCounts.notice} câu`,
-        `Dạng 2 · Sắp xếp câu/đoạn: ${englishCounts.ordering} câu`,
-        `Dạng 3 · Đọc điền khuyết: ${englishCounts.cloze} câu`,
-        `Dạng 4 · Đọc hiểu: ${englishCounts.reading} câu`,
+        `Dạng 1 - Điền từ/cụm từ ngắn: ${englishCounts.notice} câu`,
+        `Dạng 2 - Sắp xếp câu/đoạn: ${englishCounts.ordering} câu`,
+        `Dạng 3 - Đọc điền khuyết: ${englishCounts.cloze} câu`,
+        `Dạng 4 - Đọc hiểu: ${englishCounts.reading} câu`,
       ]
       : [
         `Trắc nghiệm ABCD: ${generalCounts.multipleChoice} câu`,
@@ -396,7 +396,7 @@ export function AIQuizGenerator({
                   </div>
                   {isVietnamese ? (
                     <div className="space-y-2">
-                      <p className="text-xs text-slate-500">Phần 1 · Trắc nghiệm</p>
+                      <p className="text-xs text-slate-500">Phần 1 - Trắc nghiệm</p>
                       {([
                         ['recognition', 'Nhận biết'],
                         ['comprehension', 'Thông hiểu'],
@@ -409,20 +409,20 @@ export function AIQuizGenerator({
                         </label>
                       ))}
                       <label className="block border-t border-blue-100 pt-2 text-sm font-medium text-slate-700">
-                        Phần 2 · Yêu cầu phần viết
+                        Phần 2 - Yêu cầu phần viết
                         <textarea value={writtenSection} onChange={(event) => setWrittenSection(event.target.value)} rows={3} placeholder="Giáo viên nhập dạng bài, tác phẩm hoặc yêu cầu viết; AI sẽ dựa vào đây để tạo nội dung phù hợp." className="input-field mt-1.5 resize-y text-sm" />
                       </label>
                     </div>
                   ) : isEnglish ? (
                     <div className="space-y-2">
                       {([
-                        ['notice', 'Dạng 1 · Điền từ/cụm từ ngắn', '30%'],
-                        ['ordering', 'Dạng 2 · Sắp xếp câu/đoạn', '12,5%'],
-                        ['cloze', 'Dạng 3 · Đọc điền khuyết', '12,5%'],
-                        ['reading', 'Dạng 4 · Đọc hiểu (thường 2 bài)', '45%'],
+                        ['notice', 'Dạng 1 - Điền từ/cụm từ ngắn', '30%'],
+                        ['ordering', 'Dạng 2 - Sắp xếp câu/đoạn', '12,5%'],
+                        ['cloze', 'Dạng 3 - Đọc điền khuyết', '12,5%'],
+                        ['reading', 'Dạng 4 - Đọc hiểu (thường 2 bài)', '45%'],
                       ] as const).map(([key, label, percentage]) => (
                         <label key={key} className="flex items-center justify-between gap-2 text-xs text-slate-700">
-                          <span className="min-w-0">{label} <span className="text-slate-400">· {percentage} mặc định</span></span>
+                          <span className="min-w-0">{label} <span className="text-slate-400">- {percentage} mặc định</span></span>
                           <input type="number" min={0} max={100} value={englishCounts[key]} onChange={(event) => setCount(setEnglishCounts, key, Number(event.target.value))} aria-label={`${label}, phần trăm mặc định ${percentage}`} className="input-field h-9 w-20 shrink-0 text-center" />
                         </label>
                       ))}
@@ -431,7 +431,7 @@ export function AIQuizGenerator({
                     <div className="space-y-2">
                       {([
                         ['multipleChoice', 'Trắc nghiệm ABCD'],
-                        ['trueFalse', 'Đúng / Sai · 4 ý a, b, c, d mỗi câu'],
+                        ['trueFalse', 'Đúng / Sai - 4 ý a, b, c, d mỗi câu'],
                         ['shortAnswer', 'Trả lời ngắn'],
                         ['essay', 'Tự luận'],
                       ] as const).map(([key, label]) => (

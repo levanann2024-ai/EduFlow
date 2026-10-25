@@ -72,10 +72,6 @@ export function ExamQuestionWorkspace({
 }) {
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-xl font-bold tracking-tight text-slate-950">Ngân hàng câu hỏi & Đề thi</h1>
-        <p className="mt-1 text-sm text-slate-600">Quản lý nội dung đã lưu để xem lại và sử dụng khi soạn bài tập, đề kiểm tra.</p>
-      </header>
       <WorkspaceTabs
         currentPage={currentPage}
         onNavigate={onNavigate}
@@ -136,8 +132,8 @@ export function ProctoringWorkspace({
       ? current.map((item) => item.id === room.id ? room : item)
       : [room, ...current]);
     setFeedback(publish
-      ? 'Đã tạo phòng trong bản demo frontend. Dữ liệu chưa được gửi lên máy chủ.'
-      : 'Đã lưu cấu hình phòng trong bản demo frontend. Dữ liệu chỉ còn trong phiên chạy này.');
+      ? 'Đã tạo phòng trong phiên làm việc này; chưa đồng bộ lên máy chủ.'
+      : 'Đã lưu cấu hình trong phiên làm việc này; chưa đồng bộ lên máy chủ.');
     setWizardOpen(false);
     setEditingRoom(null);
     setOpenRoomId(publish ? room.id : null);
@@ -146,10 +142,6 @@ export function ProctoringWorkspace({
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-950">Phòng thi trực tuyến</h1>
-          <p className="mt-1 text-sm text-slate-600">Cấu hình lịch thi, theo dõi phiên và xem xét sự cố.</p>
-        </div>
         {currentPage === 'exam-monitor' && <button type="button" onClick={() => { setEditingRoom(null); setWizardOpen(true); setFeedback(''); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"><Plus className="h-4 w-4" /> Tạo phòng thi</button>}
       </header>
       {feedback && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{feedback}</p>}
@@ -166,7 +158,10 @@ export function ProctoringWorkspace({
           onCreateRoom={() => { setEditingRoom(null); setWizardOpen(true); setFeedback(''); }}
           onEditDraft={(room) => { setEditingRoom(room); setWizardOpen(true); setFeedback(''); }}
           onUpdateRoom={(updatedRoom) => setRooms((current) => current.map((room) => room.id === updatedRoom.id ? updatedRoom : room))}
-          onOpenAppeals={() => onNavigate('appeals')}
+          onDeleteRoom={(roomId) => {
+            setRooms((current) => current.filter((room) => room.id !== roomId));
+            setFeedback('Đã xóa phòng thi khỏi dữ liệu phiên này.');
+          }}
         />
       </div>
       <div className={currentPage === 'appeals' ? '' : 'hidden'}><AppealsCenter /></div>

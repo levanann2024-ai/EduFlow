@@ -26,7 +26,7 @@ function displayAnswer(question: ExamQuestion, rawAnswer: string | undefined) {
       const parsed = JSON.parse(rawAnswer) as Record<number, string>;
       return Object.entries(parsed)
         .map(([index, value]) => `${String.fromCharCode(97 + Number(index))}. ${value}`)
-        .join(' · ') || 'Chưa trả lời';
+        .join(' - ') || 'Chưa trả lời';
     } catch {
       return rawAnswer;
     }
@@ -44,7 +44,7 @@ function displayCorrectAnswer(question: ExamQuestion) {
   }
   return Object.entries(question.correctAnswer)
     .map(([index, value]) => `${String.fromCharCode(97 + Number(index))}. ${value}`)
-    .join(' · ');
+    .join(' - ');
 }
 
 function isAnswerCorrect(question: ExamQuestion, rawAnswer: string | undefined) {
@@ -170,7 +170,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
       <div className="mx-auto max-w-4xl space-y-4">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Mã đề: 188 · {subject}</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Mã đề: 188 - {subject}</p>
             <h1 className="mt-1 text-xl font-extrabold text-slate-900">Kết quả bài thi</h1>
             <p className="mt-1 text-sm text-slate-500">{examTitle}</p>
           </div>
@@ -191,7 +191,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="mb-5 flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Đã nộp bài</span>
-            <span className="text-xs text-slate-500">Kết quả đề minh họa · Câu hỏi mở cần giáo viên chấm</span>
+            <span className="text-xs text-slate-500">Kết quả đề minh họa - Câu hỏi mở cần giáo viên chấm</span>
           </div>
 
           <div className="grid grid-cols-2 gap-5 text-center sm:grid-cols-4">
@@ -234,7 +234,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
           >
             <span>
               <span className="block font-bold text-slate-900">Chi tiết bài làm</span>
-              <span className="mt-1 block text-xs text-slate-500">Đúng {summary.correct}/{summary.total} câu · Xem đáp án đã chọn và đáp án đúng</span>
+              <span className="mt-1 block text-xs text-slate-500">Đúng {summary.correct}/{summary.total} câu - Xem đáp án đã chọn và đáp án đúng</span>
             </span>
             {detailsOpen ? <ArrowUp className="h-5 w-5 text-slate-500" /> : <ArrowDown className="h-5 w-5 text-slate-500" />}
           </button>

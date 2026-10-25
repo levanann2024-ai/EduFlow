@@ -17,7 +17,7 @@ const assignments: {
   { title: 'Lực ma sát', subject: 'Vật lý', subjectCode: 'LY10', due: '24/10/2026', status: 'Chưa làm' },
   { title: 'Đọc hiểu văn bản', subject: 'Ngữ văn', subjectCode: 'VAN10', due: '24/10/2026', status: 'Đã nộp' },
   { title: 'Cấu tạo nguyên tử', subject: 'Hóa học', subjectCode: 'HOA10', due: '25/10/2026', status: 'Chưa làm' },
-  { title: 'Unit 4 · For a better community', subject: 'Tiếng Anh', subjectCode: 'ANH10', due: '26/10/2026', status: 'Chưa làm' },
+  { title: 'Unit 4 - For a better community', subject: 'Tiếng Anh', subjectCode: 'ANH10', due: '26/10/2026', status: 'Chưa làm' },
   { title: 'Mạng máy tính và Internet', subject: 'Tin học', subjectCode: 'TIN10', due: '27/10/2026', status: 'Đã nộp' },
   { title: 'Tế bào nhân thực', subject: 'Sinh học', subjectCode: 'SINH10', due: '28/10/2026', status: 'Chưa làm' },
   { title: 'Văn minh cổ đại', subject: 'Lịch sử', subjectCode: 'SU10', due: '29/10/2026', status: 'Chưa làm' },

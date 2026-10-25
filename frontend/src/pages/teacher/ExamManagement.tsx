@@ -82,7 +82,7 @@ export function ExamManagement({ onNavigate }: { onNavigate: (page: Page) => voi
 
   return (
     <main className="space-y-4">
-      <div className="flex justify-end">
+      <div>
         <button onClick={() => onNavigate('lesson-builder')} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800">
           <Plus className="h-4 w-4" /> Soạn bài kiểm tra
         </button>
@@ -129,20 +129,20 @@ export function ExamManagement({ onNavigate }: { onNavigate: (page: Page) => voi
                     <h2 className="font-semibold text-slate-900">{exam.title}</h2>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${(exam.status ?? 'draft') === 'ready' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{(exam.status ?? 'draft') === 'ready' ? 'Sẵn sàng sử dụng' : 'Bản nháp'}</span>
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">{exam.subject} · {exam.grade} · {exam.topic}</p>
+                  <p className="mt-1 text-sm text-slate-500">{exam.subject} - {exam.grade} - {exam.topic}</p>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
                     <span className="inline-flex items-center gap-1.5"><ClipboardList className="h-4 w-4" />{exam.questions.length} câu</span>
                     <span>{exam.questions.reduce((total, question) => total + question.points, 0)} điểm</span>
                     <span>{exam.durationMinutes ? `${exam.durationMinutes} phút` : 'Chưa đặt thời lượng'}</span>
                     <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{exam.createdAt}</span>
                   </div>
-                  {exam.structureSummary && <p className="mt-2 line-clamp-2 text-xs text-slate-500">{exam.structureSummary.join(' · ')}</p>}
+                  {exam.structureSummary && <p className="mt-2 line-clamp-2 text-xs text-slate-500">{exam.structureSummary.join(' - ')}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                   <button onClick={() => setSelectedExam(exam)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4" /> Mở đề</button>
                   <button onClick={() => duplicateExam(exam)} aria-label={`Sao chép đề ${exam.title}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"><Copy className="h-4 w-4" /></button>
                   <button onClick={() => deleteExam(exam)} aria-label={`Xóa đề ${exam.title}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
-                  <button type="button" disabled title="Chức năng tạo phòng thi chưa được triển khai." className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-400">Tạo phòng thi · chưa khả dụng</button>
+                  <button type="button" disabled title="Chức năng tạo phòng thi chưa được triển khai." className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-400">Tạo phòng thi - chưa khả dụng</button>
                 </div>
               </article>
             ))}

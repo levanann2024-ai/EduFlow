@@ -17,7 +17,7 @@ import {
 import { studentResults as results } from './studentResults';
 
 const subjectOptions = ['Tất cả', 'Toán học', 'Vật lý', 'Ngữ văn'];
-const weeks = ['T.9 · 21', 'T.9 · 28', 'T.10 · 5', 'T.10 · 12', 'T.10 · 19'];
+const weeks = ['T.9 - 21', 'T.9 - 28', 'T.10 - 5', 'T.10 - 12', 'T.10 - 19'];
 const trendBySubject: Record<string, number[]> = {
   'Tất cả': [7.3, 7.6, 7.7, 8, 8.5],
   'Toán học': [7, 7.4, 7.5, 8, 8.5],
@@ -73,7 +73,7 @@ export function MyResults() {
         .map((item) => `${item.subject}: trung bình ${item.average.toFixed(1)}/10 qua ${item.count} bài`)
         .join('\n');
       const resultSummary = results
-        .map((item) => `${item.date} · ${item.subject} · ${item.name}: ${item.score}/10`)
+        .map((item) => `${item.date} - ${item.subject} - ${item.name}: ${item.score}/10`)
         .join('\n');
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -173,7 +173,7 @@ export function MyResults() {
                   <h2 className="flex items-center gap-2 font-bold text-emerald-800"><TrendingUp className="h-4 w-4" />Điểm mạnh</h2>
                   {strongestSubject && (
                     <>
-                      <p className="mt-3 font-semibold text-emerald-900">{strongestSubject.subject} · {strongestSubject.average.toFixed(1)}/10</p>
+                      <p className="mt-3 font-semibold text-emerald-900">{strongestSubject.subject} - {strongestSubject.average.toFixed(1)}/10</p>
                       <p className="mt-1 text-sm leading-5 text-slate-700">Em đang có kết quả tốt ở môn này qua {strongestSubject.count} bài. Hãy duy trì cách ôn tập hiện tại.</p>
                     </>
                   )}
@@ -182,7 +182,7 @@ export function MyResults() {
                   <h2 className="flex items-center gap-2 font-bold text-rose-800"><Lightbulb className="h-4 w-4" />Cần củng cố</h2>
                   {focusSubject && (
                     <>
-                      <p className="mt-3 font-semibold text-rose-900">{focusSubject.subject} · {focusSubject.average.toFixed(1)}/10</p>
+                      <p className="mt-3 font-semibold text-rose-900">{focusSubject.subject} - {focusSubject.average.toFixed(1)}/10</p>
                       <p className="mt-1 text-sm leading-5 text-slate-700">Thử ôn lại phần kiến thức chưa chắc và làm thêm bài tập cùng dạng.</p>
                     </>
                   )}
@@ -305,7 +305,7 @@ export function MyResults() {
                 <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${result.score >= 5 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{result.score.toFixed(1)}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold uppercase text-slate-800">{result.name}</p>
-                  <p className="mt-0.5 text-[11px] text-slate-500">{result.subject} · {result.date}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{result.subject} - {result.date}</p>
                 </div>
                 <span className={`text-xs font-semibold ${result.score >= 5 ? 'text-emerald-700' : 'text-rose-700'}`}>{result.score >= 5 ? 'Đạt' : 'Chưa đạt'}</span>
               </div>

@@ -151,7 +151,7 @@ export function Grading() {
                     <td className="px-4 py-3">
                       {r.status === 'Đã chấm' ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                          Đã chấm · {r.score} điểm
+                          Đã chấm - {r.score} điểm
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
@@ -188,7 +188,7 @@ export function Grading() {
             <div className="flex justify-between items-start border-b border-slate-100 pb-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">{selected.assignment}</h2>
-                <p className="text-sm text-slate-500 mt-0.5">{selected.student} · Lớp {selected.className} · Nộp lúc: {selected.submitted}</p>
+                <p className="text-sm text-slate-500 mt-0.5">{selected.student} - Lớp {selected.className} - Nộp lúc: {selected.submitted}</p>
               </div>
               <button className="text-slate-400 hover:text-slate-600 p-1" onClick={() => setSelected(null)}>
                 <X className="w-5 h-5" />

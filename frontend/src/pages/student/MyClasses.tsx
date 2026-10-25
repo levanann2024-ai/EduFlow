@@ -67,9 +67,9 @@ const subjects: Subject[] = [
     completedAssignments: 2,
     overdueAssignments: 1,
     assignments: [
-      { title: 'Hàm số bậc hai', due: '22/10/2026 · 20:00', status: 'Chưa làm' },
-      { title: 'Đồ thị hàm số', due: '23/10/2026 · 20:00', status: 'Chưa làm' },
-      { title: 'Phương trình bậc hai', due: '24/10/2026 · 20:00', status: 'Đang làm' },
+      { title: 'Hàm số bậc hai', due: '22/10/2026 - 20:00', status: 'Chưa làm' },
+      { title: 'Đồ thị hàm số', due: '23/10/2026 - 20:00', status: 'Chưa làm' },
+      { title: 'Phương trình bậc hai', due: '24/10/2026 - 20:00', status: 'Đang làm' },
     ],
     exerciseQuestions: [
       { prompt: 'Đồ thị y = 2x² − 3x + 1 mở về phía nào?', options: ['Phía trên', 'Phía dưới', 'Không có đồ thị'], answer: 0 },
@@ -113,7 +113,7 @@ const subjects: Subject[] = [
     completedAssignments: 1,
     overdueAssignments: 0,
     assignments: [
-      { title: 'Cấu tạo nguyên tử', due: '25/10/2026 · 17:00', status: 'Chưa làm' },
+      { title: 'Cấu tạo nguyên tử', due: '25/10/2026 - 17:00', status: 'Chưa làm' },
     ],
     exerciseQuestions: [
       { prompt: 'Nguyên tử trung hòa có số proton bằng 11 thì có bao nhiêu electron?', options: ['10', '11', '12'], answer: 1 },
@@ -136,8 +136,8 @@ const subjects: Subject[] = [
     completedAssignments: 2,
     overdueAssignments: 1,
     assignments: [
-      { title: 'Định luật II Newton', due: '23/10/2026 · 23:00', status: 'Đang làm' },
-      { title: 'Lực ma sát', due: '24/10/2026 · 20:00', status: 'Chưa làm' },
+      { title: 'Định luật II Newton', due: '23/10/2026 - 23:00', status: 'Đang làm' },
+      { title: 'Lực ma sát', due: '24/10/2026 - 20:00', status: 'Chưa làm' },
     ],
     exerciseQuestions: [
       { prompt: 'Một vật chịu hợp lực 10 N, có khối lượng 2 kg. Gia tốc của vật là bao nhiêu?', options: ['5 m/s²', '12 m/s²', '20 m/s²'], answer: 0 },
@@ -161,14 +161,14 @@ const subjects: Subject[] = [
     completedAssignments: 2,
     overdueAssignments: 0,
     assignments: [
-      { title: 'Unit 4 · For a better community', due: '26/10/2026 · 20:00', status: 'Chưa làm' },
+      { title: 'Unit 4 - For a better community', due: '26/10/2026 - 20:00', status: 'Chưa làm' },
     ],
     exerciseQuestions: [
       { prompt: 'Chọn câu đúng: “They ___ part in a clean-up activity every month.”', options: ['take', 'takes', 'taking'], answer: 0 },
     ],
     lessons: {
-      'Học kỳ 1': ['Unit 3 · Music', 'Unit 4 · For a better community', 'Review · Units 1–4'],
-      'Học kỳ 2': ['Unit 6 · Gender equality', 'Unit 7 · Viet Nam and international organisations', 'Review · Units 5–8'],
+      'Học kỳ 1': ['Unit 3 - Music', 'Unit 4 - For a better community', 'Review - Units 1–4'],
+      'Học kỳ 2': ['Unit 6 - Gender equality', 'Unit 7 - Viet Nam and international organisations', 'Review - Units 5–8'],
     },
     theme: 'from-emerald-500 to-teal-500',
   },
@@ -222,7 +222,7 @@ const subjects: Subject[] = [
     completedAssignments: 1,
     overdueAssignments: 0,
     assignments: [
-      { title: 'Văn minh cổ đại', due: '29/10/2026 · 20:00', status: 'Chưa làm' },
+      { title: 'Văn minh cổ đại', due: '29/10/2026 - 20:00', status: 'Chưa làm' },
     ],
     exerciseQuestions: [
       { prompt: 'Các nền văn minh cổ đại phương Đông thường hình thành bên cạnh đâu?', options: ['Các dòng sông lớn', 'Sa mạc khô hạn', 'Đảo xa bờ'], answer: 0 },
@@ -513,7 +513,7 @@ function SubjectLearningView({
           <span className="h-6 border-l border-slate-200" />
           <div className="min-w-0">
             <p className="truncate text-base font-bold text-slate-900">{subject.name} lớp 10</p>
-            <p className="text-sm text-slate-500">{subject.code} · {subject.teacher}</p>
+            <p className="text-sm text-slate-500">{subject.code} - {subject.teacher}</p>
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
@@ -555,7 +555,7 @@ function SubjectLearningView({
                 }`}>{index + 1}</span>
                 <span className="min-w-0">
                   <span className="block text-sm font-medium leading-5">{lesson}</span>
-                  <span className="mt-1 block text-xs text-slate-500">Bài đọc tự soạn · 30 phút</span>
+                  <span className="mt-1 block text-xs text-slate-500">Bài đọc tự soạn - 30 phút</span>
                 </span>
               </button>
             ))}
@@ -584,7 +584,7 @@ function SubjectLearningView({
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-medium leading-5">{assignment.title}</span>
-                      <span className="mt-1 block text-xs text-slate-500">Bài tập · {assignment.due}</span>
+                      <span className="mt-1 block text-xs text-slate-500">Bài tập - {assignment.due}</span>
                     </span>
                   </button>
                 ))}
@@ -599,9 +599,9 @@ function SubjectLearningView({
           {selectedView.type === 'lesson' ? (
           <article className="flex-1 px-5 py-7 sm:px-8 sm:py-10 lg:px-12">
             <div className="mx-auto max-w-4xl">
-              <p className="text-sm font-medium text-blue-700">{subject.name} lớp 10 · {semester}</p>
+              <p className="text-sm font-medium text-blue-700">{subject.name} lớp 10 - {semester}</p>
               <h1 className="mt-2 text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">{activeLesson}</h1>
-              <p className="mt-3 text-base text-slate-500">Bài đọc · 30 phút</p>
+              <p className="mt-3 text-base text-slate-500">Bài đọc - 30 phút</p>
 
               {savingError && <p role="alert" className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{savingError}</p>}
 
@@ -631,7 +631,7 @@ function SubjectLearningView({
                 <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-600">
                   <span className="rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700">Bài tập</span>
                   <span>{subject.exerciseQuestions.length} câu hỏi</span>
-                  <span>·</span>
+                  <span>-</span>
                   <span>{subject.assignments.length} bài cần làm</span>
                 </div>
                 <div className="mt-5 grid grid-cols-3 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">

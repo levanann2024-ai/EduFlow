@@ -39,6 +39,7 @@ export interface DemoExamSession {
 
 export interface ExamRoomRecord {
   id: string;
+  code: string;
   title: string;
   instructions: string;
   organizer: string;
@@ -101,6 +102,7 @@ const localDateTime = (date: Date) => {
 
 function makeSampleRoom({
   id,
+  code,
   title,
   classId,
   startsInMinutes,
@@ -109,6 +111,7 @@ function makeSampleRoom({
   sessions = [],
 }: {
   id: string;
+  code: string;
   title: string;
   classId: string;
   startsInMinutes: number;
@@ -123,6 +126,7 @@ function makeSampleRoom({
   const students = demoStudents.filter((student) => student.classId === classId && student.status === 'active');
   return {
     id,
+    code,
     title,
     instructions: 'Đọc kỹ từng câu hỏi. Hãy liên hệ giáo viên nếu gặp sự cố kỹ thuật.',
     organizer: 'Giáo viên (dữ liệu minh họa)',
@@ -160,21 +164,23 @@ function makeSampleRoom({
 export const demoRoomSeed: ExamRoomRecord[] = [
   makeSampleRoom({
     id: 'demo-room-active',
-    title: 'Ôn tập hàm số bậc hai · 10A1',
+    code: 'RM10A1',
+    title: 'Ôn tập hàm số bậc hai - 10A1',
     classId: 'c1',
     startsInMinutes: -20,
     durationMinutes: 45,
     status: 'open',
     sessions: [
       { id: 'demo-session-1', studentId: 's1', studentName: 'Nguyễn Minh Khôi', className: '10A1', status: 'in-progress', startedAt: new Date(Date.now() - 18 * 60_000).toISOString(), submittedAt: null, remainingMinutes: 27, eventCount: 1, risk: 'none', events: [{ id: 'e1', at: '08:02', label: 'Bắt đầu lượt làm bài', kind: 'info' }], score: null, needsManualGrading: 0 },
-      { id: 'demo-session-2', studentId: 's2', studentName: 'Trần Hà Linh', className: '10A1', status: 'review', startedAt: new Date(Date.now() - 22 * 60_000).toISOString(), submittedAt: null, remainingMinutes: 23, eventCount: 2, risk: 'low', events: [{ id: 'e2', at: '08:03', label: 'Bắt đầu lượt làm bài', kind: 'info' }, { id: 'e3', at: '08:11', label: 'Rời màn hình trong thời gian ngắn · cần giáo viên xem xét', kind: 'warning' }], score: null, needsManualGrading: 0 },
+      { id: 'demo-session-2', studentId: 's2', studentName: 'Trần Hà Linh', className: '10A1', status: 'review', startedAt: new Date(Date.now() - 22 * 60_000).toISOString(), submittedAt: null, remainingMinutes: 23, eventCount: 2, risk: 'low', events: [{ id: 'e2', at: '08:03', label: 'Bắt đầu lượt làm bài', kind: 'info' }, { id: 'e3', at: '08:11', label: 'Rời màn hình trong thời gian ngắn - cần giáo viên xem xét', kind: 'warning' }], score: null, needsManualGrading: 0 },
       { id: 'demo-session-3', studentId: 'demo-s3', studentName: 'Lê Quốc Bảo', className: '10A1', status: 'submitted', startedAt: new Date(Date.now() - 40 * 60_000).toISOString(), submittedAt: new Date(Date.now() - 4 * 60_000).toISOString(), remainingMinutes: 12, eventCount: 0, risk: 'none', events: [{ id: 'e4', at: '08:01', label: 'Bắt đầu lượt làm bài', kind: 'info' }, { id: 'e5', at: '08:27', label: 'Học sinh chủ động nộp bài', kind: 'info' }], score: 8, needsManualGrading: 1 },
-      { id: 'demo-session-4', studentId: 'demo-s4', studentName: 'Phạm Thu Trang', className: '10A1', status: 'disconnected', startedAt: new Date(Date.now() - 14 * 60_000).toISOString(), submittedAt: null, remainingMinutes: 31, eventCount: 1, risk: 'review', events: [{ id: 'e6', at: '08:09', label: 'Mất kết nối · đang chờ cập nhật phiên', kind: 'warning' }], score: null, needsManualGrading: 0 },
+      { id: 'demo-session-4', studentId: 'demo-s4', studentName: 'Phạm Thu Trang', className: '10A1', status: 'disconnected', startedAt: new Date(Date.now() - 14 * 60_000).toISOString(), submittedAt: null, remainingMinutes: 31, eventCount: 1, risk: 'review', events: [{ id: 'e6', at: '08:09', label: 'Mất kết nối - đang chờ cập nhật phiên', kind: 'warning' }], score: null, needsManualGrading: 0 },
     ],
   }),
   makeSampleRoom({
     id: 'demo-room-scheduled',
-    title: 'Kiểm tra chương 2 · 11B3',
+    code: 'RM11B3',
+    title: 'Kiểm tra chương 2 - 11B3',
     classId: 'c2',
     startsInMinutes: 180,
     durationMinutes: 60,
@@ -182,11 +188,12 @@ export const demoRoomSeed: ExamRoomRecord[] = [
   }),
   makeSampleRoom({
     id: 'demo-room-draft',
+    code: 'RM12A2',
     title: 'Đề ôn tập cuối chương',
     classId: 'c3',
     startsInMinutes: 1440,
     durationMinutes: 45,
-    status: 'draft',
+    status: 'completed',
   }),
 ];
 

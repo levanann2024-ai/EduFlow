@@ -423,9 +423,9 @@ export function AIPractice({
               <div className="card space-y-5 p-5 sm:p-7">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-blue-700">{isSample ? 'Bộ câu hỏi minh họa · Dữ liệu mẫu' : mode === 'practice' ? 'Bài luyện đã sẵn sàng' : 'Đề kiểm tra đã sẵn sàng'}</p>
+                    <p className="text-sm font-semibold text-blue-700">{isSample ? 'Bộ câu hỏi minh họa - Dữ liệu mẫu' : mode === 'practice' ? 'Bài luyện đã sẵn sàng' : 'Đề kiểm tra đã sẵn sàng'}</p>
                     <h3 className="mt-1 text-xl font-bold text-slate-900">{topic || 'Câu hỏi minh họa'}</h3>
-                    <p className="mt-1 text-sm text-slate-500">{subject} · {questions.length} câu · {difficulty === 'easy' ? 'Dễ' : difficulty === 'hard' ? 'Thử thách' : 'Vừa sức'}</p>
+                    <p className="mt-1 text-sm text-slate-500">{subject} - {questions.length} câu - {difficulty === 'easy' ? 'Dễ' : difficulty === 'hard' ? 'Thử thách' : 'Vừa sức'}</p>
                   </div>
                   <button type="button" onClick={() => setPhase('setup')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
                     <Settings2 className="h-4 w-4" /> Chỉnh cài đặt
@@ -437,7 +437,7 @@ export function AIPractice({
                     : `Bài làm có ${testMinutes} phút. Đáp án và điểm số chỉ hiển thị sau khi em nộp bài.`}
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Câu 1 · Xem trước</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Câu 1 - Xem trước</p>
                   <p className="mt-2 font-medium leading-6 text-slate-900">{questions[0]?.question}</p>
                 </div>
                 <button type="button" onClick={startAttempt} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700">
@@ -450,7 +450,7 @@ export function AIPractice({
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
                   <div>
                     <p className="text-sm font-semibold text-blue-700">{mode === 'practice' ? 'Luyện tập' : 'Đang làm đề'}</p>
-                    <h3 className="mt-1 font-bold text-slate-900">{subject} · {topic}</h3>
+                    <h3 className="mt-1 font-bold text-slate-900">{subject} - {topic}</h3>
                   </div>
                   {mode === 'test' && (
                     <div className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 font-bold tabular-nums ${timeLeft < 60 ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'}`}>

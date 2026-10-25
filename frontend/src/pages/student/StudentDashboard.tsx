@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent, ReactNode, TransitionEvent } from 'react';
+import type { FormEvent, TransitionEvent } from 'react';
 import {
   ArrowRight,
+  Bot,
   BookOpen,
   CalendarClock,
   ChevronLeft,
@@ -21,7 +22,6 @@ interface StudentDashboardProps {
   onOpenResources: (subjectCode: string) => void;
   onOpenAssignments: (subjectCode: string, topic?: string) => void;
   onAskAI: (prompt: string) => void;
-  header: ReactNode;
 }
 
 const subjects = [
@@ -45,9 +45,9 @@ const assignments = [
 ];
 
 const exams = [
-  { subjectCode: 'TOAN10', subject: 'Toán', date: '22/10/2026', weekday: 'Th 4', duration: '45 phút · Phòng 201', time: '7:30 - 8:15' },
-  { subjectCode: 'VAN10', subject: 'Ngữ văn', date: '24/10/2026', weekday: 'Th 6', duration: '90 phút · Phòng 203', time: '13:30 - 15:00' },
-  { subjectCode: 'LY10', subject: 'Vật lý', date: '27/10/2026', weekday: 'Th 2', duration: '45 phút · Phòng 202', time: '9:15 - 10:00' },
+  { subjectCode: 'TOAN10', subject: 'Toán', date: '22/10/2026', weekday: 'Th 4', duration: '45 phút - Phòng 201', time: '7:30 - 8:15' },
+  { subjectCode: 'VAN10', subject: 'Ngữ văn', date: '24/10/2026', weekday: 'Th 6', duration: '90 phút - Phòng 203', time: '13:30 - 15:00' },
+  { subjectCode: 'LY10', subject: 'Vật lý', date: '27/10/2026', weekday: 'Th 2', duration: '45 phút - Phòng 202', time: '9:15 - 10:00' },
 ];
 
 function SubjectCarousel({
@@ -95,7 +95,7 @@ function SubjectCarousel({
   };
 
   return (
-    <section aria-label="Môn học của em" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+    <section aria-label="Môn học của em" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
           <BookOpen className="h-4 w-4 text-blue-600" />
@@ -152,9 +152,10 @@ function SubjectCarousel({
   );
 }
 
-export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignments, onAskAI, header }: StudentDashboardProps) {
+export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignments, onAskAI }: StudentDashboardProps) {
   const [prompt, setPrompt] = useState('');
   const pendingAssignments = assignments.filter((assignment) => assignment.status !== 'Đã nộp');
+  const focusAssignment = pendingAssignments.find((assignment) => assignment.status === 'Chưa làm') ?? pendingAssignments[0];
   const allAverage = studentResults.reduce((sum, result) => sum + result.score, 0) / studentResults.length;
   const subjectScores = [...new Set(studentResults.map((result) => result.subject))]
     .map((subject) => {
@@ -170,17 +171,14 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
   };
 
   return (
-    <div className="space-y-4 pb-8">
-      {header}
-
-      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,0.95fr)]">
+    <div className="student-dashboard-scale space-y-3 pb-4">
+      <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,2.2fr)_minmax(260px,0.95fr)]">
         <div className="min-w-0 space-y-3">
-          <section className="relative isolate min-h-[146px] overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-100 via-sky-50 to-blue-50 px-5 py-4 shadow-sm sm:px-6">
-            <div aria-hidden="true" className="absolute -right-8 -top-14 h-44 w-44 rounded-full bg-blue-200/40 blur-3xl" />
+          <section className="relative isolate min-h-[146px] overflow-hidden rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 shadow-sm sm:px-6">
             <div className="relative z-10 max-w-full sm:max-w-[68%]">
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">Chào buổi sáng, An! 👋</h1>
               <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm">Học tốt hơn mỗi ngày, từng bước nhỏ đều tạo nên kết quả lớn!</p>
-              <form onSubmit={submitPrompt} className="mt-4 flex items-center gap-2 rounded-xl border border-blue-100 bg-white/95 p-1.5 shadow-sm">
+              <form onSubmit={submitPrompt} className="mt-4 flex items-center gap-2 rounded-xl border border-blue-200 bg-white p-1.5 shadow-sm">
                 <Sparkles className="ml-1 h-4 w-4 shrink-0 text-blue-600" />
                 <label htmlFor="dashboard-ai-prompt" className="sr-only">Hỏi trợ lý AI</label>
                 <input
@@ -222,8 +220,8 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
 
           <SubjectCarousel onNavigate={onNavigate} onOpenResources={onOpenResources} onOpenAssignments={onOpenAssignments} />
 
-          <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.85fr)]">
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.85fr)]">
+            <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-blue-600" />Bài tập cần làm gần đây</h2>
                 <button type="button" onClick={() => onNavigate('assignments')} className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900">
@@ -236,13 +234,13 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
                     key={assignment.code}
                     type="button"
                     onClick={() => onOpenAssignments(assignment.subjectCode, assignment.title)}
-                    className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50/60"
+                    className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><BookOpen className="h-4 w-4" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[11px] font-semibold text-slate-800">{assignment.title}</span>
                       <span className="mt-1 flex items-center gap-1 truncate text-[9px] text-slate-500">
-                        {assignment.subject} · <Clock3 className="h-2.5 w-2.5 shrink-0" /> Hạn nộp: {assignment.due}
+                        {assignment.subject} - <Clock3 className="h-2.5 w-2.5 shrink-0" /> Hạn nộp: {assignment.due}
                       </span>
                     </span>
                     <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold ${assignment.status === 'Đang làm' ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-600'}`}>{assignment.status}</span>
@@ -252,7 +250,7 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Trophy className="h-4 w-4 text-blue-600" />Tiến độ học tập</h2>
                 <button type="button" onClick={() => onNavigate('my-results')} className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900">
@@ -262,9 +260,9 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
               <p className="mt-3 text-[10px] text-slate-500">Điểm trung bình</p>
               <div className="flex items-end gap-2 border-b border-slate-100 pb-2">
                 <strong className="text-3xl font-extrabold leading-none text-slate-900">{allAverage.toFixed(1)}</strong>
-                <span className="pb-0.5 text-[10px] text-slate-500">/10 · {studentResults.length} kết quả</span>
+                <span className="pb-0.5 text-[10px] text-slate-500">/10 - {studentResults.length} kết quả</span>
               </div>
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 flex-1 space-y-3">
                 {subjectScores.slice(0, 4).map(({ subject, average }) => (
                   <div key={subject}>
                     <div className="mb-1 flex justify-between gap-2 text-[10px]">
@@ -281,7 +279,7 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
           </div>
         </div>
 
-        <aside className="space-y-3">
+        <aside className="flex flex-col gap-3">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" />Lịch kiểm tra sắp tới</h2>
@@ -291,7 +289,7 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
             </div>
             <div className="divide-y divide-slate-100">
               {exams.map((exam) => (
-                <button key={exam.subjectCode} type="button" onClick={() => onNavigate('online-exams')} className="flex w-full items-center gap-3 py-3 text-left transition hover:bg-blue-50/60">
+                <button key={exam.subjectCode} type="button" onClick={() => onNavigate('online-exams')} className="flex w-full items-center gap-3 py-3 text-left transition hover:bg-blue-50">
                   <span className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-50 text-blue-800">
                     <span className="text-[9px] font-medium text-slate-500">{exam.weekday}</span>
                     <span className="text-lg font-extrabold leading-5">{exam.date.slice(0, 2)}</span>
@@ -308,20 +306,17 @@ export function StudentDashboard({ onNavigate, onOpenResources, onOpenAssignment
             </div>
           </section>
 
-          <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-sky-100 p-4 shadow-sm">
-            <Sparkles className="h-4 w-4 text-blue-600" />
-            <h2 className="mt-2 text-xs font-bold text-blue-900">Cần trợ giúp học tập?</h2>
-            <p className="mt-1 text-[10px] leading-4 text-slate-600">Hỏi AI ngay để được giải đáp, giải thích và luyện tập thêm.</p>
-            <button type="button" onClick={() => onAskAI('Em cần trợ giúp học tập.')} className="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-[10px] font-bold text-white transition hover:bg-blue-700">
-              Trò chuyện với AI <ArrowRight className="h-3 w-3" />
-            </button>
+          <section className="flex-1 rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Bot className="h-4 w-4 text-blue-700" />AI Gợi ý hôm nay</h2>
+            {focusAssignment ? (
+              <div className="mt-3 space-y-2 text-xs leading-5 text-slate-700">
+                <p>Ôn lại <strong>{focusAssignment.subject}</strong> trước khi làm “{focusAssignment.title}”.</p>
+                <p>Ưu tiên hoàn thành bài này trước hạn <strong>{focusAssignment.due}</strong>.</p>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs leading-5 text-slate-700">Bạn đã hoàn thành các bài tập cần làm. Hãy xem lại những nội dung vừa học để ghi nhớ lâu hơn.</p>
+            )}
           </section>
-
-          <blockquote className="rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-600 shadow-sm">
-            <span className="block text-2xl font-black leading-5 text-blue-200">“</span>
-            <p className="mt-2">Không có con đường nào dẫn đến thành công mà không qua nỗ lực.</p>
-            <footer className="mt-2 text-right text-[10px] text-blue-700">— EduFlow</footer>
-          </blockquote>
         </aside>
       </div>
     </div>

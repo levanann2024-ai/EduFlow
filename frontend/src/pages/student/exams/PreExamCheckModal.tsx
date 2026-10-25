@@ -83,7 +83,7 @@ export function PreExamCheckModal({ examTitle, onClose, onStart }: PreExamCheckM
       <section role="dialog" aria-modal="true" aria-labelledby="pre-exam-title" className="my-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">EduFlow · Phòng thi an toàn</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">EduFlow - Phòng thi an toàn</p>
             <h2 id="pre-exam-title" className="mt-1 text-lg font-bold text-slate-900 sm:text-xl">Quy định làm bài &amp; kiểm tra thiết bị</h2>
             <p className="mt-1 text-sm text-slate-500">{examTitle}</p>
           </div>

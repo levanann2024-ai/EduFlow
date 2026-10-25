@@ -94,7 +94,7 @@ function calculateAverage(scores: (number | null)[]) {
 const demoAssignments: Record<string, { title: string; kind: string; due: string; submitted: number; total: number; status: string }[]> = {
   c1: [
     { title: 'Bài tập Hàm số bậc hai', kind: 'Bài tập', due: 'Hạn nộp 24/10/2026', submitted: 32, total: 38, status: 'Đang nhận bài' },
-    { title: 'Kiểm tra 15 phút · Chương 2', kind: 'Bài kiểm tra', due: '22/10/2026', submitted: 38, total: 38, status: 'Đã kết thúc' },
+    { title: 'Kiểm tra 15 phút - Chương 2', kind: 'Bài kiểm tra', due: '22/10/2026', submitted: 38, total: 38, status: 'Đã kết thúc' },
   ],
   c2: [
     { title: 'Bài tập Định luật Ohm', kind: 'Bài tập', due: 'Hạn nộp 25/10/2026', submitted: 29, total: 35, status: 'Đang nhận bài' },
@@ -146,7 +146,7 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-slate-900">{classData.name}</h1>
             </div>
-            <p className="mt-1 text-sm text-slate-500">Sĩ số: {classData.studentCount} học sinh <span className="px-1.5">·</span> Học kỳ: {classData.semester}</p>
+            <p className="mt-1 text-sm text-slate-500">Sĩ số: {classData.studentCount} học sinh <span className="px-1.5">-</span> Học kỳ: {classData.semester}</p>
           </div>
         </div>
 
@@ -193,8 +193,7 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
               <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">Tổng quan học sinh · {visibleStudents.length} mẫu / {classData.studentCount}</h3>
-                    <p className="mt-1 text-xs text-slate-500">Điểm và nhận xét minh họa · Chọn học kỳ để xem, chỉnh điểm</p>
+                    <h3 className="text-lg font-bold text-slate-900">Tổng quan học sinh</h3>
                   </div>
                   <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
                     Học kỳ
@@ -323,7 +322,7 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
                             {expandedStudent === student.id && (
                               <tr key={`${student.id}-detail`} className="bg-blue-50/50">
                                 <td colSpan={13} className="px-4 py-3 text-sm text-slate-700">
-                                  {student.name} · Điểm TBM {semester}: {average === null ? 'Chưa có điểm' : average.toFixed(1)} · {insight.detail}
+                                  {student.name} - Điểm TBM {semester}: {average === null ? 'Chưa có điểm' : average.toFixed(1)} - {insight.detail}
                                 </td>
                               </tr>
                             )}
@@ -371,7 +370,7 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
             <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-5 py-4">
                 <h3 className="text-lg font-bold text-slate-900">Bài tập đã giao</h3>
-                <p className="mt-1 text-xs text-slate-500">Danh sách demo cho lớp {classData.name}</p>
+                <p className="mt-1 text-xs text-slate-500">Danh sách học sinh lớp {classData.name}</p>
               </div>
               <div className="divide-y divide-slate-100">
                 {assignments.map((assignment) => {
@@ -395,7 +394,7 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
                           </span>
                           <div className="min-w-0">
                             <h4 className="truncate text-sm font-semibold text-slate-900">{assignment.title}</h4>
-                            <p className="mt-1 text-xs text-slate-500">{assignment.kind} <span className="px-1">·</span> {assignment.due}</p>
+                            <p className="mt-1 text-xs text-slate-500">{assignment.kind} <span className="px-1">-</span> {assignment.due}</p>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
@@ -415,7 +414,7 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
                         <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <h5 className="text-sm font-semibold text-slate-800">Danh sách bài làm</h5>
-                            <p className="text-xs text-slate-500">Đã nộp xếp theo điểm từ cao xuống thấp · Chưa nộp ở cuối</p>
+                            <p className="text-xs text-slate-500">Đã nộp xếp theo điểm từ cao xuống thấp - Chưa nộp ở cuối</p>
                           </div>
                           <div className="max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white">
                             <table className="w-full min-w-[420px] border-collapse text-left text-sm">
@@ -443,7 +442,6 @@ function ClassDetailView({ classData, onBack }: { classData: ClassRoom; onBack: 
                               </tbody>
                             </table>
                           </div>
-                          <p className="mt-2 text-[11px] text-slate-400">Điểm và tên học sinh ngoài dữ liệu sẵn có là thông tin minh họa.</p>
                         </div>
                       )}
                     </article>
@@ -512,7 +510,6 @@ export function ClassManagement() {
       <div className="border-0 bg-transparent p-0 shadow-none">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-base font-bold text-slate-800 sm:text-lg">Thống kê bài tập & kiểm tra</h2>
-          <span className="text-[10px] text-slate-400 sm:text-xs">Số liệu mẫu</span>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           {statsData.map((stat) => {
@@ -592,7 +589,6 @@ export function ClassManagement() {
                       <span className="truncate">{highlights.makeupLessons > 0 ? `${highlights.makeupLessons} tiết cần bù` : 'Không cần bù tiết'}</span>
                     </div>
                   </div>
-                  <p className="text-right text-[9px] text-slate-400">Thông tin demo</p>
                 </div>
               </article>
             );

@@ -64,8 +64,8 @@ export function AIGradingEngine() {
           {submissions.map((item) => (
             <button key={item.id} onClick={() => { setSelectedId(item.id); setImageName(''); setImagePreview(null); }} className={`w-full px-4 py-4 text-left hover:bg-slate-50 ${selectedId === item.id ? 'bg-violet-50/70' : ''}`}>
               <p className="font-semibold text-slate-900">{item.student}</p>
-              <p className="mt-1 text-sm text-slate-500">{item.className} · Bài đại số</p>
-              <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${approved.includes(item.id) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{approved.includes(item.id) ? `Đã duyệt · ${scores[item.id] ?? item.score} điểm` : 'Chờ duyệt'}</span>
+              <p className="mt-1 text-sm text-slate-500">{item.className} - Bài đại số</p>
+              <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${approved.includes(item.id) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>{approved.includes(item.id) ? `Đã duyệt - ${scores[item.id] ?? item.score} điểm` : 'Chờ duyệt'}</span>
             </button>
           ))}
         </div>
@@ -104,7 +104,7 @@ export function AIGradingEngine() {
             <p className="text-sm text-violet-800">Điểm đề xuất</p>
             <div className="mt-2 flex items-center gap-2">
               <input aria-label="Điểm giáo viên chấm" type="number" min="0" max="10" step="0.5" value={score} onChange={(event) => setScores((items) => ({ ...items, [selected.id]: Number(event.target.value) }))} className="w-24 rounded-lg border border-violet-200 bg-white px-3 py-2 text-2xl font-semibold text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500" />
-              <span className="text-sm text-slate-500">/ 10 điểm · có thể sửa</span>
+              <span className="text-sm text-slate-500">/ 10 điểm - có thể sửa</span>
             </div>
           </div>
           <div className="mt-4 space-y-3">

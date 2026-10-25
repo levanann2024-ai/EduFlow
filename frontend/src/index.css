@@ -16,9 +16,18 @@
   #root {
     zoom: 1.1;
   }
-  .teacher-dashboard-interface {
-    zoom: 1.0909091;
+  .student-dashboard-scale {
+    width: 90.9091%;
+    margin-inline: auto;
+    zoom: 1.1;
   }
+  .student-schedule-scale {
+    width: 100%;
+    max-width: 1100px;
+    margin-inline: auto;
+    zoom: 1;
+  }
+
 }
 
 @layer components {

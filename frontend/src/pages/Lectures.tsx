@@ -72,7 +72,7 @@ export function Lectures({ role }: { role: Role }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-slate-900 truncate">{d.title}</p>
-                <p className="text-sm text-slate-500 mt-0.5">{d.subject} · {d.grade} · {d.size} · {d.date}</p>
+                <p className="text-sm text-slate-500 mt-0.5">{d.subject} - {d.grade} - {d.size} - {d.date}</p>
               </div>
               <button className="btn-ghost p-2 text-slate-600 hover:text-blue-600" aria-label="Tải xuống">
                 <Download className="w-4 h-4" />

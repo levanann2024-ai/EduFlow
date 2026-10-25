@@ -240,12 +240,12 @@ export function QuestionBank() {
                       />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium leading-6 text-slate-900">{question.question}</p>
-                        <p className="mt-1 text-xs text-slate-500">{set.subject} · {set.grade} · {set.topic} · Trắc nghiệm · {set.createdAt}</p>
+                        <p className="mt-1 text-xs text-slate-500">{set.subject} - {set.grade} - {set.topic} - Trắc nghiệm - {set.createdAt}</p>
                         {expanded && (
                           <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3">
                             {question.options.map((option, optionIndex) => (
                               <p key={`${question.id}-${optionIndex}`} className={`text-sm ${optionIndex === question.correctIndex ? 'font-medium text-emerald-800' : 'text-slate-600'}`}>
-                                {String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctIndex ? ' · Đáp án' : ''}
+                                {String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctIndex ? ' - Đáp án' : ''}
                               </p>
                             ))}
                             <p className="border-t border-slate-200 pt-2 text-sm text-slate-600"><span className="font-medium">Giải thích:</span> {question.explanation || 'Chưa có giải thích.'}</p>
@@ -290,7 +290,7 @@ export function QuestionBank() {
               <textarea value={editing.question.question} onChange={(event) => setEditing({ ...editing, question: { ...editing.question, question: event.target.value } })} rows={3} className="input-field mt-1.5" />
             </label>
             <fieldset className="mt-4 space-y-2">
-              <legend className="mb-2 text-sm font-medium text-slate-700">Phương án · chọn đáp án đúng</legend>
+              <legend className="mb-2 text-sm font-medium text-slate-700">Phương án - chọn đáp án đúng</legend>
               {editing.question.options.map((option, index) => (
                 <div key={index} className="flex items-center gap-2">
                   <input type="radio" name="correct-option" checked={editing.question.correctIndex === index} onChange={() => setEditing({ ...editing, question: { ...editing.question, correctIndex: index } })} aria-label={`Chọn phương án ${String.fromCharCode(65 + index)} là đáp án đúng`} />
@@ -326,7 +326,7 @@ export function QuestionBank() {
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h2 id="create-exam-title" className="text-lg font-semibold text-slate-950">Tạo đề từ câu đã chọn</h2>
-                <p className="mt-1 text-sm text-slate-500">{selectedEntries.length} câu hỏi · Lưu trên trình duyệt này</p>
+                <p className="mt-1 text-sm text-slate-500">{selectedEntries.length} câu hỏi - Lưu trên trình duyệt này</p>
               </div>
               <button onClick={() => setCreatingExam(false)} aria-label="Đóng" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>

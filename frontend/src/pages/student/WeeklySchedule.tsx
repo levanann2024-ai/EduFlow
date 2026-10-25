@@ -161,6 +161,7 @@ export function WeeklySchedule({
   const [noteSubject, setNoteSubject] = useState('');
   const [notePinned, setNotePinned] = useState(false);
   const isCurrentScheduleWeek = weekDays[0].date.toDateString() === getWeekStart(new Date()).toDateString();
+  const visibleWeekDays = weekDays.slice(0, 5);
   const subjects = [...new Set(entries.map((entry) => entry.subject))];
 
   const schoolEntries = useMemo(
@@ -271,28 +272,33 @@ export function WeeklySchedule({
     <section key={session.title} className={showTitle ? 'overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm' : 'overflow-hidden'}>
       {showTitle && <h3 className={`border-b px-4 py-2.5 text-sm font-bold ${session.style}`}>{session.title}</h3>}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] table-fixed border-collapse text-left">
+        <table className="w-full min-w-[760px] table-fixed border-collapse text-center">
           <thead>
             <tr>
-              <th className="sticky left-0 z-20 w-40 border-b border-r border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-600">Tiết / Giờ</th>
-              {weekDays.map((day) => {
+              <th className="sticky left-0 z-20 w-[88px] border-b border-r border-slate-200 bg-slate-50 p-1.5 text-xs font-semibold text-slate-600">Tiết / Giờ</th>
+              {visibleWeekDays.map((day) => {
                 return (
-                  <th key={day.label} className={`border-b border-slate-200 p-2 text-center align-top ${day.date.toDateString() === new Date().toDateString() ? 'bg-indigo-50' : 'bg-slate-50'}`}>
-                    <span className="block text-sm font-bold text-slate-700">{day.label}</span>
-                    <span className="mt-0.5 block text-xs font-normal text-slate-500">{formatDate(day.date)}</span>
+                  <th key={day.label} className={`border-b border-slate-200 p-1.5 text-center align-top ${day.date.toDateString() === new Date().toDateString() ? 'bg-indigo-50' : 'bg-slate-50'}`}>
+                    <span className="block text-xs font-bold text-slate-700">{day.label}</span>
+                    <span className="mt-0.5 block text-[10px] font-normal text-slate-500">{formatDate(day.date)}</span>
                   </th>
                 );
               })}
             </tr>
           </thead>
           <tbody>
-            {session.periods.map((period) => (
-              <tr key={period.number} className="border-b border-slate-100 last:border-0">
-                <th className="sticky left-0 z-10 border-r border-slate-100 bg-white px-3 py-2 align-top">
-                  <span className="block text-sm font-semibold text-slate-800">Tiết {period.number}</span>
-                  <span className="mt-1 block whitespace-nowrap text-xs font-normal text-slate-500">{period.time}</span>
+            {session.periods.map((period) => {
+              const periodHasAdditionalContent = visibleWeekDays.some((_, index) => {
+                const slotContent = getSlotContent(index, period.number);
+                return slotContent !== null && slotContent.kind !== 'school' && slotContent.kind !== 'exam';
+              });
+              return (
+                <tr key={period.number} className="border-b border-slate-100 last:border-0">
+                <th className="sticky left-0 z-10 border-r border-slate-100 bg-white px-2 py-1.5 text-left align-top">
+                  <span className="block text-xs font-semibold text-slate-800">Tiết {period.number}</span>
+                  <span className="mt-0.5 block whitespace-nowrap text-[9px] font-normal text-slate-500">{period.time}</span>
                 </th>
-                {weekDays.map((day, dayIndex) => {
+                {visibleWeekDays.map((day, dayIndex) => {
                   const content = getSlotContent(dayIndex, period.number);
                   const hiddenSchoolEntry = entries.some((entry) =>
                     entry.day === dayIndex
@@ -312,15 +318,17 @@ export function WeeklySchedule({
                           ? 'border-blue-200 bg-blue-50 text-blue-800'
                           : 'border-dashed border-slate-200 bg-slate-50/50 text-slate-400 hover:border-indigo-300 hover:bg-indigo-50';
                   return (
-                    <td key={day.label} className="h-28 border-l border-slate-100 p-1">
+                    <td key={day.label} className={`${periodHasAdditionalContent ? 'h-20' : 'h-12'} border-l border-slate-100 p-0.5`}>
                       {content ? (
-                        <div className={`group relative flex h-full min-w-0 flex-col justify-center rounded-lg border px-2 py-1.5 text-left ${cardStyle}`}>
-                          <span className={`line-clamp-2 break-words font-bold leading-5 ${content.kind === 'note' ? 'text-base' : 'text-xs'}`}>{content.subject}</span>
+                        <div className={`group relative flex h-full min-w-0 flex-col items-center justify-center rounded-lg border px-1 py-1 text-center ${cardStyle}`}>
+                          <span className={`line-clamp-2 break-words font-bold leading-4 ${content.kind === 'note' ? 'text-xs' : 'text-[10px]'}`}>{content.subject}</span>
                           {content.kind === 'note' && content.pinned && (
                             <Pin aria-label="Ghi chú đã ghim" className="absolute right-1.5 top-1.5 z-20 h-3.5 w-3.5 fill-rose-600 text-rose-600" />
                           )}
-                          <span className={`line-clamp-2 break-words pr-4 leading-5 ${content.kind === 'note' ? 'text-sm' : 'text-[11px]'}`}>{content.topic}</span>
-                          <span className="mt-0.5 flex items-center gap-1">
+                          {content.kind !== 'school' && content.kind !== 'exam' && (
+                            <span className={`line-clamp-2 break-words leading-3 ${content.kind === 'note' ? 'text-[11px]' : 'text-[9px]'}`}>{content.topic}</span>
+                          )}
+                          <span className="mt-0.5 flex items-center justify-center gap-1">
                             {content.kind === 'homework' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">Bài tập</span>}
                             {content.kind === 'ai' && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">🤖 AI Suggest</span>}
                             {content.kind === 'note' && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Ghi chú</span>}
@@ -333,7 +341,7 @@ export function WeeklySchedule({
                           {!personalEntry && (
                             <button
                               type="button"
-                              aria-label={`${content.kind === 'exam' ? 'Xem lịch kiểm tra' : 'Xem nội dung'} ${content.subject}: ${content.topic}`}
+                              aria-label={content.kind === 'school' ? `Xem thời khóa biểu môn ${content.subject}` : content.kind === 'exam' ? `Xem lịch kiểm tra môn ${content.subject}` : `Xem nội dung ${content.subject}: ${content.topic}`}
                               onClick={() => setScheduleDetails({
                                 entry: content as WeeklyScheduleEntry,
                                 date: day.date,
@@ -363,7 +371,8 @@ export function WeeklySchedule({
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -414,7 +423,9 @@ export function WeeklySchedule({
                       {content ? (
                         <div className={`group relative flex min-w-0 flex-1 flex-col justify-center rounded-xl border px-3 py-2 pr-10 ${cardStyle}`}>
                           <span className={`break-words font-bold text-slate-900 ${content.kind === 'note' ? 'text-lg' : 'text-sm'}`}>{content.subject}</span>
-                          <span className={`mt-0.5 break-words leading-5 text-slate-700 ${content.kind === 'note' ? 'text-base' : 'text-xs'}`}>{content.topic}</span>
+                          {content.kind !== 'school' && (
+                            <span className={`mt-0.5 break-words leading-5 text-slate-700 ${content.kind === 'note' ? 'text-base' : 'text-xs'}`}>{content.topic}</span>
+                          )}
                           <span className="mt-1.5 flex flex-wrap gap-1">
                             {content.kind === 'homework' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">Bài tập</span>}
                             {content.kind === 'ai' && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">Đề xuất AI</span>}
@@ -443,7 +454,7 @@ export function WeeklySchedule({
                         <div aria-hidden="true" className="min-w-0 flex-1" />
                       ) : (
                         <button type="button" onClick={() => { setNoteSlot({ day: selectedDay, period: period.number }); setStorageMessage(''); }} aria-label={`Thêm ghi chú ${day.label}, tiết ${period.number}`} className="group flex min-w-0 flex-1 items-center rounded-xl border border-dashed border-slate-200 px-3 text-xs text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">
-                          <span>Ô trống · Nhấn để thêm ghi chú</span>
+                          <span>Ô trống - Nhấn để thêm ghi chú</span>
                         </button>
                       )}
                     </div>
@@ -455,7 +466,7 @@ export function WeeklySchedule({
         })}
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <button type="button" aria-expanded={eveningExpanded} onClick={() => setEveningExpanded((expanded) => !expanded)} className={`flex w-full items-center justify-between border-b px-4 py-3 text-left text-sm font-bold ${sessions[2].style}`}>
-            <span>Buổi Tối <span className="ml-1 text-xs font-medium opacity-80">5 ca · 18:30 – 22:45</span></span>
+            <span>Buổi Tối <span className="ml-1 text-xs font-medium opacity-80">5 ca - 18:30 – 22:45</span></span>
             {eveningExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
         </section>
@@ -465,7 +476,7 @@ export function WeeklySchedule({
 
   const renderMobileWeekAgenda = () => (
     <div className="space-y-3 md:hidden">
-      {weekDays.map((day, dayIndex) => {
+      {visibleWeekDays.map((day, dayIndex) => {
         const dailyEntries = sessions.flatMap((session) => session.periods.map((period) => ({
           period,
           content: getSlotContent(dayIndex, period.number),
@@ -498,7 +509,9 @@ export function WeeklySchedule({
                         : setPlanMessage('Đây là khung ôn tập cá nhân do bạn đã xác nhận. Lịch học chính thức không bị thay đổi.')
                       : setScheduleDetails({ entry: content as WeeklyScheduleEntry, date: day.date, dayLabel: day.label, periodTime: period.time })} className={`min-w-0 flex-1 rounded-lg border px-3 py-2 text-left ${content.kind === 'exam' ? 'border-rose-200 bg-rose-50' : content.kind === 'homework' ? 'border-amber-200 bg-amber-50' : content.kind === 'note' ? 'border-emerald-200 bg-emerald-50' : content.kind === 'ai' ? 'border-violet-200 bg-violet-50' : 'border-blue-200 bg-blue-50'}`}>
                       <span className={`block break-words font-bold text-slate-900 ${content.kind === 'note' ? 'text-base' : 'text-xs'}`}>{content.subject}</span>
-                      <span className={`mt-0.5 block break-words leading-5 text-slate-700 ${content.kind === 'note' ? 'text-sm' : 'text-xs'}`}>{content.topic}</span>
+                      {content.kind !== 'school' && (
+                        <span className={`mt-0.5 block break-words leading-5 text-slate-700 ${content.kind === 'note' ? 'text-sm' : 'text-xs'}`}>{content.topic}</span>
+                      )}
                       {content.kind !== 'school' && content.kind !== 'exam' && (
                         <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold ${badgeStyle}`}>
                           {content.kind === 'homework' ? 'Bài tập' : content.kind === 'note' ? 'Ghi chú cá nhân' : 'Đề xuất AI'}
@@ -550,7 +563,7 @@ export function WeeklySchedule({
             {renderSession(sessions[1])}
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <button type="button" aria-expanded={eveningExpanded} onClick={() => setEveningExpanded((expanded) => !expanded)} className={`flex w-full items-center justify-between border-b px-4 py-3 text-left text-sm font-bold ${sessions[2].style}`}>
-              <span>Buổi Tối <span className="ml-1 text-xs font-medium opacity-80">5 ca · 18:30 – 22:45</span></span>
+              <span>Buổi Tối <span className="ml-1 text-xs font-medium opacity-80">5 ca - 18:30 – 22:45</span></span>
               {eveningExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
             {eveningExpanded && <div className="animate-fadeIn">{renderSession(sessions[2], false)}</div>}
@@ -591,7 +604,7 @@ export function WeeklySchedule({
             <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
               <p className="text-xs leading-5 text-slate-700">
                 {upcomingExams[0]
-                  ? `Có bài kiểm tra ${upcomingExams[0].subject} sắp tới. Dành một khoảng ngắn để ôn lại ${upcomingExams[0].topic.replace(/^Kiểm tra[^·]*·?\\s*/i, '').trim() || 'nội dung trọng tâm'}.`
+                  ? `Có bài kiểm tra ${upcomingExams[0].subject} sắp tới. Dành một khoảng ngắn để ôn lại ${upcomingExams[0].topic.replace(/^Kiểm tra[^-]*-?\\s*/i, '').trim() || 'nội dung trọng tâm'}.`
                   : todayLessons[0]
                     ? `Sau buổi học, thử ôn lại ${todayLessons[0].topic} môn ${todayLessons[0].subject}.`
                     : 'Hôm nay chưa có lịch học. Em có thể chọn một chủ đề cần ôn tập.'}
@@ -605,7 +618,7 @@ export function WeeklySchedule({
               <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
                 <h4 className="flex items-center gap-2 text-xs font-bold text-blue-800"><BookOpen className="h-4 w-4" />Bài tập cần ôn</h4>
                 <ul className="mt-2 space-y-1.5 text-[11px] text-slate-700">
-                  {upcomingHomework.map((entry) => <li key={`${entry.day}-${entry.period}-${entry.subject}`} className="flex gap-1.5"><span aria-hidden="true">•</span><span>{entry.subject} · {entry.topic}</span></li>)}
+                  {upcomingHomework.map((entry) => <li key={`${entry.day}-${entry.period}-${entry.subject}`} className="flex gap-1.5"><span aria-hidden="true">•</span><span>{entry.subject} - {entry.topic}</span></li>)}
                 </ul>
               </div>
             )}
@@ -618,7 +631,7 @@ export function WeeklySchedule({
               {upcomingExams.map((entry) => (
                 <li key={`${entry.day}-${entry.period}-${entry.subject}`} className="flex items-start gap-2 text-[11px]">
                   <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-400" />
-                  <span className="min-w-0"><strong className="font-semibold text-slate-800">{entry.subject} · {entry.topic}</strong><span className="mt-0.5 block text-slate-500">{weekDays[entry.day].label} · Tiết {entry.period} · {formatDate(weekDays[entry.day].date)}</span></span>
+                  <span className="min-w-0"><strong className="font-semibold text-slate-800">{entry.subject} - {entry.topic}</strong><span className="mt-0.5 block text-slate-500">{weekDays[entry.day].label} - Tiết {entry.period} - {formatDate(weekDays[entry.day].date)}</span></span>
                 </li>
               ))}
             </ul>
@@ -646,7 +659,7 @@ export function WeeklySchedule({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 id="weekly-note-title" className="text-lg font-bold text-slate-900">Thêm ghi chú</h2>
-                <p className="mt-1 text-sm text-slate-500">{weekDays[noteSlot.day].label} · Tiết {noteSlot.period}</p>
+                <p className="mt-1 text-sm text-slate-500">{weekDays[noteSlot.day].label} - Tiết {noteSlot.period}</p>
                 <p className="mt-1 text-xs text-slate-500">Ghi chú được lưu trên trình duyệt của thiết bị này.</p>
               </div>
               <button type="button" onClick={() => setNoteSlot(null)} aria-label="Đóng" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
@@ -693,8 +706,8 @@ export function WeeklySchedule({
                 <div key={`${date.toISOString()}-${period}`} className="flex items-center gap-3 rounded-xl border border-violet-100 bg-violet-50/60 p-3">
                   <CalendarDays className="h-4 w-4 shrink-0 text-violet-600" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800">{formatDate(date)} · Tiết {period}</p>
-                    <p className="mt-0.5 truncate text-xs text-slate-600">{entry.subject} · {entry.topic}</p>
+                    <p className="text-sm font-semibold text-slate-800">{formatDate(date)} - Tiết {period}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-600">{entry.subject} - {entry.topic}</p>
                   </div>
                   <span className="shrink-0 text-[10px] text-slate-500">{time}</span>
                 </div>
@@ -716,7 +729,7 @@ export function WeeklySchedule({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 id="weekly-note-details-title" className="text-lg font-bold text-slate-900">Chi tiết ghi chú</h2>
-                <p className="mt-1 text-sm text-slate-500">{weekDays[noteDetails.day].label} · Tiết {noteDetails.period}</p>
+                <p className="mt-1 text-sm text-slate-500">{weekDays[noteDetails.day].label} - Tiết {noteDetails.period}</p>
               </div>
               <button type="button" onClick={() => setNoteDetails(null)} aria-label="Thoát" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
@@ -764,7 +777,7 @@ export function WeeklySchedule({
                 <h2 id="schedule-details-title" className="text-lg font-bold text-slate-900">
                   {scheduleDetails.entry.type === 'exam' ? 'Thông tin kiểm tra' : scheduleDetails.entry.type === 'homework' ? 'Thông tin bài tập' : 'Nội dung môn học'}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">{scheduleDetails.dayLabel} · {formatDate(scheduleDetails.date)} · Tiết {scheduleDetails.entry.period}</p>
+                <p className="mt-1 text-sm text-slate-500">{scheduleDetails.dayLabel} - {formatDate(scheduleDetails.date)} - Tiết {scheduleDetails.entry.period}</p>
               </div>
               <button type="button" onClick={() => setScheduleDetails(null)} aria-label="Thoát" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>

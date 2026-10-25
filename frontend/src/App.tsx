@@ -155,18 +155,25 @@ function App() {
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
       <div className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'lg:ml-16' : role === 'student' ? 'lg:ml-48' : 'lg:ml-56'}`}>
-        <div className={`mx-auto w-full max-w-[1480px] flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-24 ${role === 'lecturer' && activePage === 'dashboard' ? 'lg:p-5 lg:pb-0' : role === 'lecturer' && activePage === 'lessons' ? 'flex min-h-0 flex-col overflow-hidden p-3 pb-3 sm:p-3 md:p-3 lg:max-w-none lg:p-4 lg:pb-3' : (role === 'student' && activePage === 'dashboard' ? 'lg:p-5 lg:pb-8' : 'lg:p-8 lg:pb-8')}`}>
+        <TopBar
+          role={role}
+          onNotifications={() => setNotificationsOpen(true)}
+          onNavigate={navigateToPage}
+          onLogout={logout}
+          onOpenResources={role === 'student' ? openSubjectResources : undefined}
+          onOpenAssignments={role === 'student' ? openSubjectAssignments : undefined}
+          onAskAI={role === 'student' ? askStudentAI : undefined}
+        />
+        <div className={`mx-auto w-full max-w-[1480px] flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-24 ${role === 'lecturer' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-0' : role === 'student' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-8' : role === 'lecturer' && activePage === 'lessons' ? 'flex min-h-0 flex-col overflow-hidden p-3 pb-3 sm:p-3 md:p-3 lg:max-w-none lg:p-4 lg:pb-3' : 'lg:p-8 lg:pb-8'}`}>
           {role === 'student' && activePage === 'dashboard' ? (
             <StudentDashboard
               onNavigate={navigateToPage}
               onOpenResources={openSubjectResources}
               onOpenAssignments={openSubjectAssignments}
               onAskAI={askStudentAI}
-              header={<TopBar role={role} onNotifications={() => setNotificationsOpen(true)} onNavigate={navigateToPage} onLogout={logout} onOpenResources={openSubjectResources} onOpenAssignments={openSubjectAssignments} onAskAI={askStudentAI} />}
             />
           ) : (
             <>
-              <TopBar role={role} onNotifications={() => setNotificationsOpen(true)} onNavigate={navigateToPage} onLogout={logout} onOpenResources={role === 'student' ? openSubjectResources : undefined} onOpenAssignments={role === 'student' ? openSubjectAssignments : undefined} onAskAI={role === 'student' ? askStudentAI : undefined} />
               {activePage === 'dashboard' && (role === 'lecturer' ? <TeacherDashboard onNavigate={navigateToPage} /> : <Dashboard onNavigate={navigateToPage} role={role} />)}
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
@@ -189,7 +196,9 @@ function App() {
               {activePage === 'assignments' && <Assignments />}
               {activePage === 'my-results' && <MyResults />}
               {activePage === 'schedule' && (
-                <StudentSchedule onOpenContent={openScheduledContent} onOpenApp={openScheduledApp} />
+                <div className="student-schedule-scale">
+                  <StudentSchedule onOpenContent={openScheduledContent} onOpenApp={openScheduledApp} />
+                </div>
               )}
               {activePage === 'ai-practice' && (
                 <AIPractice

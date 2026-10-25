@@ -20,7 +20,7 @@ const timetable: TimetableEntry[] = [
   { day: 0, period: 1, subject: 'Toán học', teacher: 'Cô Nguyễn Hà', room: '10A1', type: 'lesson', topic: 'Hàm số bậc hai' },
   { day: 0, period: 2, subject: 'Toán học', teacher: 'Cô Nguyễn Hà', room: '10A1', type: 'lesson', topic: 'Luyện tập đồ thị hàm số' },
   { day: 0, period: 3, subject: 'Ngữ văn', teacher: 'Thầy Lê Minh', room: '10A1', type: 'lesson', topic: 'Truyện dân gian Việt Nam' },
-  { day: 0, period: 6, subject: 'Tiếng Anh', teacher: 'Cô Phạm Linh', room: '10A1', type: 'lesson', topic: 'Unit 4 · For a better community' },
+  { day: 0, period: 6, subject: 'Tiếng Anh', teacher: 'Cô Phạm Linh', room: '10A1', type: 'lesson', topic: 'Unit 4 - For a better community' },
   { day: 0, period: 7, subject: 'Tiếng Anh', teacher: 'Cô Phạm Linh', room: '10A1', type: 'lesson', topic: 'Reading and speaking' },
   { day: 1, period: 1, subject: 'Ngữ văn', teacher: 'Thầy Lê Minh', room: '10A1', type: 'lesson', topic: 'Thực hành tiếng Việt' },
   { day: 1, period: 2, subject: 'Ngữ văn', teacher: 'Thầy Lê Minh', room: '10A1', type: 'lesson', topic: 'Viết bài văn nghị luận' },
@@ -34,7 +34,7 @@ const timetable: TimetableEntry[] = [
   { day: 3, period: 1, subject: 'Vật lý', teacher: 'Thầy Trần Nam', room: '10A1', type: 'lesson', topic: 'Lực ma sát' },
   { day: 3, period: 2, subject: 'Vật lý', teacher: 'Thầy Trần Nam', room: '10A1', type: 'lesson', topic: 'Bài tập định luật Newton' },
   { day: 3, period: 3, subject: 'Hóa học', teacher: 'Cô Thu Dung', room: 'Phòng bộ môn 2', type: 'lesson', topic: 'Cấu tạo nguyên tử' },
-  { day: 3, period: 4, subject: 'Toán học', teacher: 'Cô Nguyễn Hà', room: '10A1', type: 'exam', topic: 'Kiểm tra 1 tiết · Hàm số' },
+  { day: 3, period: 4, subject: 'Toán học', teacher: 'Cô Nguyễn Hà', room: '10A1', type: 'exam', topic: 'Kiểm tra 1 tiết - Hàm số' },
   { day: 3, period: 6, subject: 'Hóa học', teacher: 'Cô Thu Dung', room: 'Phòng bộ môn 2', type: 'lesson', topic: 'Bảng tuần hoàn các nguyên tố' },
   { day: 3, period: 7, subject: 'Ngữ văn', teacher: 'Thầy Lê Minh', room: '10A1', type: 'lesson', topic: 'Đọc hiểu văn bản' },
   { day: 4, period: 1, subject: 'Hóa học', teacher: 'Cô Thu Dung', room: 'Phòng bộ môn 2', type: 'lesson', topic: 'Liên kết hóa học' },
@@ -47,7 +47,7 @@ const timetable: TimetableEntry[] = [
   { day: 5, period: 3, subject: 'Tiếng Anh', teacher: 'Cô Phạm Linh', room: '10A1', type: 'exam', topic: 'Kiểm tra từ vựng Unit 4' },
   { day: 3, period: 13, subject: 'Toán học', teacher: 'Cô Nguyễn Hà', room: '10A1', type: 'homework', topic: 'Hạn nộp phiếu bài tập Hàm số' },
   { day: 4, period: 15, subject: 'Vật lý', teacher: 'Thầy Trần Nam', room: '10A1', type: 'homework', topic: 'Hạn nộp bài tập Định luật II Newton' },
-  { day: 4, period: 5, subject: 'Vật lý', teacher: 'Thầy Trần Nam', room: '10A1', type: 'exam', topic: 'Kiểm tra 1 tiết · Định luật Newton' },
+  { day: 4, period: 5, subject: 'Vật lý', teacher: 'Thầy Trần Nam', room: '10A1', type: 'exam', topic: 'Kiểm tra 1 tiết - Định luật Newton' },
 ];
 
 const filterOptions: { id: ScheduleFilter; label: string }[] = [
@@ -101,7 +101,7 @@ export function StudentSchedule({ onOpenContent, onOpenApp }: StudentSchedulePro
     label,
     date: addDays(weekStart, index),
   })), [weekStart]);
-  const weekLabel = `${formatDate(weekDays[0].date)} – ${formatDate(weekDays[5].date, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  const weekLabel = `${formatDate(weekDays[0].date)} – ${formatDate(weekDays[4].date, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
   const selectedDateLabel = `${weekDays[selectedDay].label}, ${formatDate(weekDays[selectedDay].date, { day: '2-digit', month: 'long' })}`;
   const moveDate = (direction: -1 | 1) => {
     if (view === 'week') {
@@ -131,10 +131,6 @@ export function StudentSchedule({ onOpenContent, onOpenApp }: StudentSchedulePro
         controls={
       <section className="space-y-3 bg-transparent p-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900"><CalendarDays className="h-5 w-5 text-blue-600" />Thời khóa biểu tuần</h1>
-            <p className="mt-1 text-xs text-slate-500">Chủ động sắp xếp thời gian, học tập hiệu quả hơn cùng EduFlow.</p>
-          </div>
           <div role="group" aria-label="Chế độ xem lịch" className="flex h-10 items-center rounded-lg bg-slate-100 p-1">
             {(['week', 'day'] as const).map((mode) => (
               <button key={mode} type="button" aria-pressed={view === mode} onClick={() => setView(mode)} className={`inline-flex h-8 items-center rounded-md px-4 text-xs font-semibold transition ${view === mode ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>

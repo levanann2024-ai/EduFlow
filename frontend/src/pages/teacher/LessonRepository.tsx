@@ -210,20 +210,13 @@ export function LessonRepository() {
     setTitle('');
     setNote('');
     setDocumentContent('');
-    setFeedback(`Đã cập nhật danh sách demo: ${additions.length} tài liệu tới ${selectedClasses.length} lớp.`);
+    setFeedback(`Đã cập nhật danh sách: ${additions.length} tài liệu tới ${selectedClasses.length} lớp.`);
   };
 
   const allFilteredSelected = filteredClasses.length > 0 && filteredClasses.every(({ id }) => selectedClasses.includes(id));
 
   return (
     <section className="teacher-library flex min-h-0 flex-1 flex-col overflow-hidden bg-sky-50/60">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-1 pb-2">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-blue-950 sm:text-2xl">Đăng tài liệu cho học sinh</h1>
-          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">Tải tài liệu, gắn chương - bài, chọn lớp và gửi đến học sinh.</p>
-        </div>
-      </div>
-
       {feedback && (
         <div role="status" className="mb-2 flex max-h-20 shrink-0 items-start justify-between gap-3 overflow-auto whitespace-pre-wrap rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
           <span>{feedback}</span>
@@ -297,7 +290,7 @@ export function LessonRepository() {
                     <FolderOpen className="h-4 w-4" /> Chọn tệp từ máy tính
                   </button>
                   <input ref={fileInputRef} type="file" multiple accept={acceptedTypes} className="hidden" onChange={onFileInput} />
-                  <p className="mt-2 text-[10px] text-slate-500">PDF, PPTX, DOCX, XLSX, MP4, JPG, PNG · Tối đa 50 MB/tệp</p>
+                  <p className="mt-2 text-[10px] text-slate-500">PDF, PPTX, DOCX, XLSX, MP4, JPG, PNG - Tối đa 50 MB/tệp</p>
                 </div>
                 {files.length > 0 && (
                   <ul className="mt-2 space-y-1.5">
@@ -405,7 +398,7 @@ export function LessonRepository() {
                     <span className={`${color} flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white`}><Icon className="h-3.5 w-3.5" /></span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[10px] font-semibold leading-4 text-slate-800">{file.displayTitle ?? file.name}</p>
-                      <p className="truncate text-[9px] leading-3 text-slate-400">{file.chapter} · {file.lesson} · {label} · {formatFileSize(file.size)} · {file.uploadedAt}</p>
+                      <p className="truncate text-[9px] leading-3 text-slate-400">{file.chapter} - {file.lesson} - {label} - {formatFileSize(file.size)} - {file.uploadedAt}</p>
                       {file.note && <p className="truncate text-[9px] leading-3 text-slate-500">{file.note}</p>}
                     </div>
                     <span className="max-w-16 truncate rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{file.className}</span>

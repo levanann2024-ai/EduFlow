@@ -153,8 +153,8 @@ export function ExamEditor({
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             <article className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
               <h1 className="text-center text-xl font-bold text-slate-950">{workingExam.title}</h1>
-              <p className="mt-2 text-center text-sm text-slate-500">{workingExam.subject} · {workingExam.grade}{workingExam.durationMinutes ? ` · ${workingExam.durationMinutes} phút` : ''}</p>
-              <p className="mt-1 text-center text-xs text-slate-500">{workingExam.questions.length} câu · {totalPoints} điểm</p>
+              <p className="mt-2 text-center text-sm text-slate-500">{workingExam.subject} - {workingExam.grade}{workingExam.durationMinutes ? ` - ${workingExam.durationMinutes} phút` : ''}</p>
+              <p className="mt-1 text-center text-xs text-slate-500">{workingExam.questions.length} câu - {totalPoints} điểm</p>
               <div className="mt-6 space-y-6">
                 {workingExam.questions.map((question, index) => (
                   <section key={question.id} className="border-b border-slate-100 pb-5 last:border-0">
@@ -199,7 +199,7 @@ export function ExamEditor({
                 {workingExam.questions.map((question, index) => (
                   <div key={question.id} className={`rounded-lg border p-2 ${selectedId === question.id ? 'border-blue-300 bg-blue-50' : 'border-slate-100'}`}>
                     <button onClick={() => setSelectedId(question.id)} className="block w-full text-left">
-                      <span className="block text-xs font-semibold text-slate-800">Câu {index + 1} · {questionTypeLabels[question.type]}</span>
+                      <span className="block text-xs font-semibold text-slate-800">Câu {index + 1} - {questionTypeLabels[question.type]}</span>
                       <span className="mt-1 block truncate text-xs text-slate-500">{question.question || 'Chưa nhập nội dung'}</span>
                       <span className="mt-1 block text-[11px] text-slate-500">{question.points} điểm</span>
                     </button>
@@ -231,7 +231,7 @@ export function ExamEditor({
 
                   {selectedQuestion.type === 'multiple-choice' && (
                     <fieldset className="space-y-2">
-                      <legend className="mb-2 text-sm font-medium text-slate-700">Phương án · chọn đáp án đúng</legend>
+                      <legend className="mb-2 text-sm font-medium text-slate-700">Phương án - chọn đáp án đúng</legend>
                       {selectedQuestion.options.map((option, index) => (
                         <div key={index} className="flex items-center gap-2">
                           <input type="radio" name={`correct-${selectedQuestion.id}`} checked={selectedQuestion.correctIndex === index} onChange={() => updateQuestion(selectedQuestion.id, { correctIndex: index, correctAnswer: option })} aria-label={`Đặt phương án ${String.fromCharCode(65 + index)} là đáp án đúng`} className="accent-blue-700" />
@@ -251,7 +251,7 @@ export function ExamEditor({
 
                   {selectedQuestion.type === 'true-false' && (
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium text-slate-700">Các nhận định · chọn nhận định đúng</legend>
+                      <legend className="text-sm font-medium text-slate-700">Các nhận định - chọn nhận định đúng</legend>
                       {selectedQuestion.options.map((option, index) => (
                         <div key={index} className="flex items-center gap-2">
                           <select

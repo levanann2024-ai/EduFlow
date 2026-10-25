@@ -423,7 +423,7 @@ export function ExamWorkspace({ examTitle, subject, stream, onSubmit, onExit }: 
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><BookIcon /></span>
           <div className="min-w-0">
             <p className="text-sm font-extrabold text-blue-700">EduFlow</p>
-            <p className="max-w-[70vw] text-sm font-semibold leading-5 text-slate-800 sm:max-w-[calc(100vw-220px)] sm:text-base">{subject} · {examTitle} · {gradeLabel}</p>
+            <p className="max-w-[70vw] text-sm font-semibold leading-5 text-slate-800 sm:max-w-[calc(100vw-220px)] sm:text-base">{subject} - {examTitle} - {gradeLabel}</p>
           </div>
         </div>
         <button type="button" onClick={onExit} className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
