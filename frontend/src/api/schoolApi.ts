@@ -49,15 +49,36 @@ export interface ClassAssignment {
   createdAt?: string;
   studentCount: number;
   submittedCount: number;
+  students: AssignmentStudentStatus[];
 }
 
-export interface StudentAssignment extends Omit<ClassAssignment, 'studentCount' | 'submittedCount'> {
+export interface AssignmentStudentStatus {
+  id: string;
+  fullName: string;
+  submittedAt: string | null;
+  gradedAt: string | null;
+}
+
+export interface AssignmentSubmission {
+  studentId: string;
+  studentName: string;
+  responseText: string | null;
+  submittedAt: string | null;
+  score: number | null;
+  teacherFeedback: string;
+  gradedAt: string | null;
+}
+
+export interface StudentAssignment extends Omit<ClassAssignment, 'studentCount' | 'submittedCount' | 'students'> {
   classId: string;
   className: string;
   classCode: string;
   teacherName: string;
   responseText: string | null;
   submittedAt: string | null;
+  score: number | null;
+  teacherFeedback: string;
+  gradedAt: string | null;
 }
 
 export interface ClassLearningResource {
@@ -73,6 +94,14 @@ export interface ClassLearningResource {
   content: string;
   note: string;
   createdAt: string;
+  files: LearningResourceFile[];
+}
+
+export interface LearningResourceFile {
+  id: string;
+  name: string;
+  mediaType: string;
+  sizeBytes: number;
 }
 
 export interface StudentLearningResource extends ClassLearningResource {
@@ -231,7 +260,24 @@ function isClassAssignment(value: unknown): value is ClassAssignment {
     && typeof value.dueAt === 'string'
     && (value.createdAt === undefined || typeof value.createdAt === 'string')
     && typeof value.studentCount === 'number'
-    && typeof value.submittedCount === 'number';
+    && typeof value.submittedCount === 'number'
+    && Array.isArray(value.students)
+    && value.students.every((student) => isRecord(student)
+      && typeof student.id === 'string'
+      && typeof student.fullName === 'string'
+      && (student.submittedAt === null || typeof student.submittedAt === 'string')
+      && (student.gradedAt === null || typeof student.gradedAt === 'string'));
+}
+
+function isAssignmentSubmission(value: unknown): value is AssignmentSubmission {
+  return isRecord(value)
+    && typeof value.studentId === 'string'
+    && typeof value.studentName === 'string'
+    && (value.responseText === null || typeof value.responseText === 'string')
+    && (value.submittedAt === null || typeof value.submittedAt === 'string')
+    && (value.score === null || (typeof value.score === 'number' && Number.isFinite(value.score)))
+    && typeof value.teacherFeedback === 'string'
+    && (value.gradedAt === null || typeof value.gradedAt === 'string');
 }
 
 export async function saveStudentGrades(
@@ -275,6 +321,53 @@ export async function listClassAssignments(
   return body.assignments;
 }
 
+export async function listClassAssignmentSubmissions(
+  classId: string,
+  assignmentId: string,
+): Promise<AssignmentSubmission[]> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}/submissions`,
+    { method: 'GET' },
+  );
+  const body = await parseAssignmentResponse(response);
+  if (body.assignmentId !== assignmentId
+    || !Array.isArray(body.submissions)
+    || !body.submissions.every(isAssignmentSubmission)) {
+    throw new Error('Phản hồi danh sách bài nộp không đúng định dạng.');
+  }
+  return body.submissions;
+}
+
+export async function saveClassAssignmentGrade(
+  classId: string,
+  assignmentId: string,
+  studentId: string,
+  input: { score: number; teacherFeedback: string },
+): Promise<{ score: number; teacherFeedback: string; gradedAt: string }> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}`
+      + `/submissions/${encodeURIComponent(studentId)}/grade`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  const body = await parseAssignmentResponse(response);
+  const grade = body.grade;
+  if (!isRecord(grade)
+    || typeof grade.score !== 'number'
+    || typeof grade.teacherFeedback !== 'string'
+    || typeof grade.gradedAt !== 'string') {
+    throw new Error('Phản hồi lưu điểm không đúng định dạng.');
+  }
+  return {
+    score: grade.score,
+    teacherFeedback: grade.teacherFeedback,
+    gradedAt: grade.gradedAt,
+  };
+}
+
 export async function createClassAssignment(
   classId: string,
   input: {
@@ -310,6 +403,15 @@ interface RawClassLearningResource {
   content: string;
   note: string;
   created_at: string;
+  files: LearningResourceFile[];
+}
+
+function isLearningResourceFile(value: unknown): value is LearningResourceFile {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.mediaType === 'string'
+    && typeof value.sizeBytes === 'number';
 }
 
 function isClassLearningResource(value: unknown): value is RawClassLearningResource {
@@ -325,7 +427,9 @@ function isClassLearningResource(value: unknown): value is RawClassLearningResou
     && typeof value.title === 'string'
     && typeof value.content === 'string'
     && typeof value.note === 'string'
-    && typeof value.created_at === 'string';
+    && typeof value.created_at === 'string'
+    && Array.isArray(value.files)
+    && value.files.every(isLearningResourceFile);
 }
 
 function mapClassLearningResource(value: RawClassLearningResource): ClassLearningResource {
@@ -342,6 +446,7 @@ function mapClassLearningResource(value: RawClassLearningResource): ClassLearnin
     content: value.content,
     note: value.note,
     createdAt: value.created_at,
+    files: value.files,
   };
 }
 
@@ -352,6 +457,38 @@ export async function listClassLearningResources(classId: string): Promise<Class
     throw new Error('Phản hồi tài liệu lớp không đúng định dạng.');
   }
   return body.resources.map(mapClassLearningResource);
+}
+
+export async function renameClassLearningResourceChapter(
+  classId: string,
+  chapter: string,
+  input: { academicYear: string; semester: string; subject: string; newChapter: string },
+): Promise<void> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resource-chapters/${encodeURIComponent(chapter)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  await readResponse(response);
+}
+
+export async function deleteClassLearningResourceChapter(
+  classId: string,
+  chapter: string,
+  input: { academicYear: string; semester: string; subject: string },
+): Promise<void> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resource-chapters/${encodeURIComponent(chapter)}`,
+    {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  await readResponse(response);
 }
 
 export async function createClassLearningResource(
@@ -376,6 +513,94 @@ export async function createClassLearningResource(
   await readResponse(response);
 }
 
+export async function updateClassLearningResource(
+  classId: string,
+  resourceId: string,
+  input: {
+    academicYear: string;
+    semester: string;
+    subject: string;
+    chapter: string;
+    lesson: string;
+    period: string | null;
+    title: string;
+    content: string;
+    note: string;
+    fileName?: string;
+    file?: File;
+  },
+): Promise<void> {
+  const formData = new FormData();
+  formData.set('academicYear', input.academicYear);
+  formData.set('semester', input.semester);
+  formData.set('subject', input.subject);
+  formData.set('chapter', input.chapter);
+  formData.set('lesson', input.lesson);
+  formData.set('period', input.period ?? '');
+  formData.set('title', input.title);
+  formData.set('content', input.content);
+  formData.set('note', input.note);
+  if (input.fileName !== undefined) formData.set('fileName', input.fileName);
+  if (input.file) formData.set('file', input.file, input.file.name);
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resources/${encodeURIComponent(resourceId)}`,
+    {
+      method: 'PUT',
+      body: formData,
+    },
+  );
+  await readResponse(response);
+}
+
+export async function uploadClassLearningResource(
+  classId: string,
+  input: {
+    academicYear: string;
+    semester: string;
+    subject: string;
+    chapter: string;
+    lesson: string;
+    period: string | null;
+    title: string;
+    note: string;
+    file: File;
+  },
+): Promise<void> {
+  const formData = new FormData();
+  formData.set('academicYear', input.academicYear);
+  formData.set('semester', input.semester);
+  formData.set('subject', input.subject);
+  formData.set('chapter', input.chapter);
+  formData.set('lesson', input.lesson);
+  formData.set('period', input.period ?? '');
+  formData.set('title', input.title);
+  formData.set('note', input.note);
+  formData.set('file', input.file, input.file.name);
+  const response = await authenticatedFetch(`/api/classes/${encodeURIComponent(classId)}/resources/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  await readResponse(response);
+}
+
+export async function downloadClassLearningResourceFile(resourceId: string, fileId: string): Promise<Blob> {
+  const response = await authenticatedFetch(
+    `/api/resources/${encodeURIComponent(resourceId)}/files/${encodeURIComponent(fileId)}`,
+    { method: 'GET' },
+  );
+  if (!response.ok) {
+    let message = 'Không thể tải tệp tài liệu.';
+    try {
+      const body: unknown = await response.json();
+      if (isRecord(body) && typeof body.message === 'string') message = body.message;
+    } catch {
+      throw new Error(message);
+    }
+    throw new SchoolApiError(message, response.status);
+  }
+  return response.blob();
+}
+
 function isStudentAssignment(value: unknown): value is StudentAssignment {
   return isRecord(value)
     && typeof value.id === 'string'
@@ -394,7 +619,10 @@ function isStudentAssignment(value: unknown): value is StudentAssignment {
     && typeof value.classCode === 'string'
     && typeof value.teacherName === 'string'
     && (value.responseText === null || typeof value.responseText === 'string')
-    && (value.submittedAt === null || typeof value.submittedAt === 'string');
+    && (value.submittedAt === null || typeof value.submittedAt === 'string')
+    && (value.score === null || (typeof value.score === 'number' && Number.isFinite(value.score)))
+    && typeof value.teacherFeedback === 'string'
+    && (value.gradedAt === null || typeof value.gradedAt === 'string');
 }
 
 function isStudentLearningResource(value: unknown): value is StudentLearningResource {
@@ -413,7 +641,9 @@ function isStudentLearningResource(value: unknown): value is StudentLearningReso
     && typeof value.content === 'string'
     && typeof value.note === 'string'
     && typeof value.createdAt === 'string'
-    && typeof value.teacherName === 'string';
+    && typeof value.teacherName === 'string'
+    && Array.isArray(value.files)
+    && value.files.every(isLearningResourceFile);
 }
 
 export async function listStudentLearningResources(): Promise<StudentLearningResource[]> {

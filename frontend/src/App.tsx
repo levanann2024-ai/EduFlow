@@ -276,7 +276,7 @@ function App() {
               {activePage === 'lessons' && <LessonRepository />}
               {activePage === 'lesson-builder' && <AILessonBuilder initialMode={lessonBuilderInitialMode} />}
               {role === 'lecturer' && (activePage === 'question-bank' || activePage === 'exams') && <ExamQuestionWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
-              {role === 'lecturer' && (activePage === 'ai-grading' || activePage === 'analytics') && <GradingAnalyticsWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
+              {role === 'lecturer' && (activePage === 'ai-grading' || activePage === 'analytics') && <GradingAnalyticsWorkspace currentPage={activePage} />}
               {role === 'lecturer' && (activePage === 'exam-monitor' || activePage === 'appeals') && <ProctoringWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
               {activePage === 'analytics' && role !== 'lecturer' && <Analytics role={role} />}
               {activePage === 'lectures' && <Lectures role={role} />}

@@ -90,6 +90,16 @@ const MIGRATIONS = [
     file: path.join(__dirname, '..', 'db', 'migrations', '006_class_learning_content.sql'),
     preflight: null,
   },
+  {
+    name: '007_class_learning_resource_files',
+    file: path.join(__dirname, '..', 'db', 'migrations', '007_class_learning_resource_files.sql'),
+    preflight: null,
+  },
+  {
+    name: '008_assignment_grading',
+    file: path.join(__dirname, '..', 'db', 'migrations', '008_assignment_grading.sql'),
+    preflight: null,
+  },
 ];
 
 const CORE_TABLES = [
@@ -112,6 +122,7 @@ const APPLICATION_TABLES = [
   'class_assignments',
   'class_assignment_submissions',
   'class_learning_resources',
+  'class_learning_resource_files',
 ];
 
 function assertMigrationStatements(sql, migrationName) {

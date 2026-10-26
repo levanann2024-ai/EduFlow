@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { getSavedItems, saveItem } from './savedItems';
 import {
+  downloadClassLearningResourceFile,
   listStudentAssignments,
   listStudentLearningResources,
   submitAssignment,
@@ -53,6 +54,7 @@ type ChapterGroup = {
 
 type AssignmentChapterGroup = {
   chapter: string;
+  isFree?: boolean;
   lessons: Array<{ lesson: string; assignments: StudentAssignment[] }>;
 };
 
@@ -73,6 +75,20 @@ function formatDueDate(value: string) {
   return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 }
 
+function isAssignmentPastDue(assignment: StudentAssignment, now = Date.now()) {
+  return now > new Date(assignment.dueAt).getTime();
+}
+
+function assignmentStatus(assignment: StudentAssignment, now = Date.now()) {
+  if (assignment.score !== null) return `Đã chấm · ${assignment.score}/10`;
+  if (assignment.submittedAt) return 'Đã làm';
+  return isAssignmentPastDue(assignment, now) ? 'Quá hạn nộp bài' : 'Chưa làm';
+}
+
+function canEditAssignment(assignment: StudentAssignment, now = Date.now()) {
+  return !isAssignmentPastDue(assignment, now) && assignment.score === null;
+}
+
 function normalizeSubjectName(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleUpperCase('vi').replace(/[^A-Z0-9]/g, '');
 }
@@ -85,16 +101,23 @@ export function MyClasses({
 }: MyClassesProps) {
   const [resources, setResources] = useState<StudentLearningResource[]>([]);
   const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [query, setQuery] = useState('');
   const [semester, setSemester] = useState<Semester>('Kỳ 1');
+  const [activeTab, setActiveTab] = useState<'lesson' | 'assignment'>(
+    () => initialSubjectView === 'assignments' ? 'assignment' : 'lesson',
+  );
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [resourceFileUrl, setResourceFileUrl] = useState<string | null>(null);
+  const [resourceFileLoading, setResourceFileLoading] = useState(false);
+  const [resourceFileError, setResourceFileError] = useState('');
   const [savedResourceIds, setSavedResourceIds] = useState(
     () => new Set(getSavedItems().filter((item) => item.type === 'resource').map((item) => item.id)),
   );
@@ -118,6 +141,11 @@ export function MyClasses({
 
   useEffect(() => {
     void refresh();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const groups = useMemo(() => {
@@ -156,9 +184,11 @@ export function MyClasses({
       if (match) {
         setSelectedGroupKey(match.key);
         if (initialSubjectView === 'assignments') {
+          setActiveTab('assignment');
           const assignment = match.assignments.find((item) => item.semester === semester && !item.submittedAt);
           setSelectedAssignmentId(assignment?.id ?? null);
         } else {
+          setActiveTab('lesson');
           const resource = match.resources.find((item) =>
             displaySemester(item.semester) === semester
             && (!initialSubjectTopic
@@ -199,21 +229,26 @@ export function MyClasses({
       }))
       .sort((first, second) => first.chapter.localeCompare(second.chapter, 'vi', { numeric: true }));
   }, [visibleResources]);
-  const pendingAssignments = useMemo(
+  const visibleAssignments = useMemo(
     () => selectedGroup?.assignments.filter((assignment) =>
-      assignment.semester === semester && assignment.submittedAt === null) ?? [],
+      assignment.semester === semester) ?? [],
     [selectedGroup, semester],
   );
   const assignmentChapterGroups = useMemo(() => {
     const chapters = new Map<string, Map<string, StudentAssignment[]>>();
-    pendingAssignments.forEach((assignment) => {
+    const freeAssignments: StudentAssignment[] = [];
+    visibleAssignments.forEach((assignment) => {
+      if (!assignment.chapter.trim() || !assignment.lesson.trim()) {
+        freeAssignments.push(assignment);
+        return;
+      }
       const chapter = chapters.get(assignment.chapter) ?? new Map<string, StudentAssignment[]>();
       const lessons = chapter.get(assignment.lesson) ?? [];
       lessons.push(assignment);
       chapter.set(assignment.lesson, lessons);
       chapters.set(assignment.chapter, chapter);
     });
-    return Array.from(chapters.entries())
+    const groups = Array.from(chapters.entries())
       .map(([chapter, lessons]): AssignmentChapterGroup => ({
         chapter,
         lessons: Array.from(lessons.entries())
@@ -221,9 +256,51 @@ export function MyClasses({
           .sort((first, second) => first.lesson.localeCompare(second.lesson, 'vi', { numeric: true })),
       }))
       .sort((first, second) => first.chapter.localeCompare(second.chapter, 'vi', { numeric: true }));
-  }, [pendingAssignments]);
+    if (freeAssignments.length) {
+      groups.unshift({
+        chapter: 'Bài tập tự do',
+        isFree: true,
+        lessons: [{ lesson: '', assignments: freeAssignments }],
+      });
+    }
+    return groups;
+  }, [visibleAssignments]);
   const selectedResource = visibleResources.find((resource) => resource.id === selectedResourceId) ?? visibleResources[0] ?? null;
-  const selectedAssignment = pendingAssignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null;
+  const selectedAssignment = visibleAssignments.find((assignment) => assignment.id === selectedAssignmentId)
+    ?? visibleAssignments[0]
+    ?? null;
+  const selectedResourceIdForFile = selectedResource?.id;
+  const selectedFileId = selectedResource?.files[0]?.id;
+
+  useEffect(() => {
+    if (!selectedResourceIdForFile || !selectedFileId) {
+      setResourceFileUrl(null);
+      setResourceFileError('');
+      setResourceFileLoading(false);
+      return;
+    }
+    let active = true;
+    let objectUrl: string | null = null;
+    setResourceFileUrl(null);
+    setResourceFileError('');
+    setResourceFileLoading(true);
+    downloadClassLearningResourceFile(selectedResourceIdForFile, selectedFileId)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setResourceFileUrl(objectUrl);
+      })
+      .catch((downloadError) => {
+        if (active) setResourceFileError(downloadError instanceof Error ? downloadError.message : 'Không thể tải tệp đính kèm.');
+      })
+      .finally(() => {
+        if (active) setResourceFileLoading(false);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedResourceIdForFile, selectedFileId]);
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(() => new Set());
   const [expandedLessons, setExpandedLessons] = useState<Set<string>>(() => new Set());
 
@@ -241,16 +318,21 @@ export function MyClasses({
       setExpandedLessons((current) => new Set(current).add(`${chapterKey}:${selectedAssignment.lesson}`));
     }
   }, [selectedAssignment]);
+  useEffect(() => {
+    setResponseText(selectedAssignment?.responseText ?? '');
+  }, [selectedAssignment]);
   const allPendingAssignments = assignments.filter((assignment) => assignment.submittedAt === null);
   const submittedAssignments = assignments.filter((assignment) => assignment.submittedAt !== null);
 
   const openGroup = (group: LearningGroup, view: 'lesson' | 'assignment') => {
     setSelectedGroupKey(group.key);
+    setActiveTab(view);
     const matchingResources = group.resources.filter((item) => displaySemester(item.semester) === semester);
-    const matchingAssignments = group.assignments.filter((item) => item.semester === semester && item.submittedAt === null);
+    const matchingAssignments = group.assignments.filter((item) => item.semester === semester);
     if (view === 'assignment' && matchingAssignments.length) {
       setSelectedAssignmentId(matchingAssignments[0].id);
       setSelectedResourceId(null);
+      setResponseText(matchingAssignments[0].responseText ?? '');
     } else {
       setSelectedResourceId(matchingResources[0]?.id ?? null);
       setSelectedAssignmentId(null);
@@ -300,7 +382,7 @@ export function MyClasses({
   };
 
   const handleSubmitAssignment = async () => {
-    if (!selectedAssignment || !responseText.trim()) {
+    if (!selectedAssignment || !responseText.trim() || !canEditAssignment(selectedAssignment, currentTime)) {
       setSubmitError('Nhập câu trả lời trước khi nộp bài.');
       return;
     }
@@ -308,8 +390,6 @@ export function MyClasses({
     setSubmitError('');
     try {
       await submitAssignment(selectedAssignment.id, responseText.trim());
-      setResponseText('');
-      setSelectedAssignmentId(null);
       await refresh();
     } catch (requestError) {
       setSubmitError(requestError instanceof Error ? requestError.message : 'Không thể nộp bài tập.');
@@ -345,64 +425,96 @@ export function MyClasses({
           </label>
         </header>
         <div className="grid min-h-[min(72vh,760px)] lg:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r sm:p-5">
-            <div className="mb-4">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800"><BookOpen className="h-4 w-4" /> Bài giảng</h2>
-              <p className="mt-1 text-xs text-slate-500">Tài liệu do giáo viên đăng trên hệ thống.</p>
+          <aside className="min-w-0 overflow-x-hidden border-b border-slate-200 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r sm:p-5">
+            <div className="mb-4 grid grid-cols-2 gap-2" role="tablist" aria-label="Nội dung lớp học">
+              <button
+                id="student-lessons-tab"
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'lesson'}
+                aria-controls="student-lessons-panel"
+                onClick={() => setActiveTab('lesson')}
+                className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+                  activeTab === 'lesson' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <BookOpen className="h-4 w-4" /> Bài giảng
+              </button>
+              <button
+                id="student-assignments-tab"
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'assignment'}
+                aria-controls="student-assignments-panel"
+                onClick={() => setActiveTab('assignment')}
+                className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+                  activeTab === 'assignment' ? 'bg-rose-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <ClipboardList className="h-4 w-4" /> Bài tập
+                <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${activeTab === 'assignment' ? 'bg-white/20' : 'bg-rose-50 text-rose-700'}`}>
+                  {visibleAssignments.length}
+                </span>
+              </button>
             </div>
+            {activeTab === 'lesson' && (
+              <div id="student-lessons-panel" role="tabpanel" aria-labelledby="student-lessons-tab">
+              <p className="mb-3 text-xs text-slate-500">Tài liệu do giáo viên đăng trên hệ thống.</p>
             {chapterGroups.length ? (
-              <nav aria-label="Danh sách bài giảng" className="grid max-h-[36vh] gap-1 overflow-y-auto">
+              <nav aria-label="Danh sách bài giảng" className="grid min-w-0 grid-cols-[minmax(0,1fr)] max-h-[36vh] gap-1 overflow-x-hidden overflow-y-auto">
                 {chapterGroups.map(({ chapter, lessons }) => {
                   const chapterExpanded = expandedChapters.has(chapter);
                   return (
-                    <section key={chapter} className="border-b border-slate-200/80 pb-1">
+                    <section key={chapter} className="min-w-0 border-b border-slate-200/80 pb-1">
                       <button
                         type="button"
                         aria-expanded={chapterExpanded}
                         onClick={() => toggleExpandedChapter(chapter)}
-                        className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm font-extrabold uppercase tracking-wide text-slate-800 hover:bg-white"
+                        className="flex min-h-10 min-w-0 w-full items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-2 text-left text-sm font-extrabold uppercase tracking-wide text-slate-800 hover:bg-white"
                       >
-                        <span className="min-w-0 break-words">{chapter}</span>
+                        <span className="min-w-0 flex-1 truncate" title={chapter}>{chapter}</span>
                         {chapterExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                       </button>
                       {chapterExpanded && (
-                        <div className="space-y-1 pl-3">
+                        <div className="min-w-0 space-y-1 pl-3">
                           {lessons.map(({ lesson, resources: lessonResources }) => {
                             const lessonKey = `${chapter}:${lesson}`;
                             const lessonExpanded = expandedLessons.has(lessonKey);
                             return (
-                              <section key={lessonKey}>
+                              <section key={lessonKey} className="min-w-0">
                                 <button
                                   type="button"
                                   aria-expanded={lessonExpanded}
                                   onClick={() => toggleExpandedLesson(chapter, lesson)}
-                                  className="flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm font-bold text-slate-700 hover:bg-white"
+                                  className="flex min-h-9 min-w-0 w-full items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm font-bold text-slate-700 hover:bg-white"
                                 >
-                                  <span className="min-w-0 break-words">{lesson}</span>
+                                  <span className="min-w-0 flex-1 truncate" title={lesson}>{lesson}</span>
                                   {lessonExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                                 </button>
                                 {lessonExpanded && (
-                                  <ul className="space-y-1 pb-1 pl-3">
+                                  <ul className="min-w-0 space-y-1 overflow-x-hidden pb-1 pl-3">
                                     {lessonResources.map((resource) => {
-                                      const ResourceIcon = resourceFileIcon(resource.title);
+                                      const resourceFile = resource.files[0];
+                                      const ResourceIcon = resourceFileIcon(resourceFile?.name ?? resource.title);
                                       return (
-                                        <li key={resource.id}>
+                                        <li key={resource.id} className="min-w-0">
                                           <button
                                             type="button"
                                             onClick={() => {
                                               setSelectedResourceId(resource.id);
                                               setSelectedAssignmentId(null);
                                             }}
-                                            className={`flex min-h-9 w-full items-start gap-2 rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
+                                            className={`flex min-h-9 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
                                               selectedResource?.id === resource.id && !selectedAssignment
                                                 ? 'border-blue-600 bg-blue-50 text-blue-900'
                                                 : 'border-transparent text-slate-600 hover:bg-white'
                                             }`}
                                           >
                                             <ResourceIcon className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                                            <span className="min-w-0">
-                                              <span className="block break-words font-semibold">{resource.title}</span>
-                                              {resource.period && <span className="mt-0.5 block text-[11px] text-slate-500">{resource.period}</span>}
+                                            <span className="min-w-0 flex-1">
+                                              <span className="block truncate font-semibold" title={resource.title}>{resource.title}</span>
+                                              {resourceFile && <span className="mt-0.5 block truncate text-[11px]">{resourceFile.name}</span>}
+                                              {resource.period && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{resource.period}</span>}
                                             </span>
                                           </button>
                                         </li>
@@ -420,62 +532,79 @@ export function MyClasses({
                 })}
               </nav>
             ) : <p className="py-3 text-sm text-slate-500">Chưa có bài giảng trong học kỳ này.</p>}
-            <div className="mt-5 border-t border-slate-200 pt-4">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                <ClipboardList className="h-4 w-4 text-rose-600" /> Bài tập
-                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">{pendingAssignments.length} chưa làm</span>
-              </h2>
-              {pendingAssignments.length ? (
-                <nav aria-label="Bài tập chưa làm" className="mt-2 grid max-h-[30vh] gap-1 overflow-y-auto">
-                  {assignmentChapterGroups.map(({ chapter, lessons }) => {
+              </div>
+            )}
+            {activeTab === 'assignment' && (
+              <div id="student-assignments-panel" role="tabpanel" aria-labelledby="student-assignments-tab">
+                <p className="mb-3 text-xs text-slate-500">Bài chưa làm, đã nộp và kết quả chấm điểm.</p>
+              {visibleAssignments.length ? (
+                <nav aria-label="Danh sách bài tập" className="grid min-w-0 grid-cols-[minmax(0,1fr)] max-h-[66vh] gap-1 overflow-x-hidden overflow-y-auto">
+                  {assignmentChapterGroups.map(({ chapter, lessons, isFree }) => {
                     const chapterKey = `assignment:${chapter}`;
                     const chapterExpanded = expandedChapters.has(chapterKey);
                     return (
-                      <section key={chapterKey} className="border-b border-slate-200/80 pb-1">
+                      <section
+                        key={chapterKey}
+                        className={`min-w-0 rounded-lg border pb-1 ${
+                          isFree ? 'mb-2 border-rose-200 bg-rose-50/70 px-1' : 'border-x-0 border-t-0 border-slate-200/80'
+                        }`}
+                      >
                         <button
                           type="button"
                           aria-expanded={chapterExpanded}
                           onClick={() => toggleExpandedChapter(chapterKey)}
-                          className="flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-xs font-extrabold uppercase tracking-wide text-slate-800 hover:bg-white"
+                          className={`flex min-h-10 min-w-0 w-full items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-2 text-left text-xs font-extrabold uppercase tracking-wide ${
+                            isFree ? 'text-rose-800 hover:bg-rose-100' : 'text-slate-800 hover:bg-white'
+                          }`}
                         >
-                          <span className="min-w-0 break-words">{chapter}</span>
+                          <span className="min-w-0 flex-1 truncate" title={chapter}>{chapter}</span>
                           {chapterExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                         </button>
                         {chapterExpanded && (
-                          <div className="space-y-1 pl-3">
+                          <div className="min-w-0 space-y-1 pl-3">
                             {lessons.map(({ lesson, assignments: lessonAssignments }) => {
                               const lessonKey = `assignment:${chapter}:${lesson}`;
                               const lessonExpanded = expandedLessons.has(lessonKey);
                               return (
-                                <section key={lessonKey}>
-                                  <button
-                                    type="button"
-                                    aria-expanded={lessonExpanded}
-                                    onClick={() => toggleExpandedLesson(`assignment:${chapter}`, lesson)}
-                                    className="flex min-h-8 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-white"
-                                  >
-                                    <span className="min-w-0 break-words">{lesson}</span>
-                                    {lessonExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
-                                  </button>
-                                  {lessonExpanded && (
-                                    <ul className="space-y-1 pb-1 pl-3">
+                                <section key={lessonKey} className="min-w-0">
+                                  {!isFree && (
+                                    <button
+                                      type="button"
+                                      aria-expanded={lessonExpanded}
+                                      onClick={() => toggleExpandedLesson(`assignment:${chapter}`, lesson)}
+                                      className="flex min-h-8 min-w-0 w-full items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-white"
+                                    >
+                                      <span className="min-w-0 flex-1 truncate" title={lesson}>{lesson}</span>
+                                      {lessonExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                                    </button>
+                                  )}
+                                  {(isFree || lessonExpanded) && (
+                                    <ul className="min-w-0 space-y-1 overflow-x-hidden pb-1 pl-3">
                                       {lessonAssignments.map((assignment) => (
-                                        <li key={assignment.id}>
+                                        <li key={assignment.id} className="min-w-0">
                                           <button
                                             type="button"
                                             onClick={() => {
                                               setSelectedAssignmentId(assignment.id);
                                               setSelectedResourceId(null);
-                                              setResponseText('');
+                                              setResponseText(assignment.responseText ?? '');
+                                              setSubmitError('');
                                             }}
-                                            className={`flex min-h-9 w-full items-start gap-2 rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
+                                            className={`flex min-h-9 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
                                               selectedAssignment?.id === assignment.id
                                                 ? 'border-rose-500 bg-rose-50 text-rose-900'
                                                 : 'border-transparent text-slate-600 hover:bg-white'
                                             }`}
                                           >
                                             <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-                                            <span className="break-words font-semibold">{assignment.title}</span>
+                                            <span className="min-w-0 flex-1">
+                                              <span className="block truncate font-semibold" title={assignment.title}>{assignment.title}</span>
+                                              <span className={`mt-0.5 block truncate text-[11px] font-medium ${
+                                                assignment.score !== null ? 'text-emerald-700'
+                                                  : assignment.submittedAt ? 'text-blue-700'
+                                                    : 'text-rose-700'
+                                              }`}>{assignmentStatus(assignment, currentTime)}</span>
+                                            </span>
                                           </button>
                                         </li>
                                       ))}
@@ -490,26 +619,65 @@ export function MyClasses({
                     );
                   })}
                 </nav>
-              ) : <p className="mt-2 text-sm text-slate-500">Không có bài tập cần làm.</p>}
-            </div>
+              ) : <p className="py-3 text-sm text-slate-500">Chưa có bài tập trong học kỳ này.</p>}
+              </div>
+            )}
           </aside>
           <main className="min-w-0 px-5 py-7 sm:px-8 sm:py-10 lg:px-12">
             {loadError && <p role="alert" className="mb-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{loadError}</p>}
-            {selectedAssignment ? (
+            {activeTab === 'assignment' && selectedAssignment ? (
               <article className="mx-auto max-w-4xl">
-                <p className="text-sm font-medium text-rose-700">{selectedAssignment.chapter} · {selectedAssignment.lesson}</p>
+                <p className="text-sm font-medium text-rose-700">
+                  {!selectedAssignment.chapter.trim() || !selectedAssignment.lesson.trim()
+                    ? 'Bài tập tự do'
+                    : `${selectedAssignment.chapter} · ${selectedAssignment.lesson}`}
+                </p>
                 <h1 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">{selectedAssignment.title}</h1>
+                <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                  selectedAssignment.score !== null ? 'bg-emerald-50 text-emerald-700'
+                    : selectedAssignment.submittedAt ? 'bg-blue-50 text-blue-700'
+                      : 'bg-rose-50 text-rose-700'
+                }`}>{assignmentStatus(selectedAssignment, currentTime)}</span>
                 <p className="mt-3 flex items-center gap-2 text-sm text-slate-500"><Clock3 className="h-4 w-4" /> Hạn nộp: {formatDueDate(selectedAssignment.dueAt)}</p>
                 <div className="mt-6 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-base leading-7 text-slate-700">{selectedAssignment.description}</div>
-                <label className="mt-6 block text-sm font-semibold text-slate-700">Câu trả lời
-                  <textarea value={responseText} onChange={(event) => setResponseText(event.target.value)} rows={6} maxLength={10000} className="input-field mt-2 w-full resize-y" placeholder="Nhập câu trả lời..." />
+                {selectedAssignment.score !== null && (
+                  <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="font-semibold text-emerald-800">Điểm: {selectedAssignment.score}/10</p>
+                    {selectedAssignment.teacherFeedback && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-emerald-900">{selectedAssignment.teacherFeedback}</p>}
+                  </section>
+                )}
+                {selectedAssignment.submittedAt && (
+                  <p className="mt-4 text-sm text-blue-700">Đã nộp lúc {formatDueDate(selectedAssignment.submittedAt)}</p>
+                )}
+                <label className="mt-6 block text-sm font-semibold text-slate-700">
+                  {selectedAssignment.submittedAt ? 'Bài làm đã nộp' : 'Câu trả lời'}
+                  <textarea
+                    value={responseText}
+                    onChange={(event) => setResponseText(event.target.value)}
+                    readOnly={!canEditAssignment(selectedAssignment, currentTime)}
+                    rows={6}
+                    maxLength={10000}
+                    className="input-field mt-2 w-full resize-y read-only:bg-slate-50 read-only:text-slate-600"
+                    placeholder="Nhập câu trả lời..."
+                  />
                 </label>
+                {isAssignmentPastDue(selectedAssignment, currentTime) && (
+                  <p className={`mt-3 rounded-lg p-3 text-sm font-semibold ${
+                    selectedAssignment.submittedAt ? 'bg-slate-50 text-slate-600' : 'bg-rose-50 text-rose-700'
+                  }`}>
+                    {selectedAssignment.submittedAt
+                      ? 'Đã hết hạn nộp — không thể chỉnh sửa bài làm.'
+                      : 'Quá hạn nộp bài — bạn chưa nộp bài tập này.'}
+                  </p>
+                )}
                 {submitError && <p role="alert" className="mt-3 text-sm text-rose-700">{submitError}</p>}
-                <button type="button" disabled={submitting} onClick={handleSubmitAssignment} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                  <Send className="h-4 w-4" /> {submitting ? 'Đang nộp...' : 'Nộp bài'}
-                </button>
+                {!isAssignmentPastDue(selectedAssignment, currentTime) && selectedAssignment.score === null && (
+                  <button type="button" disabled={submitting} onClick={handleSubmitAssignment} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                    <Send className="h-4 w-4" /> {submitting ? 'Đang lưu...' : selectedAssignment.submittedAt ? 'Cập nhật bài nộp' : 'Nộp bài'}
+                  </button>
+                )}
               </article>
-            ) : selectedResource ? (
+            ) : activeTab === 'lesson' && selectedResource ? (
               <article className="mx-auto max-w-4xl">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -523,14 +691,34 @@ export function MyClasses({
                   </button>
                 </div>
                 {selectedResource.note && <p className="mt-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-900">{selectedResource.note}</p>}
-                <section className="mt-7 whitespace-pre-wrap text-base leading-7 text-slate-700">{selectedResource.content}</section>
+                {selectedResource.files[0] && (
+                  <section className="mt-7 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <h2 className="break-all text-sm font-semibold text-slate-800">{selectedResource.files[0].name}</h2>
+                    {resourceFileLoading && <p className="mt-3 text-sm text-slate-500">Đang tải tệp...</p>}
+                    {resourceFileError && <p role="alert" className="mt-3 text-sm text-rose-700">{resourceFileError}</p>}
+                    {resourceFileUrl && selectedResource.files[0].mediaType.startsWith('image/') && (
+                      <img src={resourceFileUrl} alt={selectedResource.title} className="mt-3 max-h-[70vh] max-w-full rounded-lg object-contain" />
+                    )}
+                    {resourceFileUrl && selectedResource.files[0].mediaType === 'video/mp4' && (
+                      <video controls src={resourceFileUrl} className="mt-3 max-h-[70vh] max-w-full rounded-lg" />
+                    )}
+                    {resourceFileUrl && (
+                      <a href={resourceFileUrl} download={selectedResource.files[0].name} className="mt-3 inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                        Tải tệp về
+                      </a>
+                    )}
+                  </section>
+                )}
+                {selectedResource.content && (
+                  <section className="mt-7 whitespace-pre-wrap text-base leading-7 text-slate-700">{selectedResource.content}</section>
+                )}
                 {submitError && <p role="alert" className="mt-4 text-sm text-rose-700">{submitError}</p>}
               </article>
             ) : (
               <div className="flex min-h-64 flex-col items-center justify-center text-center">
-                <BookOpen className="h-10 w-10 text-slate-300" />
-                <p className="mt-3 font-semibold text-slate-700">Chưa có nội dung trong học kỳ này</p>
-                <p className="mt-1 text-sm text-slate-500">Giáo viên chưa đăng bài giảng hoặc bài tập.</p>
+                {activeTab === 'lesson' ? <BookOpen className="h-10 w-10 text-slate-300" /> : <ClipboardList className="h-10 w-10 text-slate-300" />}
+                <p className="mt-3 font-semibold text-slate-700">{activeTab === 'lesson' ? 'Chưa có bài giảng trong học kỳ này' : 'Chưa có bài tập trong học kỳ này'}</p>
+                <p className="mt-1 text-sm text-slate-500">{activeTab === 'lesson' ? 'Giáo viên chưa đăng bài giảng.' : 'Giáo viên chưa giao bài tập.'}</p>
               </div>
             )}
           </main>

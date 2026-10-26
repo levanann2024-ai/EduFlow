@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { BarChart3, ClipboardList, Eye, FileText, PenLine, Plus, ShieldAlert } from 'lucide-react';
+import { ClipboardList, Eye, FileText, Plus, ShieldAlert } from 'lucide-react';
 import type { Page } from '@/types';
-import { AIGradingEngine } from './AIGradingEngine';
+import { AssignmentGradingWorkspace } from './AssignmentGradingWorkspace';
 import { AppealsCenter } from './AppealsCenter';
 import { ClassAnalytics } from './ClassAnalytics';
 import { ExamManagement } from './ExamManagement';
@@ -90,23 +90,10 @@ export function ExamQuestionWorkspace({
 
 export function GradingAnalyticsWorkspace({
   currentPage,
-  onNavigate,
 }: {
   currentPage: Page;
-  onNavigate: (page: Page) => void;
 }) {
-  return (
-    <WorkspaceTabs
-      currentPage={currentPage}
-      onNavigate={onNavigate}
-      tabs={[
-        { page: 'ai-grading', label: 'Chấm bài', icon: PenLine },
-        { page: 'analytics', label: 'Phân tích kết quả', icon: BarChart3 },
-      ]}
-    >
-      {(activePage) => activePage === 'analytics' ? <ClassAnalytics /> : <AIGradingEngine />}
-    </WorkspaceTabs>
-  );
+  return currentPage === 'analytics' ? <ClassAnalytics /> : <AssignmentGradingWorkspace />;
 }
 
 export function ProctoringWorkspace({

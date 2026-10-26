@@ -7,7 +7,7 @@ import { TeacherClassGradebook } from '@/pages/teacher/TeacherClassGradebook';
 const tabs = [
   { id: 'overview', label: 'Thông tin chung', icon: BookOpen },
   { id: 'schedule', label: 'Lịch học', icon: Calendar },
-  { id: 'assignments', label: 'Bài tập', icon: BookOpen },
+  { id: 'assignments', label: 'Kiểm tra bài tập', icon: BookOpen },
 ] as const;
 
 type ClassTab = (typeof tabs)[number]['id'];
@@ -131,7 +131,6 @@ function ClassDetailView({ classId, onBack }: { classId: string; onBack: () => v
         <TeacherClassAssignments
           classId={classData.id}
           academicYear={classData.academic_year}
-          className={classData.name}
           subjects={subjects}
         />
       )}

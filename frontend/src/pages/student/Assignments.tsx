@@ -59,6 +59,14 @@ function AssignmentCard({
       <div className="flex-1 py-5">
         <h2 className="text-base font-semibold leading-6 text-slate-900">{assignment.title}</h2>
         {assignment.description && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{assignment.description}</p>}
+        {assignment.score !== null && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-sm font-semibold text-emerald-800">Điểm: {assignment.score}/10</p>
+            {assignment.teacherFeedback && (
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-emerald-900">{assignment.teacherFeedback}</p>
+            )}
+          </div>
+        )}
         <div className="mt-4 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
           {submitted ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <CalendarDays className="h-4 w-4 shrink-0 text-indigo-600" />}
           <span className="text-slate-500">Hạn nộp</span>

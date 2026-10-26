@@ -176,11 +176,11 @@ test('PostgreSQL integration tests use an isolated schema and apply the reposito
         WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
       [schemaName],
     );
-    assert.equal(tables.rows[0].count, 17);
+    assert.equal(tables.rows[0].count, 18);
     const migrationRows = await client.query(
       'SELECT count(*)::int AS count FROM eduflow_schema_migrations',
     );
-    assert.equal(migrationRows.rows[0].count, 6);
+    assert.equal(migrationRows.rows[0].count, 8);
   } finally {
     client.release();
   }
@@ -378,6 +378,37 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
       note: '',
     });
     assert.equal((await classroomService.listClassLearningResources(teacherAuth, classId))[0].id, resource.id);
+    const uploadedResource = await classroomService.createClassLearningResourceFile(teacherAuth, classId, {
+      ...input,
+      chapter: 'Chương 1',
+      lesson: 'Bài 1',
+      title: 'Ảnh minh họa phản ứng',
+      note: '',
+    }, {
+      originalname: 'minh-hoa.png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xZ8AAAAASUVORK5CYII=', 'base64'),
+    });
+    const replacementFile = Buffer.from('%PDF-1.4 updated lesson');
+    await classroomService.updateClassLearningResource(teacherAuth, classId, uploadedResource.id, {
+      ...input,
+      chapter: 'Chương 1',
+      lesson: 'Bài 1',
+      title: 'Ảnh minh họa phản ứng đã chỉnh sửa',
+      content: '',
+      note: 'Đã cập nhật bài giảng.',
+      fileName: 'updated-minh-hoa.pdf',
+    }, {
+      originalname: 'replacement.pdf',
+      buffer: replacementFile,
+    });
+    const uploadedFile = await classroomService.getClassLearningResourceFile(
+      teacherAuth,
+      uploadedResource.id,
+      uploadedResource.file.id,
+    );
+    assert.equal(uploadedFile.name, 'updated-minh-hoa.pdf');
+    assert.equal(uploadedFile.mediaType, 'application/pdf');
+    assert.deepEqual(uploadedFile.content, replacementFile);
     const gradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
     assert.deepEqual(gradebook.map((student) => student.fullName), studentNames);
     assert.deepEqual(gradebook[0].grades.regular, [8, 9, null, null]);
@@ -386,18 +417,117 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
     assert.equal(gradebook[0].assignments.overdueMissing, 0);
 
     const firstStudentAuth = { userId: studentIds[0], role: 'student', schoolIds: [schoolId] };
+    await assert.rejects(
+      classroomService.listClassAssignmentSubmissions(firstStudentAuth, classId, assignment.id),
+      (error) => error.status === 404,
+    );
+    await assert.rejects(
+      classroomService.saveClassAssignmentGrade(firstStudentAuth, classId, assignment.id, studentIds[0], {
+        score: 8,
+        teacherFeedback: 'Không được phép chấm.',
+      }),
+      (error) => error.status === 404,
+    );
+    await assert.rejects(
+      classroomService.updateClassLearningResource(firstStudentAuth, classId, uploadedResource.id, {
+        ...input,
+        chapter: 'Chương 1',
+        lesson: 'Bài 1',
+        title: 'Không được phép sửa',
+        content: '',
+        note: '',
+      }),
+      (error) => error.status === 403,
+    );
     const listedAssignments = await classroomService.listStudentAssignments(firstStudentAuth);
     assert.equal(listedAssignments.length, 1);
     assert.equal(listedAssignments[0].id, assignment.id);
     const studentResources = await classroomService.listStudentLearningResources(firstStudentAuth);
-    assert.equal(studentResources.length, 1);
-    assert.equal(studentResources[0].id, resource.id);
-    assert.equal(studentResources[0].teacherName, 'Đức');
+    assert.equal(studentResources.length, 2);
+    assert.ok(studentResources.some((item) => item.id === resource.id && item.teacherName === 'Đức'));
+    assert.ok(studentResources.some((item) => item.id === uploadedResource.id
+      && item.title === 'Ảnh minh họa phản ứng đã chỉnh sửa'
+      && item.files[0].name === 'updated-minh-hoa.pdf'));
+    const studentFile = await classroomService.getClassLearningResourceFile(
+      firstStudentAuth,
+      uploadedResource.id,
+      uploadedResource.file.id,
+    );
+    assert.equal(studentFile.mediaType, 'application/pdf');
     await classroomService.submitClassAssignment(firstStudentAuth, assignment.id, 'Bài làm của Văn An.');
+    const assignmentSubmissions = await classroomService.listClassAssignmentSubmissions(
+      teacherAuth,
+      classId,
+      assignment.id,
+    );
+    assert.equal(assignmentSubmissions.submissions.length, studentNames.length);
+    assert.equal(assignmentSubmissions.submissions.find((submission) => submission.studentId === studentIds[0]).responseText, 'Bài làm của Văn An.');
+    assert.ok(assignmentSubmissions.submissions
+      .filter((submission) => submission.responseText === null)
+      .every((submission) => submission.teacherFeedback === ''));
+    await classroomService.saveClassAssignmentGrade(teacherAuth, classId, assignment.id, studentIds[0], {
+      score: 8.5,
+      teacherFeedback: 'Lập luận tốt, cần trình bày rõ hơn.',
+    });
+    const gradedSubmissions = await classroomService.listClassAssignmentSubmissions(
+      teacherAuth,
+      classId,
+      assignment.id,
+    );
+    const gradedSubmission = gradedSubmissions.submissions.find((submission) => submission.studentId === studentIds[0]);
+    assert.equal(gradedSubmission.score, 8.5);
+    assert.equal(gradedSubmission.teacherFeedback, 'Lập luận tốt, cần trình bày rõ hơn.');
+    assert.ok(gradedSubmission.gradedAt);
+    const studentAssignmentsAfterGrading = await classroomService.listStudentAssignments(firstStudentAuth);
+    assert.equal(studentAssignmentsAfterGrading[0].score, 8.5);
+    assert.equal(studentAssignmentsAfterGrading[0].teacherFeedback, 'Lập luận tốt, cần trình bày rõ hơn.');
+    await classroomService.submitClassAssignment(firstStudentAuth, assignment.id, 'Bài làm đã cập nhật.');
+    const resubmitted = await classroomService.listClassAssignmentSubmissions(teacherAuth, classId, assignment.id);
+    const resubmittedWork = resubmitted.submissions.find((submission) => submission.studentId === studentIds[0]);
+    assert.equal(resubmittedWork.score, null);
+    assert.equal(resubmittedWork.teacherFeedback, '');
 
     const updatedGradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
     assert.equal(updatedGradebook[0].assignments.submitted, 1);
     assert.equal(updatedGradebook[1].assignments.submitted, 0);
+    const teacherAssignments = await classroomService.listClassAssignments(teacherAuth, classId, input);
+    assert.equal(teacherAssignments[0].students.length, studentNames.length);
+    assert.equal(teacherAssignments[0].students.filter((student) => student.submittedAt).length, 1);
+    assert.equal(teacherAssignments[0].students.find((student) => student.id === studentIds[0]).fullName, studentNames[0]);
+    assert.equal(teacherAssignments[0].students.find((student) => student.id === studentIds[1]).submittedAt, null);
+
+    const renamedChapter = await classroomService.renameClassLearningResourceChapter(
+      teacherAuth,
+      classId,
+      'Chương 1',
+      { ...input, newChapter: 'Chương đã đổi tên' },
+    );
+    assert.equal(renamedChapter.updatedCount, 2);
+    const renamedResources = await classroomService.listClassLearningResources(teacherAuth, classId);
+    assert.ok(renamedResources.every((item) => item.chapter === 'Chương đã đổi tên'));
+
+    await assert.rejects(
+      classroomService.deleteClassLearningResourceChapter(
+        firstStudentAuth,
+        classId,
+        'Chương đã đổi tên',
+        input,
+      ),
+      (error) => error.status === 403,
+    );
+    const deletedChapter = await classroomService.deleteClassLearningResourceChapter(
+      teacherAuth,
+      classId,
+      'Chương đã đổi tên',
+      input,
+    );
+    assert.equal(deletedChapter.deletedCount, 2);
+    assert.equal((await classroomService.listClassLearningResources(teacherAuth, classId)).length, 0);
+    await assert.rejects(
+      classroomService.getClassLearningResourceFile(firstStudentAuth, uploadedResource.id, uploadedResource.file.id),
+      (error) => error.status === 404,
+    );
+    assert.equal((await classroomService.listStudentAssignments(firstStudentAuth)).length, 1);
   } finally {
     client.release();
   }

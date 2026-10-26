@@ -34,6 +34,10 @@ Students and teachers must resolve to exactly one active school for authenticati
 
 These endpoints are read-only. Class creation, membership changes, teacher assignment changes, and frontend integration are not part of this API phase.
 
+## Teacher assignment grading
+
+Run `npm run migrate` to apply migration 008, which adds teacher scores and feedback to submitted class assignments. Assigned teachers can retrieve an assignment's student work with `GET /api/classes/:classId/assignments/:assignmentId/submissions` and save a score from 0 to 10 plus feedback with `PUT /api/classes/:classId/assignments/:assignmentId/submissions/:studentId/grade`. Both routes require an active teacher assignment for the class subject. Students see confirmed scores and feedback from `GET /api/assignments`; resubmitting an answer clears the prior grade so the updated work can be reviewed again.
+
 ## Deployment
 
 Set `DATABASE_URL`, `AUTH_JWT_SECRET`, and a comma-separated exact `AUTH_ALLOWED_ORIGINS` list in the backend deployment environment. Behind a single reverse proxy, set `TRUST_PROXY_HOPS=1` so rate limits use the caller IP. For a frontend and API on separate sites, configure `AUTH_COOKIE_SAME_SITE=none` and `AUTH_COOKIE_SECURE=true`, and retain the Origin check and credentialed CORS allowlist. Do not place database credentials or signing secrets in frontend variables.

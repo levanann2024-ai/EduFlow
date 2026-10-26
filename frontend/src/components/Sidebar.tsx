@@ -109,7 +109,8 @@ const menus: Record<Role, MenuSection[]> = {
       { id: 'lessons', label: 'Tài liệu bài giảng' },
     ] },
     { label: 'GIÁM SÁT & CHẤM ĐIỂM', items: [
-      { id: 'ai-grading', label: 'Chấm bài & Phân tích' },
+      { id: 'ai-grading', label: 'Chấm bài' },
+      { id: 'analytics', label: 'Phân tích tiến độ' },
       { id: 'exam-monitor', label: 'Giám sát phòng thi' },
     ] },
   ],
@@ -148,7 +149,6 @@ function isMenuItemActive(role: Role, item: MenuItem, current: Page) {
   if (role === 'student' && item.id === 'ai-learning') return current === 'ai-chat' || current === 'ai-practice';
   if (role !== 'lecturer') return false;
   if (item.id === 'exams') return current === 'question-bank';
-  if (item.id === 'ai-grading') return current === 'analytics';
   if (item.id === 'exam-monitor') return current === 'appeals';
   return false;
 }
@@ -355,7 +355,7 @@ export function TopBar({
     { label: 'Giám sát phòng thi', detail: 'Phòng thi và sự cố', page: 'exam-monitor' },
     { label: 'Kháng nghị', detail: 'Xem yêu cầu phúc khảo', page: 'appeals' },
     { label: 'Chấm bài', detail: 'Bài nộp cần chấm', page: 'ai-grading' },
-    { label: 'Phân tích kết quả', detail: 'Thống kê học tập', page: 'analytics' },
+    { label: 'Phân tích tiến độ', detail: 'Thống kê học tập', page: 'analytics' },
   ];
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase('vi');
   const searchItems = isStudent ? studentSearchItems : lecturerSearchItems;
