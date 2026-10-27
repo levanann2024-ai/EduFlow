@@ -9,6 +9,8 @@ export interface SchoolClass {
   academic_year: string;
   status: string;
   school_name: string;
+  is_homeroom: boolean;
+  homeroom_subject: string | null;
 }
 
 export interface ClassStudent {
@@ -27,12 +29,58 @@ export type TermGrades = {
 
 export interface GradebookStudent extends ClassStudent {
   grades: TermGrades;
-  previousGrades: TermGrades;
+  confirmedAverage: number | null;
+  previousConfirmedAverage: number | null;
   assignments: {
     total: number;
     submitted: number;
     overdueMissing: number;
   };
+}
+
+export interface HomeroomGradeSummary {
+  classId: string;
+  academicYear: string;
+  semester: string;
+  homeroomSubject: string;
+  subjects: string[];
+  students: Array<{
+    id: string;
+    fullName: string;
+    averages: Record<string, number | null>;
+  }>;
+}
+
+function isHomeroomGradeSummary(
+  value: unknown,
+  classId: string,
+  academicYear: string,
+  semester: string,
+): value is HomeroomGradeSummary {
+  if (!isRecord(value)
+    || value.classId !== classId
+    || value.academicYear !== academicYear
+    || value.semester !== semester
+    || typeof value.homeroomSubject !== 'string'
+    || !Array.isArray(value.subjects)
+    || !Array.isArray(value.students)) {
+    return false;
+  }
+  const subjects = value.subjects;
+  if (!subjects.every((subject): subject is string => typeof subject === 'string')) return false;
+  return value.students.every((student) => {
+    if (!isRecord(student)
+      || typeof student.id !== 'string'
+      || typeof student.fullName !== 'string'
+      || !isRecord(student.averages)) {
+      return false;
+    }
+    const averages = student.averages;
+    return subjects.every((subject) => (
+      averages[subject] === null
+      || (typeof averages[subject] === 'number' && Number.isFinite(averages[subject]))
+    ));
+  });
 }
 
 export interface ClassAssignment {
@@ -56,6 +104,7 @@ export interface AssignmentStudentStatus {
   id: string;
   fullName: string;
   submittedAt: string | null;
+  score: number | null;
   gradedAt: string | null;
 }
 
@@ -147,7 +196,9 @@ async function readResponse(response: Response): Promise<Record<string, unknown>
 function isSchoolClass(value: unknown): value is SchoolClass {
   return isRecord(value)
     && ['id', 'school_id', 'code', 'name', 'grade', 'academic_year', 'status', 'school_name']
-      .every((field) => typeof value[field] === 'string');
+      .every((field) => typeof value[field] === 'string')
+    && typeof value.is_homeroom === 'boolean'
+    && (typeof value.homeroom_subject === 'string' || value.homeroom_subject === null);
 }
 
 function isClassStudent(value: unknown): value is ClassStudent {
@@ -213,6 +264,23 @@ export async function getClassGradebook(
   return body.students;
 }
 
+export async function getHomeroomClassGradeSummary(
+  classId: string,
+  academicYear: string,
+  semester: string,
+): Promise<HomeroomGradeSummary> {
+  const query = new URLSearchParams({ academicYear, semester });
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/homeroom-gradebook?${query.toString()}`,
+    { method: 'GET' },
+  );
+  const body = await readResponse(response);
+  if (!isHomeroomGradeSummary(body.summary, classId, academicYear, semester)) {
+    throw new Error('Phản hồi tổng hợp điểm lớp chủ nhiệm không đúng định dạng.');
+  }
+  return body.summary;
+}
+
 function isNumberOrNull(value: unknown): value is number | null {
   return value === null || (typeof value === 'number' && Number.isFinite(value));
 }
@@ -234,7 +302,8 @@ function isGradebookStudent(value: unknown): value is GradebookStudent {
     && (typeof value.grade === 'string' || value.grade === null)
     && (typeof value.studentNumber === 'string' || value.studentNumber === null)
     && isTermGrades(value.grades)
-    && isTermGrades(value.previousGrades)
+    && isNumberOrNull(value.confirmedAverage)
+    && isNumberOrNull(value.previousConfirmedAverage)
     && isRecord(value.assignments)
     && typeof value.assignments.total === 'number'
     && typeof value.assignments.submitted === 'number'
@@ -266,6 +335,7 @@ function isClassAssignment(value: unknown): value is ClassAssignment {
       && typeof student.id === 'string'
       && typeof student.fullName === 'string'
       && (student.submittedAt === null || typeof student.submittedAt === 'string')
+      && (student.score === null || (typeof student.score === 'number' && Number.isFinite(student.score)))
       && (student.gradedAt === null || typeof student.gradedAt === 'string'));
 }
 
@@ -291,7 +361,7 @@ export async function saveStudentGrades(
     midterm: number | null;
     final: number | null;
   },
-): Promise<void> {
+): Promise<number | null> {
   const response = await authenticatedFetch(
     `/api/classes/${encodeURIComponent(classId)}/gradebook/${encodeURIComponent(studentId)}`,
     {
@@ -300,7 +370,44 @@ export async function saveStudentGrades(
       body: JSON.stringify(payload),
     },
   );
-  await readResponse(response);
+  const body = await readResponse(response);
+  if (body.average !== null && (typeof body.average !== 'number' || !Number.isFinite(body.average))) {
+    throw new Error('Phản hồi điểm TBM đã lưu không đúng định dạng.');
+  }
+  return body.average;
+}
+
+export async function saveClassGradebook(
+  classId: string,
+  payload: {
+    academicYear: string;
+    semester: string;
+    subject: string;
+    entries: Array<{
+      studentId: string;
+      regular: (number | null)[];
+      midterm: number | null;
+      final: number | null;
+    }>;
+  },
+): Promise<Array<{ studentId: string; average: number | null }>> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/gradebook`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
+  const body = await readResponse(response);
+  if (!Array.isArray(body.saved) || !body.saved.every((item) => (
+    isRecord(item)
+    && typeof item.studentId === 'string'
+    && isNumberOrNull(item.average)
+  ))) {
+    throw new Error('Phản hồi lưu bảng điểm không đúng định dạng.');
+  }
+  return body.saved;
 }
 
 export async function listClassAssignments(

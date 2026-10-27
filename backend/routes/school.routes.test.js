@@ -169,7 +169,9 @@ const fakePool = {
         .filter(Boolean);
       return { rows };
     }
-    if (query.includes('FROM classes c') && query.includes('WHERE c.id = $1')) {
+    if (query.includes('FROM classes c')
+      && query.includes('WHERE c.id = $1')
+      && query.includes('($2::boolean OR c.school_id = ANY($3::uuid[]))')) {
       const [classId, systemAdmin, schoolIds] = values;
       const classroom = fixture.classes.find((item) => item.id === classId
         && item.status === 'active'
@@ -177,15 +179,20 @@ const fakePool = {
         && (systemAdmin || schoolIds.includes(item.school_id)));
       return { rows: classroom ? [classRow(classroom)] : [] };
     }
-    if (query.includes('FROM teacher_class_assignments tca') && query.includes('WHERE c.id = $1')) {
+    if (query.includes('FROM classes c')
+      && query.includes('WHERE c.id = $1')
+      && query.includes('EXISTS ( SELECT 1 FROM teacher_class_assignments tca')) {
       const [classId, teacherId, schoolId] = values;
       const assigned = fixture.teacherAssignments.some((item) => (
         item.class_id === classId && item.teacher_user_id === teacherId && item.revoked_at === null
       ));
+      const homeroomAssigned = fixture.homeroomAssignments?.some((item) => (
+        item.class_id === classId && item.teacher_user_id === teacherId
+      ));
       const classroom = fixture.classes.find((item) => item.id === classId
         && item.school_id === schoolId && item.status === 'active'
         && fixture.schools.get(item.school_id)?.status === 'active');
-      return { rows: assigned && classroom ? [classRow(classroom)] : [] };
+      return { rows: (assigned || homeroomAssigned) && classroom ? [classRow(classroom)] : [] };
     }
     if (query.includes('FROM class_memberships cm') && query.includes('WHERE c.id = $1')) {
       const [classId, studentId, schoolId] = values;

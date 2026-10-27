@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Clock3, Search, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, BookOpenCheck, Calendar, Clock3, Search, Star, Users } from 'lucide-react';
 import { getClass, listClasses, listClassSubjects, type SchoolClass } from '@/api/schoolApi';
 import { TeacherClassAssignments } from '@/pages/teacher/TeacherClassAssignments';
 import { TeacherClassGradebook } from '@/pages/teacher/TeacherClassGradebook';
+import { HomeroomClassOverview } from '@/pages/teacher/HomeroomClassOverview';
 
 const tabs = [
   { id: 'overview', label: 'Thông tin chung', icon: BookOpen },
@@ -11,6 +12,7 @@ const tabs = [
 ] as const;
 
 type ClassTab = (typeof tabs)[number]['id'];
+type HomeroomTab = 'teaching-subjects' | 'all-subjects';
 
 function ErrorMessage({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -30,6 +32,11 @@ function ClassDetailView({ classId, onBack }: { classId: string; onBack: () => v
   const [loadingClass, setLoadingClass] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [activeTab, setActiveTab] = useState<ClassTab>('overview');
+  const [activeHomeroomTab, setActiveHomeroomTab] = useState<HomeroomTab>('teaching-subjects');
+
+  useEffect(() => {
+    setActiveHomeroomTab('teaching-subjects');
+  }, [classId]);
 
   useEffect(() => {
     let active = true;
@@ -112,7 +119,50 @@ function ClassDetailView({ classId, onBack }: { classId: string; onBack: () => v
         </div>
       </section>
 
-      {activeTab === 'overview' && (
+      {activeTab === 'overview' && classData.is_homeroom && classData.homeroom_subject && (
+        <section className="space-y-4">
+          <div className="flex gap-2 overflow-x-auto border-b border-slate-200">
+            {([
+              { id: 'teaching-subjects', label: 'Môn chính', icon: BookOpen },
+              { id: 'all-subjects', label: 'Tất cả các môn', icon: BookOpenCheck },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveHomeroomTab(id)}
+                className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeHomeroomTab === id
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {activeHomeroomTab === 'teaching-subjects' ? (
+            <TeacherClassGradebook
+              classId={classData.id}
+              academicYear={classData.academic_year}
+              subjects={subjects.includes(classData.homeroom_subject)
+                ? [
+                  classData.homeroom_subject,
+                  ...subjects.filter((subject) => subject !== classData.homeroom_subject),
+                ]
+                : subjects}
+            />
+          ) : (
+            <HomeroomClassOverview
+              classId={classData.id}
+              academicYear={classData.academic_year}
+              className={classData.name}
+              homeroomSubject={classData.homeroom_subject}
+            />
+          )}
+        </section>
+      )}
+      {activeTab === 'overview' && !classData.is_homeroom && (
         <TeacherClassGradebook
           classId={classData.id}
           academicYear={classData.academic_year}
@@ -144,6 +194,11 @@ export function ClassManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const homeroomClasses = classes.filter((classData) => classData.is_homeroom);
+  const orderedClasses = [...classes].sort((first, second) =>
+    Number(second.is_homeroom) - Number(first.is_homeroom)
+    || first.academic_year.localeCompare(second.academic_year)
+    || first.name.localeCompare(second.name, 'vi'));
 
   useEffect(() => {
     let active = true;
@@ -176,9 +231,24 @@ export function ClassManagement() {
       <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
         <h1 className="text-lg font-bold text-slate-900">Quản lý lớp học</h1>
         <p className="mt-1 text-sm text-slate-600">
-          {loading ? 'Đang tải danh sách lớp...' : `Bạn đang được phân công ${classes.length} lớp`}
+          {loading
+            ? 'Đang tải danh sách lớp...'
+            : `Bạn đang dạy ${classes.length} lớp${homeroomClasses.length ? ` · chủ nhiệm ${homeroomClasses.length} lớp` : ''}`}
         </p>
       </section>
+
+      {!loading && !error && homeroomClasses.length > 0 && (
+        <section className="flex items-center gap-3 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-rose-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <Star className="h-4 w-4 fill-current" />
+          </span>
+          <p>
+            <strong>Lớp chủ nhiệm cần bạn để mắt:</strong>{' '}
+            {homeroomClasses.map((classData) => classData.name).join(', ')}.
+            Bấm vào lớp để nhập điểm môn mình dạy hoặc xem điểm trung bình tất cả môn nhé!
+          </p>
+        </section>
+      )}
 
       {error && <ErrorMessage message={error} onRetry={() => setReloadKey((key) => key + 1)} />}
       {loading ? (
@@ -192,7 +262,7 @@ export function ClassManagement() {
         </div>
       ) : !error ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 xl:gap-4">
-          {classes.map((classData, index) => {
+          {orderedClasses.map((classData, index) => {
             const tones = [
               { border: 'border-l-blue-400', icon: 'bg-blue-50 text-blue-600' },
               { border: 'border-l-emerald-400', icon: 'bg-emerald-50 text-emerald-600' },
@@ -208,7 +278,11 @@ export function ClassManagement() {
                 key={classData.id}
                 type="button"
                 onClick={() => setSelectedClassId(classData.id)}
-                className={`group flex min-h-[150px] flex-col justify-between rounded-xl border border-slate-200 border-l-4 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md ${tone.border}`}
+                className={`group flex min-h-[150px] flex-col justify-between rounded-xl border border-l-4 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                  classData.is_homeroom
+                    ? 'border-amber-200 border-l-amber-500 bg-gradient-to-br from-amber-50/80 to-white hover:border-amber-300'
+                    : `border-slate-200 hover:border-blue-200 ${tone.border}`
+                }`}
               >
                 <span className="flex items-start justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-3">
@@ -216,7 +290,14 @@ export function ClassManagement() {
                       <Users className="h-5 w-5" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block truncate text-lg font-bold text-slate-900">{classData.name}</span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="block truncate text-lg font-bold text-slate-900">{classData.name}</span>
+                        {classData.is_homeroom && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                            <Star className="h-3 w-3 fill-current" /> Chủ nhiệm
+                          </span>
+                        )}
+                      </span>
                       <span className="mt-0.5 block text-sm text-slate-600">Mã lớp: {classData.code}</span>
                     </span>
                   </span>

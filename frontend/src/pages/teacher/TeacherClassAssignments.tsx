@@ -8,6 +8,12 @@ interface TeacherClassAssignmentsProps {
   subjects: string[];
 }
 
+function scoreColor(score: number) {
+  if (score >= 8) return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  if (score >= 5) return 'border-amber-200 bg-amber-50 text-amber-800';
+  return 'border-rose-200 bg-rose-50 text-rose-800';
+}
+
 export function TeacherClassAssignments({
   classId,
   academicYear,
@@ -122,8 +128,17 @@ export function TeacherClassAssignments({
                           submitted: false,
                         },
                       ]).map(({ title, submitted }) => {
-                        const students = assignment.students.filter((student) =>
-                          Boolean(student.submittedAt) === submitted);
+                        const students = assignment.students
+                          .filter((student) => Boolean(student.submittedAt) === submitted)
+                          .sort((first, second) => {
+                            if (!submitted) return first.fullName.localeCompare(second.fullName, 'vi');
+                            if (first.score !== null && second.score === null) return -1;
+                            if (first.score === null && second.score !== null) return 1;
+                            if (first.score !== null && second.score !== null && first.score !== second.score) {
+                              return second.score - first.score;
+                            }
+                            return first.fullName.localeCompare(second.fullName, 'vi');
+                          });
                         return (
                           <section key={title}>
                             <h4 className={`mb-2 text-sm font-semibold ${submitted ? 'text-emerald-700' : 'text-amber-700'}`}>
@@ -132,11 +147,16 @@ export function TeacherClassAssignments({
                             {students.length ? (
                               <ul className="space-y-2">
                                 {students.map((student) => (
-                                  <li key={student.id} className="flex items-start gap-2 text-sm text-slate-700">
+                                  <li
+                                    key={student.id}
+                                    className={`flex min-h-10 items-center gap-2 rounded-lg px-2 py-2 text-sm ${
+                                      submitted && student.score !== null ? scoreColor(student.score) : 'text-slate-700'
+                                    }`}
+                                  >
                                     {submitted
                                       ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                                       : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />}
-                                    <span className="min-w-0">
+                                    <span className="min-w-0 flex-1">
                                       <span className="block truncate">{student.fullName}</span>
                                       {student.submittedAt && (
                                         <span className="block text-xs text-slate-500">
@@ -144,6 +164,12 @@ export function TeacherClassAssignments({
                                         </span>
                                       )}
                                     </span>
+                                    {submitted && student.score !== null && (
+                                      <span className={`inline-flex shrink-0 items-center gap-0.5 rounded-md border px-2 py-1 text-center ${scoreColor(student.score)}`}>
+                                        <span className="text-xl font-extrabold leading-none">{student.score}</span>
+                                        <span className="text-[10px] font-semibold leading-none">/10</span>
+                                      </span>
+                                    )}
                                   </li>
                                 ))}
                               </ul>

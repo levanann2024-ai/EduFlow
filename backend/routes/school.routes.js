@@ -12,6 +12,7 @@ const {
   createClassLearningResourceFile,
   deleteClassLearningResourceChapter,
   getClass,
+  getHomeroomClassGradeSummary,
   listClassAssignmentSubmissions,
   getClassLearningResourceFile,
   getClassGradebook,
@@ -22,6 +23,7 @@ const {
   listStudentAssignments,
   listStudentLearningResources,
   listTeacherClassSubjects,
+  saveClassGradebook,
   saveStudentGrades,
   saveClassAssignmentGrade,
   submitClassAssignment,
@@ -101,11 +103,38 @@ router.get('/classes/:classId/gradebook', asyncRoute(async (req, res) => {
   return res.json({ success: true, students });
 }));
 
+router.put('/classes/:classId/gradebook', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const { academicYear, semester, subject, entries } = req.body ?? {};
+  const validatedEntries = Array.isArray(entries)
+    ? entries.map((entry) => ({
+      ...entry,
+      studentId: requireUuid(entry?.studentId, 'studentId'),
+    }))
+    : entries;
+  const saved = await saveClassGradebook(req.auth, classId, {
+    academicYear,
+    semester,
+    subject,
+    entries: validatedEntries,
+  });
+  return res.json({ success: true, saved });
+}));
+
+router.get('/classes/:classId/homeroom-gradebook', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const summary = await getHomeroomClassGradeSummary(req.auth, classId, {
+    academicYear: req.query.academicYear,
+    semester: req.query.semester,
+  });
+  return res.json({ success: true, summary });
+}));
+
 router.put('/classes/:classId/gradebook/:studentId', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const studentId = requireUuid(req.params.studentId, 'studentId');
   const { academicYear, semester, subject, regular, midterm, final } = req.body ?? {};
-  await saveStudentGrades(req.auth, classId, studentId, {
+  const average = await saveStudentGrades(req.auth, classId, studentId, {
     academicYear,
     semester,
     subject,
@@ -113,7 +142,7 @@ router.put('/classes/:classId/gradebook/:studentId', asyncRoute(async (req, res)
     midterm,
     final,
   });
-  return res.json({ success: true });
+  return res.json({ success: true, average });
 }));
 
 router.get('/classes/:classId/assignments', asyncRoute(async (req, res) => {

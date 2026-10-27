@@ -100,6 +100,21 @@ const MIGRATIONS = [
     file: path.join(__dirname, '..', 'db', 'migrations', '008_assignment_grading.sql'),
     preflight: null,
   },
+  {
+    name: '009_homeroom_class_subjects',
+    file: path.join(__dirname, '..', 'db', 'migrations', '009_homeroom_class_subjects.sql'),
+    preflight: null,
+  },
+  {
+    name: '010_confirmed_term_average',
+    file: path.join(__dirname, '..', 'db', 'migrations', '010_confirmed_term_average.sql'),
+    preflight: null,
+  },
+  {
+    name: '011_previous_confirmed_term_average',
+    file: path.join(__dirname, '..', 'db', 'migrations', '011_previous_confirmed_term_average.sql'),
+    preflight: null,
+  },
 ];
 
 const CORE_TABLES = [
@@ -123,6 +138,8 @@ const APPLICATION_TABLES = [
   'class_assignment_submissions',
   'class_learning_resources',
   'class_learning_resource_files',
+  'class_subjects',
+  'class_homeroom_assignments',
 ];
 
 function assertMigrationStatements(sql, migrationName) {
@@ -131,7 +148,9 @@ function assertMigrationStatements(sql, migrationName) {
     /^CREATE (TABLE|(?:UNIQUE )?INDEX)\b/i,
     /^ALTER TABLE [a-z0-9_.]+\s+(ADD|DROP|ALTER)\b/i,
     /^DROP INDEX [a-z0-9_.]+\b/i,
+    /^INSERT INTO class_subjects \(class_id, school_id, subject\)\s+SELECT DISTINCT ON \(/i,
     /^UPDATE school_memberships\s+sm\s+SET role = u\.role\s+FROM users u\b/i,
+    /^UPDATE student_term_grades\s+SET confirmed_average = \(\s*COALESCE\(regular_1, 0\)/i,
   ];
   if (
     statements.length === 0

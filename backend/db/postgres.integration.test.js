@@ -329,6 +329,17 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
        VALUES ($1, $2, $3, $4, 'Hóa học', $5)`,
       [randomUUID(), classId, teacherId, schoolId, assignedBy],
     );
+    await client.query(
+      `INSERT INTO class_subjects (class_id, school_id, subject)
+       VALUES ($1, $2, 'Hóa học'), ($1, $2, 'Toán học')`,
+      [classId, schoolId],
+    );
+    await client.query(
+      `INSERT INTO class_homeroom_assignments
+         (class_id, school_id, teacher_user_id, subject, assigned_by)
+       VALUES ($1, $2, $3, 'Hóa học', $4)`,
+      [classId, schoolId, teacherId, assignedBy],
+    );
 
     const studentNames = ['Văn An', 'Chí Bằng', 'Tuấn Minh', 'Duy Phan', 'Trần Anh'];
     const studentIds = [];
@@ -354,12 +365,91 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
       semester: 'Kỳ 1',
       subject: 'Hóa học',
     };
-    await classroomService.saveStudentGrades(teacherAuth, classId, studentIds[0], {
+    const firstSavedAverage = await classroomService.saveStudentGrades(teacherAuth, classId, studentIds[0], {
       ...input,
       regular: [8, 9, null, null],
       midterm: 8.5,
       final: null,
     });
+    assert.equal(firstSavedAverage, 8.5);
+    await client.query(
+      `INSERT INTO student_term_grades
+         (id, class_id, school_id, student_user_id, subject, academic_year, semester,
+          regular_1, midterm, final, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, 'Toán học', $5, $6, 10, 10, 10, $7, $7)`,
+      [randomUUID(), classId, schoolId, studentIds[0], input.academicYear, input.semester, teacherId],
+    );
+    const homeroomSummary = await classroomService.getHomeroomClassGradeSummary(
+      teacherAuth,
+      classId,
+      { academicYear: input.academicYear, semester: input.semester },
+    );
+    assert.equal(homeroomSummary.homeroomSubject, 'Hóa học');
+    assert.deepEqual(homeroomSummary.subjects, ['Hóa học', 'Toán học']);
+    const firstStudentSummary = homeroomSummary.students.find((student) => student.id === studentIds[0]);
+    const secondStudentSummary = homeroomSummary.students.find((student) => student.id === studentIds[1]);
+    assert.equal(firstStudentSummary.averages['Hóa học'], 8.5);
+    assert.equal(firstStudentSummary.averages['Toán học'], 10);
+    assert.equal(secondStudentSummary.averages['Toán học'], null);
+    const batchResult = await classroomService.saveClassGradebook(teacherAuth, classId, {
+      ...input,
+      entries: [{
+        studentId: studentIds[0],
+        regular: [10, 9, 8, 1],
+        midterm: 9,
+        final: 10,
+      }],
+    });
+    const updatedAverage = batchResult[0].average;
+    assert.equal(updatedAverage, 8.44);
+    const gradebookWithUpdatedAverage = await classroomService.getClassGradebook(teacherAuth, classId, input);
+    assert.equal(
+      gradebookWithUpdatedAverage.find((student) => student.id === studentIds[0]).confirmedAverage,
+      8.44,
+    );
+    assert.equal(
+      gradebookWithUpdatedAverage.find((student) => student.id === studentIds[0]).previousConfirmedAverage,
+      8.5,
+    );
+    const summaryWithUpdatedAverage = await classroomService.getHomeroomClassGradeSummary(
+      teacherAuth,
+      classId,
+      { academicYear: input.academicYear, semester: input.semester },
+    );
+    assert.equal(
+      summaryWithUpdatedAverage.students.find((student) => student.id === studentIds[0]).averages['Hóa học'],
+      8.44,
+    );
+    await assert.rejects(
+      classroomService.saveClassGradebook(teacherAuth, classId, {
+        ...input,
+        entries: [
+          { studentId: studentIds[0], regular: [7, 7, null, null], midterm: null, final: null },
+          { studentId: randomUUID(), regular: [6, 6, null, null], midterm: null, final: null },
+        ],
+      }),
+      (error) => error.code === 'SCHOOL_STUDENT_NOT_FOUND',
+    );
+    const gradebookAfterRejectedBatch = await classroomService.getClassGradebook(teacherAuth, classId, input);
+    const unchangedAfterRejectedBatch = gradebookAfterRejectedBatch.find((student) => student.id === studentIds[0]);
+    assert.equal(unchangedAfterRejectedBatch.confirmedAverage, 8.44);
+    assert.equal(unchangedAfterRejectedBatch.previousConfirmedAverage, 8.5);
+    assert.ok((await classroomService.listClasses(teacherAuth)).some((item) => item.id === classId && item.is_homeroom));
+    const otherTeacherId = await insertUser(client, 'lecturer');
+    const otherTeacherMembershipId = await insertSchoolMembership(client, otherTeacherId, schoolId, 'lecturer');
+    await client.query(
+      'INSERT INTO teacher_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
+      [otherTeacherId, otherTeacherMembershipId, schoolId],
+    );
+    const otherTeacherAuth = { userId: otherTeacherId, role: 'lecturer', schoolIds: [schoolId] };
+    await assert.rejects(
+      classroomService.getHomeroomClassGradeSummary(
+        otherTeacherAuth,
+        classId,
+        { academicYear: input.academicYear, semester: input.semester },
+      ),
+      (error) => error.code === 'SCHOOL_HOMEROOM_CLASS_NOT_FOUND',
+    );
     const assignment = await classroomService.createClassAssignment(teacherAuth, classId, {
       ...input,
       chapter: 'Chương 1',
@@ -411,7 +501,7 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
     assert.deepEqual(uploadedFile.content, replacementFile);
     const gradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
     assert.deepEqual(gradebook.map((student) => student.fullName), studentNames);
-    assert.deepEqual(gradebook[0].grades.regular, [8, 9, null, null]);
+    assert.deepEqual(gradebook[0].grades.regular, [10, 9, 8, 1]);
     assert.equal(gradebook[0].assignments.total, 1);
     assert.equal(gradebook[0].assignments.submitted, 0);
     assert.equal(gradebook[0].assignments.overdueMissing, 0);
@@ -478,6 +568,11 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
     assert.equal(gradedSubmission.score, 8.5);
     assert.equal(gradedSubmission.teacherFeedback, 'Lập luận tốt, cần trình bày rõ hơn.');
     assert.ok(gradedSubmission.gradedAt);
+    const assignmentsAfterGrading = await classroomService.listClassAssignments(teacherAuth, classId, input);
+    assert.equal(
+      assignmentsAfterGrading[0].students.find((student) => student.id === studentIds[0]).score,
+      8.5,
+    );
     const studentAssignmentsAfterGrading = await classroomService.listStudentAssignments(firstStudentAuth);
     assert.equal(studentAssignmentsAfterGrading[0].score, 8.5);
     assert.equal(studentAssignmentsAfterGrading[0].teacherFeedback, 'Lập luận tốt, cần trình bày rõ hơn.');
@@ -494,6 +589,7 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
     assert.equal(teacherAssignments[0].students.length, studentNames.length);
     assert.equal(teacherAssignments[0].students.filter((student) => student.submittedAt).length, 1);
     assert.equal(teacherAssignments[0].students.find((student) => student.id === studentIds[0]).fullName, studentNames[0]);
+    assert.equal(teacherAssignments[0].students.find((student) => student.id === studentIds[0]).score, null);
     assert.equal(teacherAssignments[0].students.find((student) => student.id === studentIds[1]).submittedAt, null);
 
     const renamedChapter = await classroomService.renameClassLearningResourceChapter(

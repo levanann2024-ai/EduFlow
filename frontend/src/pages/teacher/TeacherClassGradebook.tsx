@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Save, TrendingDown, TrendingUp } from 'lucide-react';
 import {
   getClassGradebook,
-  saveStudentGrades,
+  saveClassGradebook,
   type GradebookStudent,
   type TermGrades,
 } from '@/api/schoolApi';
@@ -19,7 +19,7 @@ function weightedAverage(grades: TermGrades): number | null {
     { value: grades.midterm, weight: 2 },
     { value: grades.final, weight: 3 },
   ];
-  const graded = scores.filter((score) => score.value !== null);
+  const graded = scores.filter((score) => score.value !== null && Number.isFinite(score.value));
   if (graded.length === 0) return null;
   const points = graded.reduce((total, score) => total + (score.value ?? 0) * score.weight, 0);
   const weights = graded.reduce((total, score) => total + score.weight, 0);
@@ -34,6 +34,11 @@ function toScore(value: string): number | null {
   return value.trim() === '' ? null : Number(value);
 }
 
+function hasGradeChanges(inputs: string[], grades: TermGrades): boolean {
+  const savedInputs = toInputs(grades);
+  return inputs.some((value, scoreIndex) => !Object.is(toScore(value), toScore(savedInputs[scoreIndex])));
+}
+
 export function TeacherClassGradebook({ classId, academicYear, subjects }: TeacherClassGradebookProps) {
   const [semester, setSemester] = useState('Kỳ 1');
   const [subject, setSubject] = useState(subjects[0] ?? '');
@@ -42,7 +47,7 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
 
@@ -89,31 +94,46 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
   ), [students]);
   const progress = totals.assignments === 0 ? null : Math.round((totals.submitted / totals.assignments) * 100);
 
-  const saveGrades = async (student: GradebookStudent) => {
+  const changedStudents = students.filter((student) => {
     const values = drafts[student.id] ?? toInputs(student.grades);
-    const parsed = values.map(toScore);
-    if (parsed.some((value) => value !== null && (!Number.isFinite(value) || value < 0 || value > 10))) {
-      setSaveError('Điểm phải nằm trong khoảng từ 0 đến 10.');
-      return;
-    }
-    setSavingId(student.id);
+    return hasGradeChanges(values, student.grades);
+  });
+
+  const saveGrades = async () => {
+    if (changedStudents.length === 0) return;
     setSaveError('');
     setSaveMessage('');
+    const invalidStudent = changedStudents.find((student) => (
+      (drafts[student.id] ?? toInputs(student.grades))
+        .some((value) => value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 10))
+    ));
+    if (invalidStudent) {
+      setSaveError(`Điểm của ${invalidStudent.fullName} phải nằm trong khoảng từ 0 đến 10.`);
+      return;
+    }
+
+    setSaving(true);
     try {
-      await saveStudentGrades(classId, student.id, {
+      const saved = await saveClassGradebook(classId, {
         academicYear,
         semester,
         subject,
-        regular: parsed.slice(0, 4),
-        midterm: parsed[4],
-        final: parsed[5],
+        entries: changedStudents.map((student) => {
+          const parsed = (drafts[student.id] ?? toInputs(student.grades)).map(toScore);
+          return {
+            studentId: student.id,
+            regular: parsed.slice(0, 4),
+            midterm: parsed[4],
+            final: parsed[5],
+          };
+        }),
       });
-      setSaveMessage(`Đã lưu điểm cho ${student.fullName}.`);
+      setSaveMessage(`Đã lưu bảng điểm cho ${saved.length} học sinh.`);
       setReloadKey((key) => key + 1);
     } catch (requestError) {
-      setSaveError(requestError instanceof Error ? requestError.message : 'Không thể lưu điểm.');
+      setSaveError(requestError instanceof Error ? requestError.message : 'Không thể lưu bảng điểm.');
     } finally {
-      setSavingId(null);
+      setSaving(false);
     }
   };
 
@@ -164,6 +184,15 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
                 <option value="Kỳ 2">Kỳ 2</option>
               </select>
             </label>
+            <button
+              type="button"
+              onClick={() => void saveGrades()}
+              disabled={saving || loading || changedStudents.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {saving ? 'Đang lưu bảng điểm...' : `Lưu bảng điểm${changedStudents.length ? ` (${changedStudents.length})` : ''}`}
+            </button>
           </div>
         </div>
 
@@ -188,11 +217,11 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
                   <th colSpan={4} className="p-2 text-center">Điểm thường xuyên (×1)</th>
                   <th rowSpan={2} className="p-2 text-center">Giữa kỳ (×2)</th>
                   <th rowSpan={2} className="p-2 text-center">Cuối kỳ (×3)</th>
-                  <th rowSpan={2} className="p-2 text-center">Điểm TBM</th>
+                  <th rowSpan={2} className="p-2 text-center">Điểm cũ</th>
+                  <th rowSpan={2} className="p-2 text-center">Điểm mới</th>
                   <th rowSpan={2} className="p-2">Tăng / giảm TBM</th>
                   <th rowSpan={2} className="min-w-32 p-2">Tỷ lệ hoàn thành</th>
                   <th rowSpan={2} className="min-w-52 p-2">Đánh giá &amp; cảnh báo</th>
-                  <th rowSpan={2} className="p-2 text-center">Lưu điểm</th>
                 </tr>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-500">
                   {[1, 2, 3, 4].map((number) => <th key={number} className="p-2 text-center">CC {number}</th>)}
@@ -201,17 +230,28 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                 {students.map((student, index) => {
                   const inputs = drafts[student.id] ?? toInputs(student.grades);
-                  const average = weightedAverage(student.grades);
-                  const previousAverage = weightedAverage(student.previousGrades);
-                  const change = average === null || previousAverage === null ? null : average - previousAverage;
+                  const draftGrades: TermGrades = {
+                    regular: inputs.slice(0, 4).map(toScore),
+                    midterm: toScore(inputs[4] ?? ''),
+                    final: toScore(inputs[5] ?? ''),
+                  };
+                  const calculatedAverage = weightedAverage(draftGrades);
+                  const gradesChanged = hasGradeChanges(inputs, student.grades);
+                  const oldAverage = gradesChanged
+                    ? student.confirmedAverage
+                    : student.previousConfirmedAverage;
+                  const newAverage = gradesChanged ? calculatedAverage : student.confirmedAverage;
+                  const change = newAverage === null || oldAverage === null
+                    ? null
+                    : Number((newAverage - oldAverage).toFixed(2));
                   const completion = student.assignments.total === 0
                     ? null
                     : Math.round((student.assignments.submitted / student.assignments.total) * 100);
                   const assessment = student.assignments.overdueMissing > 0
                     ? { label: `Chưa nộp ${student.assignments.overdueMissing} bài quá hạn`, tone: 'bg-amber-50 text-amber-800', icon: AlertTriangle }
-                    : average !== null && average < 5
+                    : newAverage !== null && newAverage < 5
                       ? { label: 'Cần phụ đạo', tone: 'bg-rose-50 text-rose-700', icon: AlertTriangle }
-                      : average !== null && average >= 8
+                      : newAverage !== null && newAverage >= 8
                         ? { label: 'Học tốt', tone: 'bg-emerald-50 text-emerald-700', icon: CheckCircle2 }
                         : null;
                   const AssessmentIcon = assessment?.icon;
@@ -237,12 +277,26 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
                           />
                         </td>
                       ))}
-                      <td className="p-3 text-center font-bold text-slate-900">{average === null ? '—' : average.toFixed(1)}</td>
+                      <td className="p-3 text-center font-semibold text-slate-600">
+                        {oldAverage === null ? '—' : oldAverage.toFixed(2)}
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className="font-bold text-slate-900">{newAverage === null ? '—' : newAverage.toFixed(2)}</span>
+                        {gradesChanged && <span className="mt-1 block text-[10px] text-slate-400">Chưa lưu</span>}
+                      </td>
                       <td className="p-3">
-                        {change === null ? '—' : (
-                          <span className={`inline-flex items-center gap-1 text-xs font-semibold ${change > 0 ? 'text-emerald-700' : change < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
-                            {change > 0 ? <TrendingUp className="h-3.5 w-3.5" /> : change < 0 ? <TrendingDown className="h-3.5 w-3.5" /> : null}
-                            {change > 0 ? '+' : ''}{change.toFixed(1)}
+                        {newAverage === null ? '—' : oldAverage === null ? (
+                          <span className="text-xs text-slate-400">Chưa có điểm cũ</span>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 text-xs font-semibold ${change !== null && change > 0 ? 'text-emerald-700' : change !== null && change < 0 ? 'text-rose-700' : 'text-slate-500'}`}>
+                            {change !== null && change > 0
+                              ? <TrendingUp className="h-3.5 w-3.5" />
+                              : change !== null && change < 0
+                                ? <TrendingDown className="h-3.5 w-3.5" />
+                                : null}
+                            {gradesChanged ? 'Dự kiến ' : ''}
+                            {change !== null && change > 0 ? 'Tăng ' : change !== null && change < 0 ? 'Giảm ' : 'Không đổi '}
+                            {Math.abs(change ?? 0).toFixed(2)} điểm
                           </span>
                         )}
                       </td>
@@ -263,16 +317,6 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
                           </span>
                         ) : '—'}
                       </td>
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => void saveGrades(student)}
-                          disabled={savingId === student.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-                        >
-                          <Save className="h-3.5 w-3.5" />{savingId === student.id ? 'Đang lưu' : 'Lưu'}
-                        </button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -280,7 +324,9 @@ export function TeacherClassGradebook({ classId, academicYear, subjects }: Teach
             </table>
           </div>
         )}
-        <p className="text-xs text-slate-500">TBM = (điểm thường xuyên × 1 + giữa kỳ × 2 + cuối kỳ × 3) / tổng hệ số của các điểm đã nhập.</p>
+        <p className="text-xs text-slate-500">
+          Điểm mới là TBM tính từ điểm thành phần hiện tại; khi lưu, điểm mới trước đó chuyển sang điểm cũ. Lần nhập đầu tiên chưa có điểm cũ.
+        </p>
       </section>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   listClassSubjects,
   listClasses,
   renameClassLearningResourceChapter,
+  type ClassAssignment,
   type ClassLearningResource,
   type SchoolClass,
   updateClassLearningResource,
@@ -48,6 +49,12 @@ type ReviewDraft = {
   content: string;
   note: string;
   fileName: string;
+};
+
+type ReviewAssignmentGroup = {
+  chapter: string;
+  isFree?: boolean;
+  lessons: Array<{ lesson: string; assignments: ClassAssignment[] }>;
 };
 
 function formatFileSize(bytes: number) {
@@ -95,12 +102,16 @@ export function LessonRepository() {
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [selectedSubject, setSelectedSubject] = useState('');
   const [reviewResources, setReviewResources] = useState<ClassLearningResource[]>([]);
+  const [reviewAssignments, setReviewAssignments] = useState<ClassAssignment[]>([]);
   const [assignmentChapters, setAssignmentChapters] = useState<string[]>([]);
   const [creatingChapter, setCreatingChapter] = useState(false);
   const [editingChapterName, setEditingChapterName] = useState<string | null>(null);
   const [chapterNameDraft, setChapterNameDraft] = useState('');
   const [openChapterMenu, setOpenChapterMenu] = useState<string | null>(null);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
+  const [selectedReviewAssignmentId, setSelectedReviewAssignmentId] = useState<string | null>(null);
+  const [reviewPreviewTab, setReviewPreviewTab] = useState<'lesson' | 'assignment'>('lesson');
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({
     title: '', chapter: '', lesson: '', period: '', content: '', note: '', fileName: '',
   });
@@ -175,6 +186,11 @@ export function LessonRepository() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const classId = selectedClasses[0];
     if (!classId) {
       setSubjects([]);
@@ -199,12 +215,14 @@ export function LessonRepository() {
     const classroom = classes.find((item) => item.id === classId);
     if (!classId || !classroom || !selectedSubject) {
       setReviewResources([]);
+      setReviewAssignments([]);
       setAssignmentChapters([]);
       setRecentEntries([]);
       return;
     }
     let active = true;
     setReviewResources([]);
+    setReviewAssignments([]);
     setLoadingRecent(true);
     Promise.all([
       listClassLearningResources(classId),
@@ -213,6 +231,7 @@ export function LessonRepository() {
       .then(([resources, assignments]) => {
         if (!active) return;
         setReviewResources(resources.filter((resource) => resource.subject === selectedSubject));
+        setReviewAssignments(assignments);
         setAssignmentChapters(assignments.map((assignment) => assignment.chapter).filter(Boolean));
         setRecentEntries([
           ...resources.filter((resource) => resource.subject === selectedSubject).map((resource) => ({
@@ -254,6 +273,10 @@ export function LessonRepository() {
     () => reviewResources.filter((resource) => resource.semester === semester),
     [reviewResources, semester],
   );
+  const visibleReviewAssignments = useMemo(
+    () => reviewAssignments.filter((assignment) => new Date(assignment.dueAt).getTime() > currentTime),
+    [currentTime, reviewAssignments],
+  );
   const availableChapters = useMemo(
     () => Array.from(new Set([
       ...visibleReviewResources.map((resource) => resource.chapter),
@@ -264,6 +287,8 @@ export function LessonRepository() {
   const selectedReviewResource = visibleReviewResources.find((resource) => resource.id === selectedReviewId)
     ?? visibleReviewResources[0]
     ?? null;
+  const selectedReviewAssignment = visibleReviewAssignments.find((assignment) =>
+    assignment.id === selectedReviewAssignmentId) ?? visibleReviewAssignments[0] ?? null;
   const reviewChapterGroups = useMemo(() => {
     const chapters = new Map<string, Map<string, ClassLearningResource[]>>();
     visibleReviewResources.forEach((resource) => {
@@ -282,6 +307,49 @@ export function LessonRepository() {
       }))
       .sort((first, second) => first.chapter.localeCompare(second.chapter, 'vi', { numeric: true }));
   }, [visibleReviewResources]);
+  const reviewAssignmentGroups = useMemo(() => {
+    const chapters = new Map<string, Map<string, ClassAssignment[]>>();
+    const freeAssignments: ClassAssignment[] = [];
+    visibleReviewAssignments.forEach((assignment) => {
+      if (!assignment.chapter.trim() || !assignment.lesson.trim()) {
+        freeAssignments.push(assignment);
+        return;
+      }
+      const lessons = chapters.get(assignment.chapter) ?? new Map<string, ClassAssignment[]>();
+      const items = lessons.get(assignment.lesson) ?? [];
+      items.push(assignment);
+      lessons.set(assignment.lesson, items);
+      chapters.set(assignment.chapter, lessons);
+    });
+    const groups: ReviewAssignmentGroup[] = Array.from(chapters.entries())
+      .map(([chapterName, lessons]) => ({
+        chapter: chapterName,
+        lessons: Array.from(lessons.entries())
+          .map(([lessonName, items]) => ({ lesson: lessonName, assignments: items }))
+          .sort((first, second) => first.lesson.localeCompare(second.lesson, 'vi', { numeric: true })),
+      }))
+      .sort((first, second) => first.chapter.localeCompare(second.chapter, 'vi', { numeric: true }));
+    if (freeAssignments.length) {
+      groups.unshift({
+        chapter: 'Bài tập tự do',
+        isFree: true,
+        lessons: [{ lesson: '', assignments: freeAssignments }],
+      });
+    }
+    return groups;
+  }, [visibleReviewAssignments]);
+
+  useEffect(() => {
+    if (!selectedReviewAssignment) return;
+    const chapter = selectedReviewAssignment.chapter.trim() && selectedReviewAssignment.lesson.trim()
+      ? selectedReviewAssignment.chapter
+      : 'Bài tập tự do';
+    const chapterKey = `preview-assignment:${chapter}`;
+    setExpandedReviewChapters((current) => new Set(current).add(chapterKey));
+    if (chapter !== 'Bài tập tự do') {
+      setExpandedReviewLessons((current) => new Set(current).add(`${chapterKey}:${selectedReviewAssignment.lesson}`));
+    }
+  }, [selectedReviewAssignment]);
 
   useEffect(() => {
     if (!selectedReviewResource) {
@@ -498,6 +566,7 @@ export function LessonRepository() {
         listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
       ]);
       setReviewResources(resources.filter((resource) => resource.subject === selectedSubject));
+      setReviewAssignments(assignments);
       setAssignmentChapters(assignments.map((assignment) => assignment.chapter).filter(Boolean));
       setRecentEntries([
         ...resources.filter((resource) => resource.subject === selectedSubject).map((resource) => ({
@@ -942,6 +1011,7 @@ export function LessonRepository() {
                 onChange={(event) => {
                   setSelectedClasses(event.target.value ? [event.target.value] : []);
                   setSelectedReviewId(null);
+                  setSelectedReviewAssignmentId(null);
                   setEditingReview(false);
                 }}
                 className="input-field min-h-9 w-20 px-2 text-xs"
@@ -955,6 +1025,7 @@ export function LessonRepository() {
                   onChange={(event) => {
                     setSelectedSubject(event.target.value);
                     setSelectedReviewId(null);
+                    setSelectedReviewAssignmentId(null);
                     setEditingReview(false);
                   }}
                   className="input-field min-h-9 w-24 px-2 text-xs"
@@ -968,6 +1039,7 @@ export function LessonRepository() {
                 onChange={(event) => {
                   setSemester(event.target.value);
                   setSelectedReviewId(null);
+                  setSelectedReviewAssignmentId(null);
                   setEditingReview(false);
                 }}
                 className="input-field min-h-9 w-20 px-2 text-xs"
@@ -978,11 +1050,39 @@ export function LessonRepository() {
           </header>
           <div className="grid min-h-0 flex-1 lg:grid-cols-[360px_minmax(0,1fr)]">
             <aside className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-b border-slate-200 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r sm:p-5">
-              <div className="mb-4">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800"><BookOpen className="h-4 w-4" /> Bài giảng</h2>
-                <p className="mt-1 text-xs text-slate-500">Xem trước theo đúng bố cục học sinh nhìn thấy.</p>
+              <div className="mb-4 grid grid-cols-2 gap-2" role="tablist" aria-label="Nội dung học sinh">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={reviewPreviewTab === 'lesson'}
+                  onClick={() => setReviewPreviewTab('lesson')}
+                  className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+                    reviewPreviewTab === 'lesson' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <BookOpen className="h-4 w-4" /> Bài giảng
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={reviewPreviewTab === 'assignment'}
+                  onClick={() => setReviewPreviewTab('assignment')}
+                  className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold ${
+                    reviewPreviewTab === 'assignment' ? 'bg-rose-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <Clock3 className="h-4 w-4" /> Bài tập
+                  <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                    reviewPreviewTab === 'assignment' ? 'bg-white/20' : 'bg-rose-50 text-rose-700'
+                  }`}>{visibleReviewAssignments.length}</span>
+                </button>
               </div>
-              {loadingRecent ? <p className="py-3 text-sm text-slate-500">Đang tải bài giảng...</p> : reviewChapterGroups.length ? (
+              <p className="mb-3 text-xs text-slate-500">
+                {reviewPreviewTab === 'lesson'
+                  ? 'Xem trước theo đúng bố cục học sinh nhìn thấy.'
+                  : 'Chỉ hiển thị bài học sinh còn có thể xem và nộp.'}
+              </p>
+              {reviewPreviewTab === 'lesson' && (loadingRecent ? <p className="py-3 text-sm text-slate-500">Đang tải bài giảng...</p> : reviewChapterGroups.length ? (
                 <nav aria-label="Danh sách bài giảng để xem trước" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 overflow-x-hidden">
                   {reviewChapterGroups.map(({ chapter: chapterName, lessons }) => {
                     const chapterExpanded = expandedReviewChapters.has(chapterName);
@@ -1128,6 +1228,7 @@ export function LessonRepository() {
                                               type="button"
                                               onClick={() => {
                                                 setSelectedReviewId(resource.id);
+                                                setSelectedReviewAssignmentId(null);
                                                 setEditingReview(false);
                                               }}
                                               className={`flex min-h-10 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
@@ -1157,10 +1258,112 @@ export function LessonRepository() {
                     );
                   })}
                 </nav>
-              ) : <p className="py-3 text-sm text-slate-500">{selectedClass ? 'Chưa có bài giảng trong học kỳ này.' : 'Chọn lớp để xem bài giảng.'}</p>}
+              ) : <p className="py-3 text-sm text-slate-500">{selectedClass ? 'Chưa có bài giảng trong học kỳ này.' : 'Chọn lớp để xem bài giảng.'}</p>)}
+              {reviewPreviewTab === 'assignment' && (loadingRecent ? (
+                <p className="py-3 text-sm text-slate-500">Đang tải bài tập...</p>
+              ) : reviewAssignmentGroups.length ? (
+                <nav aria-label="Bài tập hiển thị cho học sinh" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 overflow-x-hidden">
+                  {reviewAssignmentGroups.map(({ chapter: chapterName, lessons, isFree }) => {
+                    const chapterKey = `preview-assignment:${chapterName}`;
+                    const chapterExpanded = expandedReviewChapters.has(chapterKey);
+                    return (
+                      <section
+                        key={chapterKey}
+                        className={`min-w-0 rounded-lg border pb-1 ${
+                          isFree ? 'mb-2 border-rose-200 bg-rose-50/70 px-1' : 'border-x-0 border-t-0 border-slate-200/80'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          aria-expanded={chapterExpanded}
+                          onClick={() => setExpandedReviewChapters((current) => {
+                            const next = new Set(current);
+                            if (next.has(chapterKey)) next.delete(chapterKey);
+                            else next.add(chapterKey);
+                            return next;
+                          })}
+                          className={`flex min-h-10 min-w-0 w-full items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-2 text-left text-xs font-extrabold uppercase tracking-wide ${
+                            isFree ? 'text-rose-800 hover:bg-rose-100' : 'text-slate-800 hover:bg-white'
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1 truncate" title={chapterName}>{chapterName}</span>
+                          {chapterExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                        </button>
+                        {chapterExpanded && (
+                          <div className="min-w-0 space-y-1 pl-3">
+                            {lessons.map(({ lesson: lessonName, assignments: lessonAssignments }) => {
+                              const lessonKey = `${chapterKey}:${lessonName}`;
+                              const lessonExpanded = expandedReviewLessons.has(lessonKey);
+                              return (
+                                <section key={lessonKey} className="min-w-0">
+                                  {!isFree && (
+                                    <button
+                                      type="button"
+                                      aria-expanded={lessonExpanded}
+                                      onClick={() => setExpandedReviewLessons((current) => {
+                                        const next = new Set(current);
+                                        if (next.has(lessonKey)) next.delete(lessonKey);
+                                        else next.add(lessonKey);
+                                        return next;
+                                      })}
+                                      className="flex min-h-8 min-w-0 w-full items-center justify-between gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-xs font-bold text-slate-700 hover:bg-white"
+                                    >
+                                      <span className="min-w-0 flex-1 truncate" title={lessonName}>{lessonName}</span>
+                                      {lessonExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                                    </button>
+                                  )}
+                                  {(isFree || lessonExpanded) && (
+                                    <ul className="min-w-0 space-y-1 overflow-x-hidden pb-1 pl-3">
+                                      {lessonAssignments.map((assignment) => (
+                                        <li key={assignment.id} className="min-w-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedReviewAssignmentId(assignment.id);
+                                              setSelectedReviewId(null);
+                                              setEditingReview(false);
+                                            }}
+                                            className={`flex min-h-9 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
+                                              selectedReviewAssignment?.id === assignment.id
+                                                ? 'border-rose-500 bg-rose-50 text-rose-900'
+                                                : 'border-transparent text-slate-600 hover:bg-white'
+                                            }`}
+                                          >
+                                            <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                                            <span className="min-w-0 flex-1 truncate font-semibold" title={assignment.title}>{assignment.title}</span>
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </section>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </nav>
+              ) : <p className="py-3 text-sm text-slate-500">{selectedClass ? 'Không có bài tập còn hạn trong học kỳ này.' : 'Chọn lớp để xem bài tập.'}</p>)}
             </aside>
             <article className="min-h-0 overflow-y-auto p-5 sm:p-8">
-              {selectedReviewResource ? (
+              {reviewPreviewTab === 'assignment' && selectedReviewAssignment ? (
+                <div className="mx-auto max-w-4xl">
+                  <p className="text-sm font-semibold text-rose-700">
+                    {selectedReviewAssignment.chapter.trim() && selectedReviewAssignment.lesson.trim()
+                      ? `${selectedReviewAssignment.chapter} · ${selectedReviewAssignment.lesson}`
+                      : 'Bài tập tự do'}
+                  </p>
+                  <h1 className="mt-2 break-words text-2xl font-bold text-slate-950">{selectedReviewAssignment.title}</h1>
+                  <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                    <Clock3 className="h-4 w-4" /> Hạn nộp: {new Date(selectedReviewAssignment.dueAt).toLocaleString('vi-VN')}
+                  </p>
+                  <div className="mt-6 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-base leading-7 text-slate-700">
+                    {selectedReviewAssignment.description}
+                  </div>
+                </div>
+              ) : reviewPreviewTab === 'lesson' && selectedReviewResource ? (
                 <>
                   <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -1344,7 +1547,13 @@ export function LessonRepository() {
                     </>
                   )}
                 </>
-              ) : <div className="flex h-full min-h-48 items-center justify-center text-center text-sm text-slate-500">{loadingRecent ? 'Đang tải bài giảng...' : 'Chọn bài giảng ở danh sách bên trái để xem trước.'}</div>}
+              ) : <div className="flex h-full min-h-48 items-center justify-center text-center text-sm text-slate-500">
+                {loadingRecent
+                  ? 'Đang tải nội dung...'
+                  : reviewPreviewTab === 'assignment'
+                    ? 'Không có bài tập còn hạn trong học kỳ này.'
+                    : 'Chọn bài giảng ở danh sách bên trái để xem trước.'}
+              </div>}
             </article>
           </div>
         </section>

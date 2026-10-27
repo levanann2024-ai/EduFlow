@@ -77,7 +77,7 @@ async function listClasses(auth, requestedSchoolId) {
     const scope = adminSchoolScope(auth, requestedSchoolId);
     const result = await pool.query(
       `SELECT c.id, c.school_id, c.code, c.name, c.grade, c.academic_year, c.status,
-              s.name AS school_name
+              s.name AS school_name, false AS is_homeroom, NULL::text AS homeroom_subject
          FROM classes c
          JOIN schools s ON s.id = c.school_id
         WHERE c.status = 'active' AND s.status = 'active'
@@ -100,7 +100,7 @@ async function listClasses(auth, requestedSchoolId) {
   const result = auth.role === 'student'
     ? await pool.query(
       `SELECT c.id, c.school_id, c.code, c.name, c.grade, c.academic_year, c.status,
-              s.name AS school_name
+              s.name AS school_name, false AS is_homeroom, NULL::text AS homeroom_subject
          FROM class_memberships cm
          JOIN classes c ON c.id = cm.class_id
          JOIN schools s ON s.id = c.school_id
@@ -111,12 +111,26 @@ async function listClasses(auth, requestedSchoolId) {
     )
     : await pool.query(
       `SELECT c.id, c.school_id, c.code, c.name, c.grade, c.academic_year, c.status,
-              s.name AS school_name
-         FROM teacher_class_assignments tca
-         JOIN classes c ON c.id = tca.class_id
+              s.name AS school_name,
+              EXISTS (
+                SELECT 1 FROM class_homeroom_assignments hra
+                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $1
+              ) AS is_homeroom,
+              (SELECT hra.subject FROM class_homeroom_assignments hra
+                WHERE hra.class_id = c.id AND hra.teacher_user_id = $1) AS homeroom_subject
+         FROM classes c
          JOIN schools s ON s.id = c.school_id
-        WHERE tca.teacher_user_id = $1 AND tca.revoked_at IS NULL
-          AND c.school_id = $2 AND c.status = 'active' AND s.status = 'active'
+        WHERE c.school_id = $2 AND c.status = 'active' AND s.status = 'active'
+          AND (
+            EXISTS (
+              SELECT 1 FROM teacher_class_assignments tca
+               WHERE tca.class_id = c.id AND tca.teacher_user_id = $1 AND tca.revoked_at IS NULL
+            )
+            OR EXISTS (
+              SELECT 1 FROM class_homeroom_assignments hra
+               WHERE hra.class_id = c.id AND hra.teacher_user_id = $1
+            )
+          )
         ORDER BY c.academic_year DESC, c.name`,
       [auth.userId, schoolId],
     );
@@ -129,7 +143,7 @@ async function findAccessibleClass(auth, classId) {
     const scope = adminSchoolScope(auth);
     const result = await pool.query(
       `SELECT c.id, c.school_id, c.code, c.name, c.grade, c.academic_year, c.status,
-              s.name AS school_name
+              s.name AS school_name, false AS is_homeroom, NULL::text AS homeroom_subject
          FROM classes c
          JOIN schools s ON s.id = c.school_id
         WHERE c.id = $1 AND c.status = 'active' AND s.status = 'active'
@@ -146,7 +160,7 @@ async function findAccessibleClass(auth, classId) {
   const result = auth.role === 'student'
     ? await pool.query(
       `SELECT c.id, c.school_id, c.code, c.name, c.grade, c.academic_year, c.status,
-              s.name AS school_name
+              s.name AS school_name, false AS is_homeroom, NULL::text AS homeroom_subject
          FROM class_memberships cm
          JOIN classes c ON c.id = cm.class_id
          JOIN schools s ON s.id = c.school_id
@@ -156,12 +170,26 @@ async function findAccessibleClass(auth, classId) {
     )
     : await pool.query(
       `SELECT c.id, c.school_id, c.code, c.name, c.grade, c.academic_year, c.status,
-              s.name AS school_name
-         FROM teacher_class_assignments tca
-         JOIN classes c ON c.id = tca.class_id
+              s.name AS school_name,
+              EXISTS (
+                SELECT 1 FROM class_homeroom_assignments hra
+                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $2
+              ) AS is_homeroom,
+              (SELECT hra.subject FROM class_homeroom_assignments hra
+                WHERE hra.class_id = c.id AND hra.teacher_user_id = $2) AS homeroom_subject
+         FROM classes c
          JOIN schools s ON s.id = c.school_id
-        WHERE c.id = $1 AND tca.teacher_user_id = $2 AND tca.revoked_at IS NULL
-          AND c.school_id = $3 AND c.status = 'active' AND s.status = 'active'`,
+        WHERE c.id = $1 AND c.school_id = $3 AND c.status = 'active' AND s.status = 'active'
+          AND (
+            EXISTS (
+              SELECT 1 FROM teacher_class_assignments tca
+               WHERE tca.class_id = c.id AND tca.teacher_user_id = $2 AND tca.revoked_at IS NULL
+            )
+            OR EXISTS (
+              SELECT 1 FROM class_homeroom_assignments hra
+               WHERE hra.class_id = c.id AND hra.teacher_user_id = $2
+            )
+          )`,
       [classId, auth.userId, schoolId],
     );
   return result.rows[0] ?? null;
@@ -173,6 +201,77 @@ async function getClass(auth, classId) {
     throw serviceError(404, 'SCHOOL_CLASS_NOT_FOUND', 'Không tìm thấy lớp trong phạm vi truy cập.');
   }
   return classroom;
+}
+
+async function getHomeroomClassGradeSummary(auth, classId, { academicYear, semester }) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên chủ nhiệm được xem tổng hợp điểm liên môn.');
+  }
+  if (typeof academicYear !== 'string' || academicYear.trim().length < 4 || academicYear.length > 20
+    || !['Kỳ 1', 'Kỳ 2'].includes(semester)) {
+    throw serviceError(400, 'SCHOOL_INVALID_PERIOD', 'Năm học hoặc học kỳ không hợp lệ.');
+  }
+  const schoolId = await getSingleActiveSchool(auth.userId, auth.role);
+  const classroomResult = await getPool().query(
+    `SELECT c.id, c.academic_year, hra.subject AS homeroom_subject
+       FROM class_homeroom_assignments hra
+       JOIN classes c ON c.id = hra.class_id AND c.school_id = hra.school_id
+       JOIN schools s ON s.id = c.school_id AND s.status = 'active'
+      WHERE c.id = $1 AND hra.teacher_user_id = $2 AND c.school_id = $3
+        AND c.status = 'active'`,
+    [classId, auth.userId, schoolId],
+  );
+  if (!classroomResult.rowCount) {
+    throw serviceError(404, 'SCHOOL_HOMEROOM_CLASS_NOT_FOUND', 'Không tìm thấy lớp chủ nhiệm trong phạm vi truy cập.');
+  }
+  const classroom = classroomResult.rows[0];
+  if (classroom.academic_year !== academicYear) {
+    throw serviceError(400, 'SCHOOL_INVALID_PERIOD', 'Năm học không khớp với năm học của lớp.');
+  }
+  await listClassStudents(auth, classId);
+
+  const result = await getPool().query(
+    `SELECT u.id, u.full_name, cs.subject,
+            g.regular_1, g.regular_2, g.regular_3, g.regular_4, g.midterm, g.final,
+            g.confirmed_average
+       FROM class_memberships cm
+       JOIN users u ON u.id = cm.student_user_id AND u.status = 'active'
+       JOIN class_subjects cs ON cs.class_id = cm.class_id AND cs.school_id = $4
+       LEFT JOIN student_term_grades g
+         ON g.class_id = cm.class_id AND g.student_user_id = cm.student_user_id
+        AND lower(trim(g.subject)) = lower(trim(cs.subject))
+        AND g.academic_year = $2 AND g.semester = $3
+      WHERE cm.class_id = $1 AND cm.status = 'active'
+      ORDER BY u.full_name, u.id, cs.subject`,
+    [classId, academicYear, semester, schoolId],
+  );
+  const students = new Map();
+  const subjects = new Set();
+  for (const row of result.rows) {
+    subjects.add(row.subject);
+    const student = students.get(row.id) ?? { id: row.id, fullName: row.full_name, averages: {} };
+    const grades = mapGrade(row, '');
+    const scores = [
+      ...grades.regular.map((value) => ({ value, weight: 1 })),
+      { value: grades.midterm, weight: 2 },
+      { value: grades.final, weight: 3 },
+    ].filter(({ value }) => value !== null);
+    const totalWeight = scores.reduce((sum, score) => sum + score.weight, 0);
+    student.averages[row.subject] = row.confirmed_average === null
+      ? totalWeight
+        ? scores.reduce((sum, score) => sum + score.value * score.weight, 0) / totalWeight
+        : null
+      : Number(row.confirmed_average);
+    students.set(row.id, student);
+  }
+  return {
+    classId,
+    academicYear,
+    semester,
+    homeroomSubject: classroom.homeroom_subject,
+    subjects: Array.from(subjects).sort((first, second) => first.localeCompare(second, 'vi')),
+    students: Array.from(students.values()),
+  };
 }
 
 async function listClassStudents(auth, classId) {
@@ -300,13 +399,10 @@ async function getClassGradebook(auth, classId, { academicYear, semester, subjec
   validatePeriod(academicYear, semester, subject);
   const classroom = await requireTeacherSubject(auth, classId, subject);
   validateClassAcademicYear(classroom, academicYear);
-  const previous = getPreviousPeriod(academicYear, semester);
   const result = await getPool().query(
     `SELECT u.id, u.full_name, u.email, sp.grade, sp.student_number,
             g.regular_1, g.regular_2, g.regular_3, g.regular_4, g.midterm, g.final,
-            pg.regular_1 AS previous_regular_1, pg.regular_2 AS previous_regular_2,
-            pg.regular_3 AS previous_regular_3, pg.regular_4 AS previous_regular_4,
-            pg.midterm AS previous_midterm, pg.final AS previous_final,
+            g.confirmed_average, g.previous_confirmed_average,
             assignment_stats.total_assignments, assignment_stats.submitted_assignments,
             assignment_stats.overdue_missing
        FROM class_memberships cm
@@ -315,9 +411,6 @@ async function getClassGradebook(auth, classId, { academicYear, semester, subjec
        LEFT JOIN student_term_grades g
          ON g.class_id = cm.class_id AND g.student_user_id = cm.student_user_id
         AND g.subject = $2 AND g.academic_year = $3 AND g.semester = $4
-       LEFT JOIN student_term_grades pg
-         ON pg.class_id = cm.class_id AND pg.student_user_id = cm.student_user_id
-        AND pg.subject = $2 AND pg.academic_year = $5 AND pg.semester = $6
        LEFT JOIN LATERAL (
          SELECT count(*)::int AS total_assignments,
                 count(s.id)::int AS submitted_assignments,
@@ -331,8 +424,8 @@ async function getClassGradebook(auth, classId, { academicYear, semester, subjec
       WHERE cm.class_id = $1 AND cm.status = 'active'
         AND EXISTS (
           SELECT 1 FROM teacher_class_assignments tca
-           WHERE tca.class_id = cm.class_id AND tca.teacher_user_id = $7
-             AND tca.school_id = $8 AND lower(trim(tca.subject)) = lower(trim($2))
+           WHERE tca.class_id = cm.class_id AND tca.teacher_user_id = $5
+             AND tca.school_id = $6 AND lower(trim(tca.subject)) = lower(trim($2))
              AND tca.revoked_at IS NULL
         )
       ORDER BY u.full_name, u.email`,
@@ -341,8 +434,6 @@ async function getClassGradebook(auth, classId, { academicYear, semester, subjec
       subject.trim(),
       academicYear,
       semester,
-      previous?.academicYear ?? null,
-      previous?.semester ?? null,
       auth.userId,
       classroom.school_id,
     ],
@@ -355,7 +446,10 @@ async function getClassGradebook(auth, classId, { academicYear, semester, subjec
     grade: row.grade,
     studentNumber: row.student_number,
     grades: mapGrade(row, ''),
-    previousGrades: mapGrade(row, 'previous_'),
+    confirmedAverage: row.confirmed_average === null ? null : Number(row.confirmed_average),
+    previousConfirmedAverage: row.previous_confirmed_average === null
+      ? null
+      : Number(row.previous_confirmed_average),
     assignments: {
       total: row.total_assignments,
       submitted: row.submitted_assignments,
@@ -370,22 +464,34 @@ function validateScore(value, field) {
   }
 }
 
-async function saveStudentGrades(auth, classId, studentId, input) {
-  const { academicYear, semester, subject, regular, midterm, final } = input;
-  validatePeriod(academicYear, semester, subject);
+function validateStudentGradeEntry(entry) {
+  const { regular, midterm, final } = entry;
   if (!Array.isArray(regular) || regular.length !== 4) {
     throw serviceError(400, 'SCHOOL_INVALID_GRADE', 'Cần cung cấp đúng 4 điểm thường xuyên.');
   }
   regular.forEach((value, index) => validateScore(value, `Điểm thường xuyên ${index + 1}`));
   validateScore(midterm, 'Điểm giữa kỳ');
   validateScore(final, 'Điểm cuối kỳ');
-  const classroom = await requireTeacherSubject(auth, classId, subject);
-  validateClassAcademicYear(classroom, academicYear);
-  const result = await getPool().query(
+  const scores = [
+    ...regular.map((value) => ({ value, weight: 1 })),
+    { value: midterm, weight: 2 },
+    { value: final, weight: 3 },
+  ].filter(({ value }) => value !== null);
+  const totalWeight = scores.reduce((sum, score) => sum + score.weight, 0);
+  return totalWeight
+    ? Number((scores.reduce((sum, score) => sum + score.value * score.weight, 0) / totalWeight).toFixed(2))
+    : null;
+}
+
+async function upsertStudentGrades(client, auth, classroom, period, studentId, entry, average) {
+  const { academicYear, semester, subject } = period;
+  const { regular, midterm, final } = entry;
+  const result = await client.query(
     `INSERT INTO student_term_grades
        (id, class_id, school_id, student_user_id, subject, academic_year, semester,
-        regular_1, regular_2, regular_3, regular_4, midterm, final, created_by, updated_by)
-     SELECT $1, $2, $3, cm.student_user_id, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13
+        regular_1, regular_2, regular_3, regular_4, midterm, final,
+        confirmed_average, created_by, updated_by)
+     SELECT $1, $2, $3, cm.student_user_id, $4, $5, $6, $7, $8, $9, $10, $11, $12, $15, $13, $13
        FROM class_memberships cm
       WHERE cm.class_id = $2 AND cm.student_user_id = $14 AND cm.status = 'active'
         AND EXISTS (
@@ -395,18 +501,93 @@ async function saveStudentGrades(auth, classId, studentId, input) {
              AND tca.revoked_at IS NULL
         )
      ON CONFLICT (class_id, student_user_id, subject, academic_year, semester)
-     DO UPDATE SET regular_1 = EXCLUDED.regular_1, regular_2 = EXCLUDED.regular_2,
+     DO UPDATE SET previous_confirmed_average = student_term_grades.confirmed_average,
+                   regular_1 = EXCLUDED.regular_1, regular_2 = EXCLUDED.regular_2,
                    regular_3 = EXCLUDED.regular_3, regular_4 = EXCLUDED.regular_4,
                    midterm = EXCLUDED.midterm, final = EXCLUDED.final,
+                   confirmed_average = EXCLUDED.confirmed_average,
                    updated_by = EXCLUDED.updated_by, updated_at = now()
-     RETURNING id`,
+     RETURNING confirmed_average`,
     [
       randomUUID(), classroom.id, classroom.school_id, subject.trim(), academicYear, semester,
-      ...regular, midterm, final, auth.userId, studentId,
+      ...regular, midterm, final, auth.userId, studentId, average,
     ],
   );
   if (result.rowCount === 0) {
     throw serviceError(404, 'SCHOOL_STUDENT_NOT_FOUND', 'Không tìm thấy học sinh đang theo học lớp này.');
+  }
+  return result.rows[0].confirmed_average === null ? null : Number(result.rows[0].confirmed_average);
+}
+
+async function validateTeacherGradebookRequest(auth, classId, input) {
+  const { academicYear, semester, subject } = input;
+  validatePeriod(academicYear, semester, subject);
+  const classroom = await requireTeacherSubject(auth, classId, subject);
+  validateClassAcademicYear(classroom, academicYear);
+  return classroom;
+}
+
+async function saveStudentGrades(auth, classId, studentId, input) {
+  const classroom = await validateTeacherGradebookRequest(auth, classId, input);
+  const average = validateStudentGradeEntry(input);
+  return upsertStudentGrades(
+    getPool(),
+    auth,
+    classroom,
+    input,
+    studentId,
+    input,
+    average,
+  );
+}
+
+async function saveClassGradebook(auth, classId, input) {
+  const { academicYear, semester, subject, entries } = input;
+  const classroom = await validateTeacherGradebookRequest(auth, classId, input);
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > 500) {
+    throw serviceError(400, 'SCHOOL_INVALID_GRADE', 'Cần cung cấp từ 1 đến 500 dòng điểm để lưu.');
+  }
+  const studentIds = new Set();
+  const preparedEntries = entries.map((entry) => {
+    if (!entry || typeof entry.studentId !== 'string' || studentIds.has(entry.studentId)) {
+      throw serviceError(400, 'SCHOOL_INVALID_GRADE', 'Danh sách học sinh lưu điểm không hợp lệ hoặc bị trùng.');
+    }
+    studentIds.add(entry.studentId);
+    return { entry, average: validateStudentGradeEntry(entry) };
+  });
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const roster = await client.query(
+      `SELECT student_user_id
+         FROM class_memberships
+        WHERE class_id = $1 AND status = 'active' AND student_user_id = ANY($2::uuid[])
+        FOR UPDATE`,
+      [classroom.id, Array.from(studentIds)],
+    );
+    if (roster.rowCount !== studentIds.size) {
+      throw serviceError(404, 'SCHOOL_STUDENT_NOT_FOUND', 'Có học sinh không còn theo học trong lớp này.');
+    }
+    const savedAverages = [];
+    for (const { entry, average } of preparedEntries) {
+      const savedAverage = await upsertStudentGrades(
+        client,
+        auth,
+        classroom,
+        { academicYear, semester, subject },
+        entry.studentId,
+        entry,
+        average,
+      );
+      savedAverages.push({ studentId: entry.studentId, average: savedAverage });
+    }
+    await client.query('COMMIT');
+    return savedAverages;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -425,6 +606,7 @@ async function listClassAssignments(auth, classId, { academicYear, semester, sub
                   'id', u.id,
                   'fullName', u.full_name,
                   'submittedAt', s.submitted_at,
+                  'score', s.score,
                   'gradedAt', s.graded_at
                 )
                 ORDER BY u.full_name, u.id
@@ -1118,6 +1300,7 @@ module.exports = {
   createClassLearningResourceFile,
   deleteClassLearningResourceChapter,
   getClass,
+  getHomeroomClassGradeSummary,
   listClassAssignmentSubmissions,
   getClassLearningResourceFile,
   getClassGradebook,
@@ -1128,6 +1311,7 @@ module.exports = {
   listStudentAssignments,
   listStudentLearningResources,
   listTeacherClassSubjects,
+  saveClassGradebook,
   saveStudentGrades,
   saveClassAssignmentGrade,
   submitClassAssignment,
