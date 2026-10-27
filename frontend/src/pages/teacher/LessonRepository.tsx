@@ -57,6 +57,13 @@ type ReviewAssignmentGroup = {
   lessons: Array<{ lesson: string; assignments: ClassAssignment[] }>;
 };
 
+export interface LessonRepositoryDraft {
+  id: string;
+  title: string;
+  subject: string;
+  content: string;
+}
+
 function formatFileSize(bytes: number) {
   return bytes >= 1024 * 1024
     ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -89,7 +96,7 @@ function resourceFileIcon(name: string) {
   return FileText;
 }
 
-export function LessonRepository() {
+export function LessonRepository({ initialDraft }: { initialDraft?: LessonRepositoryDraft | null } = {}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reviewFileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'create' | 'review'>('create');
@@ -151,6 +158,17 @@ export function LessonRepository() {
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const selectedFile = files[0]?.file;
+  const preferredSubject = initialDraft?.subject ?? '';
+
+  useEffect(() => {
+    if (!initialDraft) return;
+    setActiveTab('create');
+    setContentType('lesson');
+    setEntryMode('write');
+    setTitle(initialDraft.title);
+    setDocumentContent(initialDraft.content);
+    setFeedback('Bài giảng AI đã được đưa vào nội dung. Chọn lớp, chương và bài để giao cho học sinh.');
+  }, [initialDraft]);
 
   useEffect(() => {
     if (!selectedFile?.type.startsWith('image/')) {
@@ -202,13 +220,17 @@ export function LessonRepository() {
       .then((items) => {
         if (!active) return;
         setSubjects(items);
-        setSelectedSubject((current) => items.includes(current) ? current : (items[0] ?? ''));
+        setSelectedSubject((current) => (
+          preferredSubject && items.includes(preferredSubject)
+            ? preferredSubject
+            : items.includes(current) ? current : (items[0] ?? '')
+        ));
       })
       .catch((loadError) => {
         if (active) setFeedback(loadError instanceof Error ? loadError.message : 'Không thể tải môn học được phân công.');
       });
     return () => { active = false; };
-  }, [selectedClasses]);
+  }, [selectedClasses, preferredSubject]);
 
   useEffect(() => {
     const classId = selectedClasses[0];

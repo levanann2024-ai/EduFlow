@@ -61,6 +61,13 @@ function normalizeQuizQuestion(value: unknown, index: number): QuizQuestion {
     question: typeof questionText === 'string' && questionText.trim() ? questionText : '[Câu hỏi cũ chưa có nội dung]',
     options,
     correctIndex,
+    type: ['multiple-choice', 'true-false', 'short-answer', 'essay'].includes(String(raw.type))
+      ? raw.type as QuizQuestion['type']
+      : undefined,
+    correctAnswer: typeof answer === 'string' ? answer : undefined,
+    correctAnswers: Array.isArray(raw.correctAnswers) && raw.correctAnswers.every((item) => typeof item === 'boolean')
+      ? raw.correctAnswers
+      : undefined,
     explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
     difficulty,
   };

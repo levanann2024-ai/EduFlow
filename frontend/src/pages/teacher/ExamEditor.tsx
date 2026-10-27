@@ -1,5 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Eye, FileCheck2, FileText, Plus, Save, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
+import remarkMath from 'remark-math';
+import 'katex/dist/katex.min.css';
 import type { ExamQuestion, ExamQuestionType, SavedExam } from '@/pages/teacher/assessmentStorage';
 
 const questionTypeLabels: Record<ExamQuestionType, string> = {
@@ -45,9 +49,15 @@ export function ExamEditor({
   const [selectedId, setSelectedId] = useState(workingExam.questions[0]?.id ?? null);
   const [preview, setPreview] = useState(false);
   const [validationError, setValidationError] = useState('');
+  const [focusedOption, setFocusedOption] = useState<string | null>(null);
+  const optionInputs = useRef<Record<string, HTMLInputElement | null>>({});
   const selectedQuestion = workingExam.questions.find((question) => question.id === selectedId) ?? null;
   const totalPoints = useMemo(() => workingExam.questions.reduce((total, question) => total + Math.max(0, question.points), 0), [workingExam.questions]);
   const hasUnsavedChanges = JSON.stringify(workingExam) !== JSON.stringify(exam);
+
+  useEffect(() => {
+    if (focusedOption) optionInputs.current[focusedOption]?.focus();
+  }, [focusedOption]);
 
   const closeEditor = () => {
     if (hasUnsavedChanges && !window.confirm('Bạn có thay đổi chưa lưu. Đóng và bỏ các thay đổi này?')) return;
@@ -118,13 +128,13 @@ export function ExamEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-2 sm:p-4" onClick={closeEditor}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 sm:p-6" onClick={closeEditor}>
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="exam-editor-title"
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl"
+        className="flex h-[calc(100dvh-120px)] max-h-[calc(100dvh-120px)] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
           <div className="min-w-0">
@@ -158,27 +168,27 @@ export function ExamEditor({
               <div className="mt-6 space-y-6">
                 {workingExam.questions.map((question, index) => (
                   <section key={question.id} className="border-b border-slate-100 pb-5 last:border-0">
-                    <p className="font-medium leading-6 text-slate-900">
-                      Câu {index + 1}. {question.question || <span className="italic text-slate-400">Chưa nhập nội dung câu hỏi</span>}
+                    <div className="font-medium leading-6 text-slate-900">
+                      <MathText text={`Câu ${index + 1}. ${question.question || 'Chưa nhập nội dung câu hỏi'}`} />
                       <span className="ml-2 whitespace-nowrap text-xs font-normal text-slate-500">({question.points} điểm)</span>
-                    </p>
+                    </div>
                     {question.type === 'multiple-choice' && (
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         {question.options.map((option, optionIndex) => (
-                          <label key={optionIndex} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                          <div key={optionIndex} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
                             <input type="radio" name={`preview-${question.id}`} className="accent-blue-700" />
-                            {String.fromCharCode(65 + optionIndex)}. {option || '...'}
-                          </label>
+                            <MathText text={`${String.fromCharCode(65 + optionIndex)}. ${option || '...'}`} />
+                          </div>
                         ))}
                       </div>
                     )}
                     {question.type === 'true-false' && (
                       <div className="mt-3 space-y-2">
                         {question.options.map((option, optionIndex) => (
-                          <label key={optionIndex} className="grid grid-cols-[1fr_100px] items-center gap-2 text-sm text-slate-700">
-                            <span>{String.fromCharCode(97 + optionIndex)}) {option}</span>
+                          <div key={optionIndex} className="grid grid-cols-[1fr_100px] items-center gap-2 text-sm text-slate-700">
+                            <MathText text={`${String.fromCharCode(97 + optionIndex)}) ${option}`} />
                             <select defaultValue="" className="input-field h-9"><option value="" disabled>Chọn</option><option>Đúng</option><option>Sai</option></select>
-                          </label>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -189,8 +199,8 @@ export function ExamEditor({
             </article>
           </div>
         ) : (
-          <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-[240px_minmax(0,1fr)_260px] lg:overflow-hidden">
-            <aside className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-[240px_minmax(0,1fr)_260px]">
+            <aside className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-900">Câu hỏi ({workingExam.questions.length})</h3>
                 <button onClick={addQuestion} className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"><Plus className="h-3.5 w-3.5" /> Thêm</button>
@@ -200,7 +210,10 @@ export function ExamEditor({
                   <div key={question.id} className={`rounded-lg border p-2 ${selectedId === question.id ? 'border-blue-300 bg-blue-50' : 'border-slate-100'}`}>
                     <button onClick={() => setSelectedId(question.id)} className="block w-full text-left">
                       <span className="block text-xs font-semibold text-slate-800">Câu {index + 1} - {questionTypeLabels[question.type]}</span>
-                      <span className="mt-1 block truncate text-xs text-slate-500">{question.question || 'Chưa nhập nội dung'}</span>
+                      <MathText
+                        text={question.question || 'Chưa nhập nội dung'}
+                        className="mt-1 block truncate text-xs text-slate-500"
+                      />
                       <span className="mt-1 block text-[11px] text-slate-500">{question.points} điểm</span>
                     </button>
                     <div className="mt-1 flex justify-end gap-1">
@@ -213,7 +226,7 @@ export function ExamEditor({
               </div>
             </aside>
 
-            <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
+            <section className="min-h-0 min-w-0 rounded-xl border border-slate-200 bg-white p-4">
               {selectedQuestion ? (
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -228,6 +241,7 @@ export function ExamEditor({
                   <label className="block text-sm font-medium text-slate-700">Nội dung câu hỏi
                     <textarea value={selectedQuestion.question} onChange={(event) => updateQuestion(selectedQuestion.id, { question: event.target.value })} rows={4} className="input-field mt-1.5 resize-y" />
                   </label>
+                  <MathPreview value={selectedQuestion.question} />
 
                   {selectedQuestion.type === 'multiple-choice' && (
                     <fieldset className="space-y-2">
@@ -236,14 +250,37 @@ export function ExamEditor({
                         <div key={index} className="flex items-center gap-2">
                           <input type="radio" name={`correct-${selectedQuestion.id}`} checked={selectedQuestion.correctIndex === index} onChange={() => updateQuestion(selectedQuestion.id, { correctIndex: index, correctAnswer: option })} aria-label={`Đặt phương án ${String.fromCharCode(65 + index)} là đáp án đúng`} className="accent-blue-700" />
                           <span className="w-5 text-sm text-slate-500">{String.fromCharCode(65 + index)}.</span>
-                          <input value={option} onChange={(event) => {
-                            const options = [...selectedQuestion.options];
-                            options[index] = event.target.value;
-                            updateQuestion(selectedQuestion.id, {
-                              options,
-                              ...(selectedQuestion.correctIndex === index ? { correctAnswer: event.target.value } : {}),
-                            });
-                          }} className="input-field" aria-label={`Phương án ${String.fromCharCode(65 + index)}`} />
+                          <div className="min-w-0 flex-1">
+                            {focusedOption === `${selectedQuestion.id}-${index}` ? (
+                              <>
+                                <input
+                                  ref={(element) => { optionInputs.current[`${selectedQuestion.id}-${index}`] = element; }}
+                                  value={option}
+                                  onChange={(event) => {
+                                    const options = [...selectedQuestion.options];
+                                    options[index] = event.target.value;
+                                    updateQuestion(selectedQuestion.id, {
+                                      options,
+                                      ...(selectedQuestion.correctIndex === index ? { correctAnswer: event.target.value } : {}),
+                                    });
+                                  }}
+                                  onBlur={() => setFocusedOption(null)}
+                                  className="input-field"
+                                  aria-label={`Phương án ${String.fromCharCode(65 + index)}`}
+                                />
+                                <MathPreview value={option} compact />
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setFocusedOption(`${selectedQuestion.id}-${index}`)}
+                                className="input-field min-h-10 w-full text-left"
+                                aria-label={`Bấm để sửa phương án ${String.fromCharCode(65 + index)}`}
+                              >
+                                <MathText text={option || 'Nhấn để nhập phương án'} className="text-sm text-slate-800" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </fieldset>
@@ -268,11 +305,14 @@ export function ExamEditor({
                             <option value="false">Sai</option>
                           </select>
                           <span className="w-5 text-sm text-slate-500">{String.fromCharCode(97 + index)}.</span>
-                          <input value={option} onChange={(event) => {
-                            const options = [...selectedQuestion.options];
-                            options[index] = event.target.value;
-                            updateQuestion(selectedQuestion.id, { options });
-                          }} className="input-field" aria-label={`Nhận định ${String.fromCharCode(97 + index)}`} />
+                          <div className="min-w-0 flex-1">
+                            <input value={option} onChange={(event) => {
+                              const options = [...selectedQuestion.options];
+                              options[index] = event.target.value;
+                              updateQuestion(selectedQuestion.id, { options });
+                            }} className="input-field" aria-label={`Nhận định ${String.fromCharCode(97 + index)}`} />
+                            <MathPreview value={`${String.fromCharCode(97 + index)}. ${option}`} compact />
+                          </div>
                         </div>
                       ))}
                       <button onClick={() => updateQuestion(selectedQuestion.id, { options: [...selectedQuestion.options, ''] })} className="text-xs font-semibold text-blue-700 hover:underline">+ Thêm nhận định</button>
@@ -283,6 +323,9 @@ export function ExamEditor({
                     <label className="block text-sm font-medium text-slate-700">Đáp án / hướng dẫn chấm
                       <textarea value={selectedQuestion.correctAnswer} onChange={(event) => updateQuestion(selectedQuestion.id, { correctAnswer: event.target.value })} rows={selectedQuestion.type === 'essay' ? 4 : 2} className="input-field mt-1.5 resize-y" />
                     </label>
+                  )}
+                  {(selectedQuestion.type === 'short-answer' || selectedQuestion.type === 'essay') && (
+                    <MathPreview value={selectedQuestion.correctAnswer} />
                   )}
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block text-sm font-medium text-slate-700">Điểm
@@ -297,6 +340,7 @@ export function ExamEditor({
                   <label className="block text-sm font-medium text-slate-700">Lời giải / ghi chú chấm
                     <textarea value={selectedQuestion.explanation} onChange={(event) => updateQuestion(selectedQuestion.id, { explanation: event.target.value })} rows={3} className="input-field mt-1.5 resize-y" />
                   </label>
+                  <MathPreview value={selectedQuestion.explanation} />
                 </div>
               ) : (
                 <div className="flex min-h-48 flex-col items-center justify-center text-center text-sm text-slate-500">
@@ -333,4 +377,34 @@ export function ExamEditor({
       </section>
     </div>
   );
+}
+
+function MathPreview({ value, compact = false }: { value: string; compact?: boolean }) {
+  const normalized = normalizeMathDelimiters(value);
+  if (!normalized.trim() || !/(\$[^$]+\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/.test(normalized)) return null;
+  return (
+    <div className={compact
+      ? 'mt-1 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600'
+      : 'rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2'}>
+      {!compact && <p className="mb-1 text-[11px] font-semibold text-blue-800">Xem trước công thức</p>}
+      <MathText text={normalized} className="min-w-0 overflow-x-auto text-sm leading-6 text-slate-800" />
+    </div>
+  );
+}
+
+function MathText({ text, className = '' }: { text: string; className?: string }) {
+  return (
+    <div className={className}>
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+        {normalizeMathDelimiters(text)}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function normalizeMathDelimiters(value: string) {
+  return value
+    .replace(/\\\$/g, '$')
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula: string) => `$${formula}$`)
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula: string) => `$$${formula}$$`);
 }

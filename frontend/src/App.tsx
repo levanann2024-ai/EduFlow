@@ -7,7 +7,7 @@ import { AIChat } from '@/pages/AIChat';
 import { Analytics } from '@/pages/Analytics';
 import { Lectures } from '@/pages/Lectures';
 import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard';
-import { LessonRepository } from '@/pages/teacher/LessonRepository';
+import { LessonRepository, type LessonRepositoryDraft } from '@/pages/teacher/LessonRepository';
 import { AILessonBuilder } from '@/pages/teacher/AILessonBuilder';
 import { ExamQuestionWorkspace, GradingAnalyticsWorkspace, ProctoringWorkspace } from '@/pages/teacher/TeacherWorkspaces';
 import { MyClasses } from '@/pages/student/MyClasses';
@@ -63,11 +63,16 @@ function App() {
   const [practiceSeed, setPracticeSeed] = useState<SavedQuiz | null>(null);
   const [resourceSubjectSeed, setResourceSubjectSeed] = useState<string | null>(null);
   const [lessonBuilderInitialMode, setLessonBuilderInitialMode] = useState<'lesson' | 'exam'>('lesson');
+  const [lessonRepositoryDraft, setLessonRepositoryDraft] = useState<LessonRepositoryDraft | null>(null);
+  const [lessonsWorkspaceVisited, setLessonsWorkspaceVisited] = useState(
+    () => window.location.pathname === '/teacher/lessons',
+  );
   const [initialSubjectView, setInitialSubjectView] = useState<'lessons' | 'assignments' | null>(null);
   const [initialSubjectTopic, setInitialSubjectTopic] = useState<string | null>(null);
 
   const navigateToPage = (nextPage: Page) => {
     if (nextPage === 'lesson-builder') setLessonBuilderInitialMode(page === 'exams' ? 'exam' : 'lesson');
+    if (nextPage === 'lessons') setLessonsWorkspaceVisited(true);
     setResourceSubjectSeed(null);
     setInitialSubjectView(null);
     setInitialSubjectTopic(null);
@@ -273,8 +278,25 @@ function App() {
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
               {activePage === 'ai-chat' && <AIChat role={role} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : undefined} />}
-              {activePage === 'lessons' && <LessonRepository />}
-              {activePage === 'lesson-builder' && <AILessonBuilder initialMode={lessonBuilderInitialMode} />}
+              {role === 'lecturer' && lessonsWorkspaceVisited && (
+                <div className={activePage === 'lessons' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+                  <LessonRepository initialDraft={lessonRepositoryDraft} />
+                </div>
+              )}
+              {role === 'lecturer' && (
+                <div className={activePage === 'lesson-builder' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+                  <AILessonBuilder
+                    initialMode={lessonBuilderInitialMode}
+                    onAssignLesson={(draft) => {
+                      setLessonRepositoryDraft({
+                        ...draft,
+                        id: `lesson-draft-${Date.now()}`,
+                      });
+                      navigateToPage('lessons');
+                    }}
+                  />
+                </div>
+              )}
               {role === 'lecturer' && (activePage === 'question-bank' || activePage === 'exams') && <ExamQuestionWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
               {role === 'lecturer' && (activePage === 'ai-grading' || activePage === 'analytics') && <GradingAnalyticsWorkspace currentPage={activePage} />}
               {role === 'lecturer' && (activePage === 'exam-monitor' || activePage === 'appeals') && <ProctoringWorkspace currentPage={activePage} onNavigate={navigateToPage} />}

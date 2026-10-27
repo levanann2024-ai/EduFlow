@@ -73,6 +73,9 @@ export interface QuizQuestion {
   question: string;
   options: string[];
   correctIndex: number;
+  type?: 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
+  correctAnswer?: string;
+  correctAnswers?: boolean[];
   explanation: string;
   difficulty: 'easy' | 'medium' | 'hard';
 }

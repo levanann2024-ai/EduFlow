@@ -1,5 +1,10 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Sparkles, Wand2, Copy, Check, RefreshCw, Download, ChevronDown, ChevronRight, BookOpen, GraduationCap, Layers, Target, Lightbulb, Plus, Trash2, FileText } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import type { QuizQuestion } from '@/types';
 import { authenticatedFetch } from '@/auth/authApi';
 
@@ -8,13 +13,14 @@ interface GeneratedQuestionSet {
   subject: string;
   grade: string;
   questions: QuizQuestion[];
-  durationMinutes?: number;
+  durationMinutes?: number | null;
   structureSummary?: string[];
   writtenSection?: string;
 }
 
 type PracticeFormat = 'free' | 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
 type AssessmentType = 'practice' | 'official';
+type GeneratedQuestionType = NonNullable<QuizQuestion['type']>;
 
 interface GeneratedAssessmentDraft {
   topic: string;
@@ -22,7 +28,6 @@ interface GeneratedAssessmentDraft {
   grade: string;
   difficulty: 'easy' | 'medium' | 'hard';
   numQuestions: number;
-  durationMinutes: number;
   practiceFormat: PracticeFormat;
   vietnameseCounts: { recognition: number; comprehension: number; application: number; advanced: number };
   englishCounts: { notice: number; ordering: number; cloze: number; reading: number };
@@ -53,7 +58,6 @@ function readAssessmentDraft(type: AssessmentType): GeneratedAssessmentDraft | n
       grade: draft.grade,
       difficulty: draft.difficulty === 'easy' || draft.difficulty === 'hard' ? draft.difficulty : 'medium',
       numQuestions: typeof draft.numQuestions === 'number' ? draft.numQuestions : 5,
-      durationMinutes: typeof draft.durationMinutes === 'number' ? draft.durationMinutes : 45,
       practiceFormat: practiceFormats.some(({ value: format }) => format === draft.practiceFormat) ? draft.practiceFormat! : 'free',
       vietnameseCounts: draft.vietnameseCounts ?? { recognition: 1, comprehension: 1, application: 1, advanced: 1 },
       englishCounts: draft.englishCounts ?? { notice: 12, ordering: 5, cloze: 5, reading: 18 },
@@ -78,12 +82,82 @@ function readAssessmentDraft(type: AssessmentType): GeneratedAssessmentDraft | n
 
 const subjects = ['Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Ngữ văn', 'Lịch sử', 'Địa lý', 'Tiếng Anh'];
 const practiceFormats: { value: PracticeFormat; label: string }[] = [
-  { value: 'free', label: 'Tự do' },
+  { value: 'free', label: 'Tự do / ngẫu nhiên' },
   { value: 'multiple-choice', label: 'Trắc nghiệm' },
   { value: 'true-false', label: 'Đúng / Sai' },
   { value: 'short-answer', label: 'Trả lời ngắn' },
   { value: 'essay', label: 'Tự luận' },
 ];
+const questionTypeLabels: Record<GeneratedQuestionType, string> = {
+  'multiple-choice': 'Trắc nghiệm',
+  'true-false': 'Đúng / Sai',
+  'short-answer': 'Trả lời ngắn',
+  essay: 'Tự luận',
+};
+
+function normalizeGeneratedQuestion(value: unknown, index: number): QuizQuestion {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Câu ${index + 1} không phải object JSON.`);
+  }
+  const raw = value as Record<string, unknown>;
+  const questionText = raw.question ?? raw.content ?? raw.text;
+  if (typeof questionText !== 'string' || !questionText.trim()) {
+    throw new Error(`Câu ${index + 1} thiếu nội dung câu hỏi.`);
+  }
+  const rawOptions = raw.options ?? raw.choices;
+  if (rawOptions !== undefined && (!Array.isArray(rawOptions) || !rawOptions.every((option) => typeof option === 'string'))) {
+    throw new Error(`Câu ${index + 1} có danh sách phương án không hợp lệ.`);
+  }
+  const options = Array.isArray(rawOptions) ? rawOptions : [];
+  const rawType = raw.type ?? raw.questionType;
+  const inferredType = rawType === undefined && options.length === 4
+    ? 'multiple-choice'
+    : rawType;
+  if (!['multiple-choice', 'true-false', 'short-answer', 'essay'].includes(String(inferredType))) {
+    throw new Error(`Câu ${index + 1} thiếu dạng câu hỏi hợp lệ.`);
+  }
+  const type = inferredType as GeneratedQuestionType;
+  const answer = raw.correctAnswer ?? raw.answer;
+  const answerText = typeof answer === 'string' ? answer : '';
+  const rawIndex = raw.correctIndex;
+  const answerIndex = answerText ? options.indexOf(answerText) : -1;
+  const correctIndex = typeof rawIndex === 'number' && Number.isInteger(rawIndex)
+    ? rawIndex
+    : answerIndex;
+  const rawCorrectAnswers = raw.correctAnswers;
+  const correctAnswers = Array.isArray(rawCorrectAnswers)
+    && rawCorrectAnswers.every((item) => typeof item === 'boolean')
+    ? rawCorrectAnswers as boolean[]
+    : undefined;
+
+  if (type === 'multiple-choice' && (options.length !== 4 || correctIndex < 0 || correctIndex >= options.length)) {
+    throw new Error(`Câu ${index + 1} trắc nghiệm cần 4 phương án và đáp án đúng hợp lệ.`);
+  }
+  if (type === 'true-false' && (options.length !== 4 || correctAnswers?.length !== 4)) {
+    throw new Error(`Câu ${index + 1} đúng/sai cần 4 nhận định và 4 đáp án đúng/sai.`);
+  }
+  if ((type === 'short-answer' || type === 'essay') && !answerText.trim()) {
+    throw new Error(`Câu ${index + 1} dạng ${questionTypeLabel(type)} thiếu đáp án tham khảo.`);
+  }
+
+  return {
+    id: typeof raw.id === 'string' && raw.id ? raw.id : `generated-question-${index + 1}`,
+    type,
+    question: questionText,
+    options: options as string[],
+    correctIndex: type === 'multiple-choice' ? correctIndex : -1,
+    correctAnswer: answerText || (type === 'multiple-choice' ? options[correctIndex] : ''),
+    correctAnswers,
+    explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
+    difficulty: ['easy', 'medium', 'hard'].includes(String(raw.difficulty))
+      ? raw.difficulty as QuizQuestion['difficulty']
+      : 'medium',
+  };
+}
+
+function questionTypeLabel(type?: QuizQuestion['type']): string {
+  return type ? questionTypeLabels[type] : questionTypeLabels['multiple-choice'];
+}
 const difficulties = [
   { value: 'easy', label: 'Dễ', activeClass: 'bg-green-50 border-green-300 text-green-700' },
   { value: 'medium', label: 'Trung bình', activeClass: 'bg-amber-50 border-amber-300 text-amber-700' },
@@ -102,16 +176,12 @@ export function AIQuizGenerator({
   examMode = false,
   assessmentType,
   onAssessmentTypeChange,
-  durationMinutes = 45,
-  onDurationChange,
 }: {
   onSaveQuestions: (set: GeneratedQuestionSet) => void;
   saveLabel?: string;
   examMode?: boolean;
   assessmentType?: 'practice' | 'official';
   onAssessmentTypeChange?: (type: 'practice' | 'official') => void;
-  durationMinutes?: number;
-  onDurationChange?: (duration: number) => void;
 }) {
   const [initialDraft] = useState(() => assessmentType ? readAssessmentDraft(assessmentType) : null);
   const [topic, setTopic] = useState(initialDraft?.topic ?? '');
@@ -139,7 +209,6 @@ export function AIQuizGenerator({
       setGrade(draft.grade);
       setDifficulty(draft.difficulty);
       setNumQuestions(draft.numQuestions);
-      onDurationChange?.(draft.durationMinutes);
       setPracticeFormat(draft.practiceFormat);
       setVietnameseCounts(draft.vietnameseCounts);
       setEnglishCounts(draft.englishCounts);
@@ -154,12 +223,13 @@ export function AIQuizGenerator({
     if (assessmentType === 'practice') {
       setNumQuestions((current) => Math.min(10, Math.max(5, current)));
     }
-  }, [assessmentType, onDurationChange]);
+  }, [assessmentType]);
 
   const isVietnamese = subject === 'Ngữ văn';
   const isEnglish = subject === 'Tiếng Anh';
   const currentCounts = isVietnamese ? vietnameseCounts : isEnglish ? englishCounts : generalCounts;
   const totalExamQuestions = Object.values(currentCounts).reduce((total, count) => total + count, 0);
+  const examQuestionLimitExceeded = examMode && totalExamQuestions > 50;
   const requestedQuestionCount = examMode ? totalExamQuestions : numQuestions;
   const examStructure = isVietnamese
     ? [
@@ -197,15 +267,8 @@ export function AIQuizGenerator({
     setQuestions([]);
     setError('');
     try {
-      const formatInstruction: Record<PracticeFormat, string> = {
-        free: 'Chọn hình thức câu hỏi phù hợp nhất với chủ đề; có thể kết hợp nhiều dạng ngắn.',
-        'multiple-choice': 'Tạo toàn bộ câu hỏi dạng trắc nghiệm 4 phương án A, B, C, D.',
-        'true-false': 'Tạo toàn bộ câu hỏi dạng đúng/sai, nêu rõ nhận định cần đánh giá.',
-        'short-answer': 'Tạo toàn bộ câu hỏi trả lời ngắn, yêu cầu học sinh tự điền đáp án.',
-        essay: 'Tạo toàn bộ câu hỏi tự luận ngắn, yêu cầu học sinh trình bày câu trả lời.',
-      };
       const requestTopic = assessmentType === 'practice'
-        ? `Tạo bài tập tự luyện ngắn gồm ${numQuestions} câu. ${formatInstruction[practiceFormat]} Chủ đề: ${topic.trim()}`
+        ? `Bài tập tự luyện. Chủ đề: ${topic.trim()}`
         : examMode
         ? [
           `Nội dung/chủ đề của đề: ${topic.trim()}`,
@@ -216,16 +279,51 @@ export function AIQuizGenerator({
         ].filter(Boolean).join('\n')
         : topic;
       const quantity = examMode ? totalExamQuestions : numQuestions;
+      const examQuestionStructure = examMode && !isVietnamese && !isEnglish
+        ? [
+          { type: 'multiple-choice', count: generalCounts.multipleChoice },
+          { type: 'true-false', count: generalCounts.trueFalse },
+          { type: 'short-answer', count: generalCounts.shortAnswer },
+          { type: 'essay', count: generalCounts.essay },
+        ].filter((section) => section.count > 0)
+        : undefined;
+      const expectedTypes: GeneratedQuestionType[] = examQuestionStructure
+        ? examQuestionStructure.flatMap(({ type, count }) => Array(count).fill(type as GeneratedQuestionType))
+        : examMode
+          ? Array(quantity).fill('multiple-choice')
+          : assessmentType === 'practice' && practiceFormat === 'free'
+            ? []
+            : Array(quantity).fill(assessmentType === 'practice' ? practiceFormat as GeneratedQuestionType : 'multiple-choice');
       const response = await authenticatedFetch('/api/ai/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, grade, topic: requestTopic, quantity, difficulty }),
+        body: JSON.stringify({
+          subject,
+          grade,
+          topic: requestTopic,
+          quantity,
+          difficulty,
+          questionFormat: assessmentType === 'practice' ? practiceFormat : 'multiple-choice',
+          ...(examQuestionStructure ? { questionStructure: examQuestionStructure } : {}),
+        }),
       });
       const result: { success: boolean; data?: QuizQuestion[]; message?: string } = await response.json();
       if (!response.ok || !result.success || !Array.isArray(result.data)) {
         throw new Error(result.message || 'Không thể tạo câu hỏi.');
       }
-      setQuestions(result.data);
+      if (result.data.length !== quantity) {
+        throw new Error(`AI trả về ${result.data.length} câu, trong khi yêu cầu ${quantity} câu. Hãy thử tạo lại.`);
+      }
+      const normalizedQuestions = result.data.map(normalizeGeneratedQuestion);
+      if (expectedTypes.length > 0) {
+        const mismatchIndex = normalizedQuestions.findIndex((question, index) => question.type !== expectedTypes[index]);
+        if (mismatchIndex >= 0) {
+          throw new Error(
+            `AI trả về dạng câu chưa đúng ở câu ${mismatchIndex + 1}: yêu cầu ${questionTypeLabel(expectedTypes[mismatchIndex])}, nhận ${questionTypeLabel(normalizedQuestions[mismatchIndex].type)}. Backend/API có thể chưa được cập nhật phiên bản hỗ trợ cấu trúc câu hỏi mới.`,
+          );
+        }
+      }
+      setQuestions(normalizedQuestions);
       if (assessmentType) {
         try {
           localStorage.setItem(assessmentDraftKey(assessmentType), JSON.stringify({
@@ -234,13 +332,12 @@ export function AIQuizGenerator({
             grade,
             difficulty,
             numQuestions,
-            durationMinutes,
             practiceFormat,
             vietnameseCounts,
             englishCounts,
             generalCounts,
             writtenSection,
-            questions: result.data,
+            questions: normalizedQuestions,
           } satisfies GeneratedAssessmentDraft));
         } catch (draftError) {
           console.error('Không thể lưu bản xem trước đề đã tạo trong phiên này.', draftError);
@@ -260,7 +357,7 @@ export function AIQuizGenerator({
 
   const handleDownload = () => {
     const text = questions.map((q, i) =>
-      `Câu ${i + 1}: ${q.question}\n${q.options.map((o, j) => `${String.fromCharCode(65 + j)}. ${o}`).join('\n')}\nĐáp án: ${String.fromCharCode(65 + q.correctIndex)}\nGiải thích: ${q.explanation}\n`
+    `Câu ${i + 1} (${questionTypeLabel(q.type)}): ${q.question}\n${q.options.map((o, j) => `${String.fromCharCode(65 + j)}. ${o}`).join('\n')}\nĐáp án: ${q.correctAnswer || q.options[q.correctIndex] || q.correctAnswers?.map((answer, index) => `${String.fromCharCode(97 + index)} ${answer ? 'Đúng' : 'Sai'}`).join('; ') || ''}\nGiải thích: ${q.explanation}\n`
     ).join('\n');
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -294,7 +391,7 @@ export function AIQuizGenerator({
                   <div className="grid grid-cols-1 gap-2">
                     {([
                       ['practice', 'Bài tập tự luyện ngắn', '5–10 câu, tạo nhanh để ôn tập'],
-                      ['official', 'Bài kiểm tra chính thức', 'Thiết lập ma trận và thời lượng'],
+                      ['official', 'Bài kiểm tra chính thức', 'Thiết lập môn học và cấu trúc câu hỏi'],
                     ] as const).map(([value, label, description]) => (
                       <label key={value} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 transition-colors ${assessmentType === value ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-200'}`}>
                         <input
@@ -315,7 +412,7 @@ export function AIQuizGenerator({
                 </fieldset>
                 <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
                   <h3 className="mb-2 text-xs font-semibold text-slate-800">{assessmentType === 'practice' ? 'Thông tin bài tập' : 'Thông tin đề kiểm tra'}</h3>
-                  <div className={`grid gap-2 ${examMode ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  <div className="grid grid-cols-2 gap-2">
                     <label className="min-w-0 text-[11px] font-medium text-slate-600">Môn học
                       <select value={subject} onChange={(event) => setSubject(event.target.value)} className="input-field mt-1 h-9 min-w-0 px-2 text-xs">
                         {subjects.map((item) => <option key={item}>{item}</option>)}
@@ -326,9 +423,6 @@ export function AIQuizGenerator({
                         {['Khối 10', 'Khối 11', 'Khối 12'].map((item) => <option key={item}>{item}</option>)}
                       </select>
                     </label>
-                    {examMode && <label className="min-w-0 text-[11px] font-medium text-slate-600">Thời lượng (phút)
-                      <input type="number" min={1} max={300} value={durationMinutes} onChange={(event) => onDurationChange?.(Math.min(300, Math.max(1, Number(event.target.value) || 1)))} className="input-field mt-1 h-9 min-w-0 px-2 text-xs" />
-                    </label>}
                   </div>
                 </div>
                 {assessmentType === 'practice' && (
@@ -489,7 +583,8 @@ export function AIQuizGenerator({
                 </div>
               </div>}
 
-              <button onClick={handleGenerate} disabled={(!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) || generating || (examMode && totalExamQuestions === 0)} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              {examQuestionLimitExceeded && <p role="alert" className="text-sm text-rose-700">Đề thi tối đa 50 câu. Hãy giảm số câu trong cấu trúc đề.</p>}
+              <button onClick={handleGenerate} disabled={(!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) || generating || (examMode && (totalExamQuestions === 0 || examQuestionLimitExceeded))} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {generating ? (
                   <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Đang tạo...</>
                 ) : (
@@ -522,7 +617,7 @@ export function AIQuizGenerator({
                   <div>
                     <p className="font-semibold text-slate-800 text-sm">{assessmentType === 'official' ? 'Đã tạo đề kiểm tra' : assessmentType === 'practice' ? 'Đã tạo bài tập tự luyện' : `Đã tạo ${questions.length} câu hỏi`}</p>
                     {assessmentType && <p className="text-xs text-slate-500">{questions.length} câu hỏi được AI trả về</p>}
-                    <p className="text-sm text-slate-400">{subject} • {grade} • {examMode ? `${durationMinutes} phút` : difficulties.find((d) => d.value === difficulty)?.label}</p>
+                    <p className="text-sm text-slate-400">{subject} • {grade} • {examMode ? `${questions.length} câu` : difficulties.find((d) => d.value === difficulty)?.label}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -537,7 +632,7 @@ export function AIQuizGenerator({
                     subject,
                     grade,
                     questions,
-                    ...(examMode ? { durationMinutes, structureSummary: examStructure, writtenSection } : {}),
+                    ...(examMode ? { durationMinutes: null, structureSummary: examStructure, writtenSection } : {}),
                   })} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
                     <Plus className="w-3.5 h-3.5" /> {saveLabel}
                   </button>
@@ -555,14 +650,17 @@ export function AIQuizGenerator({
                           {i + 1}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <p className="font-medium text-slate-800 text-sm leading-relaxed">{q.question}</p>
+                          <div className="mb-2 flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="mb-1 text-[11px] font-semibold text-blue-700">{questionTypeLabel(q.type)}</p>
+                              <MathText text={q.question} className="font-medium text-slate-800 text-sm leading-relaxed" />
+                            </div>
                             <span className={`badge ${ds.badge} shrink-0`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${ds.dot}`} />
                               {difficulties.find((d) => d.value === q.difficulty)?.label}
                             </span>
                           </div>
-                          <div className="space-y-1.5 mt-2.5">
+                          {q.type === 'multiple-choice' && <div className="mt-2.5 space-y-1.5">
                             {q.options.map((opt, j) => (
                               <div
                                 key={j}
@@ -577,21 +675,39 @@ export function AIQuizGenerator({
                                 }`}>
                                   {String.fromCharCode(65 + j)}
                                 </span>
-                                <span className={expanded && j === q.correctIndex ? 'text-green-800 font-medium' : 'text-slate-600'}>
-                                  {opt}
-                                </span>
+                                <MathText
+                                  text={opt}
+                                  className={`min-w-0 flex-1 ${expanded && j === q.correctIndex ? 'text-green-800 font-medium' : 'text-slate-600'}`}
+                                />
                                 {expanded && j === q.correctIndex && <Check className="w-3.5 h-3.5 text-green-600 ml-auto" />}
                               </div>
                             ))}
-                          </div>
+                          </div>}
+                          {q.type === 'true-false' && <div className="mt-2.5 space-y-1.5">
+                            {q.options.map((statement, statementIndex) => (
+                              <div key={statementIndex} className={`flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-sm ${
+                                expanded ? q.correctAnswers?.[statementIndex] ? 'border-green-200 bg-green-50' : 'border-rose-100 bg-rose-50' : 'border-transparent bg-slate-50'
+                              }`}>
+                                <span className="shrink-0 font-semibold text-slate-500">{String.fromCharCode(97 + statementIndex)}.</span>
+                                <MathText text={statement} className="min-w-0 flex-1 text-slate-700" />
+                                {expanded && <span className="shrink-0 text-xs font-semibold">{q.correctAnswers?.[statementIndex] ? 'Đúng' : 'Sai'}</span>}
+                              </div>
+                            ))}
+                          </div>}
 
                           {expanded && (
                             <div className="mt-2.5 p-3 rounded-md bg-amber-50 border border-amber-100 animate-fadeIn">
                               <div className="flex items-start gap-2">
                                 <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                                 <div>
+                                  {q.type !== 'multiple-choice' && q.type !== 'true-false' && (
+                                    <>
+                                      <p className="text-sm font-semibold text-amber-700 mb-0.5">Đáp án tham khảo</p>
+                                      <MathText text={q.correctAnswer ?? ''} className="mb-2 text-sm text-amber-900/80 leading-relaxed" />
+                                    </>
+                                  )}
                                   <p className="text-sm font-semibold text-amber-700 mb-0.5">Giải thích</p>
-                                  <p className="text-sm text-amber-900/80 leading-relaxed">{q.explanation}</p>
+                                  <MathText text={q.explanation} className="text-sm text-amber-900/80 leading-relaxed" />
                                 </div>
                               </div>
                             </div>
@@ -677,6 +793,16 @@ function EmptyState({ assessmentType }: { assessmentType?: 'practice' | 'officia
           <span key={t} className="badge bg-slate-100 text-slate-500 border border-slate-200">{t}</span>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MathText({ text, className = '' }: { text: string; className?: string }) {
+  return (
+    <div className={className}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

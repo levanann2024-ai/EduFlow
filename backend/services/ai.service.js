@@ -50,7 +50,8 @@ async function generateJson({ type, prompt, schema }) {
     prompt: `${prompt}\nChỉ trả về JSON hợp lệ, không có Markdown.`,
   });
   try {
-    return JSON.parse(text.replace(/^```json\s*|\s*```$/g, '').trim());
+    const jsonText = text.replace(/^```(?:json)?\s*|\s*```$/gi, '').trim();
+    return JSON.parse(jsonText);
   } catch {
     throw new Error(`Gemini trả về dữ liệu không đúng JSON cho ${schema}.`);
   }
@@ -67,8 +68,28 @@ function getSystemInstruction(type) {
     ].join(' ');
   }
 
+  if (type === 'lesson-material') {
+    return [
+      'Bạn là tác giả biên soạn tài liệu học tập cho học sinh phổ thông Việt Nam.',
+      'Tạo bài giảng dạng tài liệu văn bản để học sinh tự đọc; tuyệt đối không viết theo dạng giáo án dành cho giáo viên.',
+      'Trả lời bằng tiếng Việt, đúng kiến thức và phù hợp môn học, khối lớp được nêu trong yêu cầu.',
+      'Giữ nguyên thứ tự nội dung cốt lõi mà giáo viên cung cấp.',
+      'Chia nội dung thành các phần lớn theo thứ tự, tiêu đề Markdown cấp 2 dùng số La Mã: ## I. ..., ## II. ..., ## III. ...; trong từng phần, các mục nhỏ là tiêu đề Markdown cấp 3 đánh số: ### 1. ..., ### 2. ..., ### 3. ...',
+      'Giải thích rõ khái niệm, quy tắc, công thức và quan hệ giữa các kiến thức. Thêm ví dụ hoặc lời giải từng bước khi phù hợp với môn học.',
+      'Không tạo các mục mục tiêu học tập, hoạt động trên lớp, phương pháp đánh giá, phân công giáo viên hoặc tài liệu tham khảo.',
+      'Chỉ trả về nội dung bài giảng, không thêm lời mở đầu/kết luận ngoài cấu trúc kiến thức; không dùng JSON.',
+    ].join(' ');
+  }
+
   if (type === 'questions') {
-    return 'Bạn là giáo viên Việt Nam. Trả về JSON array gồm các object có id, question, options (4 chuỗi), correctIndex (0-3), explanation, difficulty (easy|medium|hard).';
+    return [
+      'Bạn là giáo viên Việt Nam, có chuyên môn thiết kế câu hỏi và đề kiểm tra.',
+      'Làm chính xác theo số lượng, dạng câu và cấu trúc đã yêu cầu; không tự đổi tất cả sang trắc nghiệm.',
+      'Chỉ trả về JSON array hợp lệ. Mỗi câu gồm id, type, question, options, correctIndex, correctAnswer, correctAnswers, explanation, difficulty.',
+      'Trắc nghiệm có đúng 4 lựa chọn và đáp án đúng; đúng/sai có 4 nhận định cùng mảng boolean đáp án; trả lời ngắn/tự luận có options rỗng và đáp án tham khảo trong correctAnswer.',
+      'Nội dung công thức Toán/Lý/Hóa dùng LaTeX chuẩn trong chuỗi JSON, với $...$ cho inline và $$...$$ cho display; escape dấu gạch chéo ngược đúng chuẩn JSON.',
+      'Không để dấu Markdown hoặc lời giải thích bên ngoài JSON.',
+    ].join(' ');
   }
   if (type === 'slides') {
     return 'Bạn là chuyên gia thiết kế bài giảng. Trả về JSON array gồm các object có title và detail, bằng tiếng Việt.';

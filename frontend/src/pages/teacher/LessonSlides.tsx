@@ -2,13 +2,22 @@ import { useState } from 'react';
 import pptxgen from 'pptxgenjs';
 import { ChevronLeft, ChevronRight, Download, LayoutTemplate, Sparkles, WandSparkles, X } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
+import { LessonFormatSelector, type LessonFormat } from '@/pages/teacher/LessonFormatSelector';
 
 interface Slide {
   title: string;
   detail: string;
 }
 
-export function LessonSlides() {
+export function LessonSlides({
+  format,
+  onFormatChange,
+}: {
+  format?: LessonFormat;
+  onFormatChange?: (format: LessonFormat) => void;
+} = {}) {
+  const [subject, setSubject] = useState('Tin học');
+  const [grade, setGrade] = useState('Khối 10');
   const [topic, setTopic] = useState('Nhập môn Internet of Things');
   const [content, setContent] = useState('Khái niệm IoT, kiến trúc hệ thống, cảm biến và ví dụ ứng dụng trong trường học.');
   const [generatedSlides, setGeneratedSlides] = useState<Slide[]>([]);
@@ -32,7 +41,12 @@ export function LessonSlides() {
       const response = await authenticatedFetch('/api/ai/slides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, content, slideCount, style }),
+        body: JSON.stringify({
+          topic,
+          content: `Môn học: ${subject}. Khối lớp: ${grade}.\nYêu cầu và nội dung chính: ${content || 'Tự đề xuất nội dung phù hợp.'}`,
+          slideCount,
+          style,
+        }),
       });
       const result: { success: boolean; data?: Slide[]; message?: string } = await response.json();
       if (!response.ok || !result.success || !Array.isArray(result.data)) {
@@ -118,23 +132,50 @@ export function LessonSlides() {
     <div className="space-y-5 animate-fadeIn">
       <div className="grid xl:grid-cols-[360px_1fr] gap-5 items-start">
         <section className="card p-5">
+          {format && onFormatChange && (
+            <div className="mb-4">
+              <LessonFormatSelector value={format} onChange={onFormatChange} />
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-blue-600" />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-900">Tạo slide bằng AI</h2>
-              <p className="text-sm text-slate-500">Sinh cấu trúc bài thuyết trình trong vài phút</p>
+              <h2 className="font-semibold text-slate-900">Tạo bài giảng bằng AI</h2>
+              <p className="text-sm text-slate-500">Tạo nội dung bài giảng dạng trình chiếu</p>
             </div>
           </div>
           <div className="mt-5 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-600">Môn học</span>
+                <select value={subject} onChange={(event) => setSubject(event.target.value)} className="input-field mt-1.5">
+                  {['Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Tin học', 'Ngữ văn', 'Lịch sử', 'Địa lý', 'Tiếng Anh'].map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-600">Khối lớp</span>
+                <select value={grade} onChange={(event) => setGrade(event.target.value)} className="input-field mt-1.5">
+                  {['Khối 10', 'Khối 11', 'Khối 12'].map((item) => <option key={item}>{item}</option>)}
+                </select>
+              </label>
+            </div>
             <label className="block">
               <span className="text-sm font-medium text-slate-600">Chủ đề bài giảng</span>
               <input value={topic} onChange={(event) => setTopic(event.target.value)} className="input-field mt-1.5" />
             </label>
             <label className="block">
-              <span className="text-sm font-medium text-slate-600">Nội dung chính</span>
-              <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={6} className="input-field mt-1.5 resize-none" />
+              <span className="text-sm font-medium text-slate-600">Nội dung chính / yêu cầu bổ sung</span>
+              <textarea
+                value={content}
+                onChange={(event) => setContent(event.target.value)}
+                rows={5}
+                placeholder="Nhập các ý cần đề cập, ví dụ minh họa, hoạt động lớp học hoặc yêu cầu riêng..."
+                className="input-field mt-1.5 resize-y"
+              />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
@@ -143,7 +184,18 @@ export function LessonSlides() {
               </label>
               <label className="block">
                 <span className="text-sm font-medium text-slate-600">Phong cách</span>
-                <select value={style} onChange={(event) => setStyle(event.target.value)} className="input-field mt-1.5"><option>Trực quan</option><option>Tối giản</option><option>Học thuật</option></select>
+                <input
+                  list="lesson-slide-styles"
+                  value={style}
+                  onChange={(event) => setStyle(event.target.value)}
+                  placeholder="Nhập phong cách mong muốn"
+                  className="input-field mt-1.5"
+                />
+                <datalist id="lesson-slide-styles">
+                  {['Trực quan', 'Tối giản', 'Học thuật', 'Kể chuyện', 'Tương tác', 'Nhiều ví dụ'].map((item) => (
+                    <option key={item} value={item} />
+                  ))}
+                </datalist>
               </label>
             </div>
             <button
@@ -161,7 +213,9 @@ export function LessonSlides() {
             <div>
               <p className="text-sm text-blue-600 font-medium">BẢN NHÁP</p>
               <h2 className="text-lg font-semibold text-slate-900 mt-1">{topic || 'Bài giảng mới'}</h2>
-              <p className="text-sm text-slate-500 mt-1">{generatedSlides.length > 0 ? content : 'Chưa có cấu trúc slide'}</p>
+              <p className="text-sm text-slate-500 mt-1">
+                {generatedSlides.length > 0 ? `${subject} • ${grade} • ${content}` : 'Chưa có cấu trúc bài giảng'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={openPreview} disabled={generatedSlides.length === 0} className="btn-outline disabled:opacity-50 disabled:cursor-not-allowed">

@@ -1,5 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, BookOpen, Clock3, RefreshCw, Settings2, Sparkles, Target, WandSparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
+import remarkMath from 'remark-math';
+import 'katex/dist/katex.min.css';
 import type { QuizQuestion } from '@/types';
 import { saveItem } from './savedItems';
 import { authenticatedFetch } from '@/auth/authApi';
@@ -296,8 +300,8 @@ export function AIPractice({
           </form>
         </section>
       ) : (
-        <section className={`grid gap-5 ${phase === 'answering' || phase === 'results' ? '' : 'lg:grid-cols-[minmax(260px,340px)_1fr]'}`}>
-          {(phase === 'setup' || phase === 'ready') && (
+        <section className={`grid gap-5 ${phase === 'setup' ? 'lg:grid-cols-[minmax(260px,340px)_1fr]' : ''}`}>
+          {phase === 'setup' && (
             <aside className="card h-fit space-y-5 p-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div className="flex items-center gap-3">
@@ -393,7 +397,7 @@ export function AIPractice({
             </aside>
           )}
 
-          <div className={`min-w-0 space-y-4 ${phase === 'answering' || phase === 'results' ? 'mx-auto w-full max-w-4xl' : ''}`}>
+          <div className={`min-w-0 space-y-4 ${phase !== 'setup' ? 'mx-auto w-full max-w-4xl' : ''}`}>
             {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">{error}</div>}
 
             {generating ? (
@@ -439,7 +443,7 @@ export function AIPractice({
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Câu 1 - Xem trước</p>
-                  <p className="mt-2 font-medium leading-6 text-slate-900">{questions[0]?.question}</p>
+                  <MathText text={questions[0]?.question ?? ''} className="mt-2 font-medium leading-6 text-slate-900" />
                 </div>
                 <button type="button" onClick={startAttempt} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700">
                   {mode === 'practice' ? <Target className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
@@ -489,7 +493,7 @@ export function AIPractice({
                   </div>
                 </div>
                 <article>
-                  <h4 className="text-lg font-semibold leading-7 text-slate-900">{currentQuestion.question}</h4>
+                  <MathText text={currentQuestion.question} className="text-lg font-semibold leading-7 text-slate-900" />
                   <div className="mt-5 space-y-3">
                     {currentQuestion.options.map((option, optionIndex) => {
                       const selected = currentAnswer === optionIndex;
@@ -505,7 +509,7 @@ export function AIPractice({
                       return (
                         <button key={`${currentQuestion.id}-${optionIndex}`} type="button" disabled={revealAnswer || (mode === 'test' && selected)} onClick={() => setAnswers((current) => ({ ...current, [currentQuestion.id]: optionIndex }))} className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left transition disabled:cursor-default ${optionStyle}`}>
                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-sm font-bold">{String.fromCharCode(65 + optionIndex)}</span>
-                          <span>{option}</span>
+                          <MathText text={option} />
                         </button>
                       );
                     })}
@@ -513,7 +517,7 @@ export function AIPractice({
                   {mode === 'practice' && currentAnswer !== undefined && (
                     <div className="mt-4 rounded-xl bg-blue-50 p-4 text-sm leading-6 text-slate-700">
                       <p className="font-semibold text-blue-900">{currentAnswer === currentQuestion.correctIndex ? 'Chính xác!' : 'Mình cùng xem lại nhé.'}</p>
-                      <p className="mt-1">{currentQuestion.explanation}</p>
+                      <MathText text={currentQuestion.explanation} className="mt-1" />
                     </div>
                   )}
                 </article>
@@ -548,16 +552,16 @@ export function AIPractice({
                 </button>
                 {questions.map((question, index) => (
                   <article key={question.id} className="card space-y-3 p-4 sm:p-5">
-                    <p className="font-semibold leading-6 text-slate-900">{index + 1}. {question.question}</p>
+                    <MathText text={`${index + 1}. ${question.question}`} className="font-semibold leading-6 text-slate-900" />
                     <div className="space-y-2">
                       {question.options.map((option, optionIndex) => (
                         <div key={`${question.id}-result-${optionIndex}`} className={`rounded-xl border p-3 text-sm ${optionIndex === question.correctIndex ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : answers[question.id] === optionIndex ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-slate-100 text-slate-600'}`}>
-                          {String.fromCharCode(65 + optionIndex)}. {option}
+                          <MathText text={`${String.fromCharCode(65 + optionIndex)}. ${option}`} />
                           {optionIndex === question.correctIndex && <span className="ml-2 font-semibold">Đáp án đúng</span>}
                         </div>
                       ))}
                     </div>
-                    <p className="rounded-xl bg-slate-50 p-3 text-sm leading-5 text-slate-600"><strong className="text-slate-800">Giải thích: </strong>{question.explanation}</p>
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm leading-5 text-slate-600"><strong className="text-slate-800">Giải thích: </strong><MathText text={question.explanation} /></div>
                   </article>
                 ))}
               </div>
@@ -593,4 +597,18 @@ function ModeButton({
 
 function ClipboardIcon() {
   return <BookOpen className="h-4 w-4" />;
+}
+
+function MathText({ text, className = '' }: { text: string; className?: string }) {
+  return (
+    <div className={className}>
+      <ReactMarkdown
+        remarkPlugins={[remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{ p: ({ children }) => <p className="m-0">{children}</p> }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }

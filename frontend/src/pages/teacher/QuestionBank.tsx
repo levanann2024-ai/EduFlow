@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpenCheck, Check, ChevronDown, ClipboardList, Eye, Pencil, Plus, Search, Trash2, WandSparkles, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { AIQuizGenerator } from '@/pages/teacher/AIQuizGenerator';
 import { readQuestionSets, readSavedExams, writeQuestionSets, writeSavedExams, type ExamQuestion, type QuestionSet, type SavedExam } from '@/pages/teacher/assessmentStorage';
 import type { QuizQuestion } from '@/types';
@@ -11,6 +15,15 @@ interface QuestionEntry {
 }
 
 const entryKey = ({ set, question }: QuestionEntry) => `${set.id}:${question.id}`;
+
+function questionTypeLabel(type?: QuizQuestion['type']) {
+  switch (type) {
+    case 'true-false': return 'Đúng / Sai';
+    case 'short-answer': return 'Trả lời ngắn';
+    case 'essay': return 'Tự luận';
+    default: return 'Trắc nghiệm';
+  }
+}
 
 export function QuestionBank() {
   const [sets, setSets] = useState<QuestionSet[]>([]);
@@ -52,7 +65,7 @@ export function QuestionBank() {
       && (!subjectFilter || set.subject === subjectFilter)
       && (!gradeFilter || set.grade === gradeFilter)
       && (!topicFilter || set.topic === topicFilter)
-      && (!typeFilter || typeFilter === 'Trắc nghiệm')
+      && (!typeFilter || questionTypeLabel(question.type) === typeFilter)
     ));
   }, [entries, gradeFilter, query, subjectFilter, topicFilter, typeFilter]);
   const filteredIds = filtered.map(entryKey);
@@ -128,9 +141,10 @@ export function QuestionBank() {
       questions: selectedEntries.map(({ question }, index): ExamQuestion => ({
         ...question,
         id: `exam-${createdAt}-question-${index}`,
-        type: 'multiple-choice',
-        correctAnswer: question.options[question.correctIndex] ?? '',
-        points: 1,
+        type: question.type ?? 'multiple-choice',
+        correctAnswer: question.correctAnswer ?? question.options[question.correctIndex] ?? '',
+        correctAnswers: question.correctAnswers,
+        points: question.type === 'essay' ? 3 : question.type === 'short-answer' ? 2 : 1,
       })),
     };
     try {
@@ -202,6 +216,9 @@ export function QuestionBank() {
               <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="input-field">
                 <option value="">Tất cả dạng câu hỏi</option>
                 <option>Trắc nghiệm</option>
+                <option>Đúng / Sai</option>
+                <option>Trả lời ngắn</option>
+                <option>Tự luận</option>
               </select>
             </div>
           </div>
@@ -239,16 +256,34 @@ export function QuestionBank() {
                         className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium leading-6 text-slate-900">{question.question}</p>
-                        <p className="mt-1 text-xs text-slate-500">{set.subject} - {set.grade} - {set.topic} - Trắc nghiệm - {set.createdAt}</p>
+                        <MathText text={question.question} className="font-medium leading-6 text-slate-900" />
+                        <p className="mt-1 text-xs text-slate-500">
+                          {set.subject} - {set.grade} - {set.topic} - {questionTypeLabel(question.type)} - {set.createdAt}
+                        </p>
                         {expanded && (
                           <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3">
-                            {question.options.map((option, optionIndex) => (
-                              <p key={`${question.id}-${optionIndex}`} className={`text-sm ${optionIndex === question.correctIndex ? 'font-medium text-emerald-800' : 'text-slate-600'}`}>
-                                {String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.correctIndex ? ' - Đáp án' : ''}
-                              </p>
+                            {question.type === 'true-false' ? question.options.map((option, optionIndex) => (
+                              <div key={`${question.id}-${optionIndex}`} className="flex items-start gap-1 text-sm text-slate-600">
+                                <span>{String.fromCharCode(97 + optionIndex)}.</span>
+                                <MathText text={option} />
+                                {question.correctAnswers?.[optionIndex] !== undefined
+                                  ? ` - ${question.correctAnswers[optionIndex] ? 'Đúng' : 'Sai'}`
+                                  : ''}
+                              </div>
+                            )) : question.options.map((option, optionIndex) => (
+                              <div key={`${question.id}-${optionIndex}`} className={`flex items-start gap-1 text-sm ${optionIndex === question.correctIndex ? 'font-medium text-emerald-800' : 'text-slate-600'}`}>
+                                <span>{String.fromCharCode(65 + optionIndex)}.</span>
+                                <MathText text={option} />
+                                {optionIndex === question.correctIndex ? ' - Đáp án' : ''}
+                              </div>
                             ))}
-                            <p className="border-t border-slate-200 pt-2 text-sm text-slate-600"><span className="font-medium">Giải thích:</span> {question.explanation || 'Chưa có giải thích.'}</p>
+                            {(question.type === 'short-answer' || question.type === 'essay') && (
+                              <div className="text-sm text-slate-700">
+                                <span className="font-medium">Đáp án tham khảo:</span>
+                                <MathText text={question.correctAnswer || 'Chưa có đáp án tham khảo.'} />
+                              </div>
+                            )}
+                            <div className="border-t border-slate-200 pt-2 text-sm text-slate-600"><span className="font-medium">Giải thích:</span> <MathText text={question.explanation || 'Chưa có giải thích.'} /></div>
                           </div>
                         )}
                       </div>
@@ -289,19 +324,50 @@ export function QuestionBank() {
             <label className="block text-sm font-medium text-slate-700">Nội dung câu hỏi
               <textarea value={editing.question.question} onChange={(event) => setEditing({ ...editing, question: { ...editing.question, question: event.target.value } })} rows={3} className="input-field mt-1.5" />
             </label>
-            <fieldset className="mt-4 space-y-2">
-              <legend className="mb-2 text-sm font-medium text-slate-700">Phương án - chọn đáp án đúng</legend>
-              {editing.question.options.map((option, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input type="radio" name="correct-option" checked={editing.question.correctIndex === index} onChange={() => setEditing({ ...editing, question: { ...editing.question, correctIndex: index } })} aria-label={`Chọn phương án ${String.fromCharCode(65 + index)} là đáp án đúng`} />
-                  <input value={option} onChange={(event) => {
-                    const options = [...editing.question.options];
-                    options[index] = event.target.value;
-                    setEditing({ ...editing, question: { ...editing.question, options } });
-                  }} className="input-field" aria-label={`Phương án ${String.fromCharCode(65 + index)}`} />
-                </div>
-              ))}
-            </fieldset>
+            {editing.question.type === 'multiple-choice' && (
+              <fieldset className="mt-4 space-y-2">
+                <legend className="mb-2 text-sm font-medium text-slate-700">Phương án - chọn đáp án đúng</legend>
+                {editing.question.options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input type="radio" name="correct-option" checked={editing.question.correctIndex === index} onChange={() => setEditing({ ...editing, question: { ...editing.question, correctIndex: index } })} aria-label={`Chọn phương án ${String.fromCharCode(65 + index)} là đáp án đúng`} />
+                    <input value={option} onChange={(event) => {
+                      const options = [...editing.question.options];
+                      options[index] = event.target.value;
+                      setEditing({ ...editing, question: { ...editing.question, options } });
+                    }} className="input-field" aria-label={`Phương án ${String.fromCharCode(65 + index)}`} />
+                  </div>
+                ))}
+              </fieldset>
+            )}
+            {editing.question.type === 'true-false' && (
+              <fieldset className="mt-4 space-y-2">
+                <legend className="mb-2 text-sm font-medium text-slate-700">Nhận định và đáp án</legend>
+                {editing.question.options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editing.question.correctAnswers?.[index] ?? false}
+                      onChange={(event) => {
+                        const correctAnswers = [...(editing.question.correctAnswers ?? editing.question.options.map(() => false))];
+                        correctAnswers[index] = event.target.checked;
+                        setEditing({ ...editing, question: { ...editing.question, correctAnswers } });
+                      }}
+                      aria-label={`Đánh dấu nhận định ${index + 1} là đúng`}
+                    />
+                    <input value={option} onChange={(event) => {
+                      const options = [...editing.question.options];
+                      options[index] = event.target.value;
+                      setEditing({ ...editing, question: { ...editing.question, options } });
+                    }} className="input-field" aria-label={`Nhận định ${index + 1}`} />
+                  </div>
+                ))}
+              </fieldset>
+            )}
+            {(editing.question.type === 'short-answer' || editing.question.type === 'essay') && (
+              <label className="mt-4 block text-sm font-medium text-slate-700">Đáp án tham khảo
+                <textarea value={editing.question.correctAnswer ?? ''} onChange={(event) => setEditing({ ...editing, question: { ...editing.question, correctAnswer: event.target.value } })} rows={3} className="input-field mt-1.5" />
+              </label>
+            )}
             <label className="mt-4 block text-sm font-medium text-slate-700">Mức độ
               <select value={editing.question.difficulty} onChange={(event) => setEditing({ ...editing, question: { ...editing.question, difficulty: event.target.value as QuizQuestion['difficulty'] } })} className="input-field mt-1.5">
                 <option value="easy">Nhận biết / Dễ</option>
@@ -344,5 +410,13 @@ export function QuestionBank() {
         </div>
       )}
     </main>
+  );
+}
+
+function MathText({ text, className = '' }: { text: string; className?: string }) {
+  return (
+    <div className={className}>
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{text}</ReactMarkdown>
+    </div>
   );
 }
