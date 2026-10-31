@@ -5,6 +5,7 @@ import {
   Sparkles, Trash2, Upload, WandSparkles, X,
 } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
+import { parseAssignmentContent } from '@/pages/student/assignmentQuestions';
 import {
   createClassAssignment,
   createClassLearningResource,
@@ -62,6 +63,7 @@ export interface LessonRepositoryDraft {
   title: string;
   subject: string;
   content: string;
+  contentType?: 'lesson' | 'assignment';
 }
 
 function formatFileSize(bytes: number) {
@@ -159,15 +161,21 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   const [publishing, setPublishing] = useState(false);
   const selectedFile = files[0]?.file;
   const preferredSubject = initialDraft?.subject ?? '';
+  const parsedAssignmentContent = useMemo(
+    () => contentType === 'assignment' ? parseAssignmentContent(documentContent) : null,
+    [contentType, documentContent],
+  );
 
   useEffect(() => {
     if (!initialDraft) return;
     setActiveTab('create');
-    setContentType('lesson');
+    setContentType(initialDraft.contentType ?? 'lesson');
     setEntryMode('write');
     setTitle(initialDraft.title);
     setDocumentContent(initialDraft.content);
-    setFeedback('Bài giảng AI đã được đưa vào nội dung. Chọn lớp, chương và bài để giao cho học sinh.');
+    setFeedback(initialDraft.contentType === 'assignment'
+      ? 'Bài tập đã được đưa vào nội dung. Chọn lớp và hạn nộp để giao cho học sinh.'
+      : 'Bài giảng AI đã được đưa vào nội dung. Chọn lớp, chương và bài để giao cho học sinh.');
   }, [initialDraft]);
 
   useEffect(() => {
@@ -809,6 +817,26 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                   className="input-field min-h-28 resize-y text-sm"
                   aria-label={contentType === 'assignment' ? 'Nội dung bài tập' : 'Nội dung tài liệu'}
                 />
+                {contentType === 'assignment' && documentContent.trim() && (
+                  <section aria-live="polite" className={`rounded-lg border p-3 text-xs ${parsedAssignmentContent ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/70'}`}>
+                    {parsedAssignmentContent ? (
+                      <>
+                        <p className="font-semibold text-emerald-800">
+                          Nhận diện được {parsedAssignmentContent.questions.length} câu. Học sinh sẽ thấy từng câu riêng và có ô trả lời tương ứng.
+                        </p>
+                        <ol className="mt-2 max-h-36 list-decimal space-y-1 overflow-y-auto pl-5 text-slate-700">
+                          {parsedAssignmentContent.questions.map((question, index) => (
+                            <li key={`${question.number}-${index}`} className="truncate">{question.title}</li>
+                          ))}
+                        </ol>
+                      </>
+                    ) : (
+                      <p className="text-amber-900">
+                        Chưa nhận diện được câu riêng. Để tách tự động, bắt đầu mỗi câu ở một dòng mới theo dạng “Câu 1 - …”, “Câu 2 - …”. Nếu giữ cách viết hiện tại, học sinh sẽ nhận một đề và một ô trả lời chung.
+                      </p>
+                    )}
+                  </section>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {([
                     ['latex', 'Tạo / chuẩn hóa LaTeX', Sparkles],
@@ -1003,7 +1031,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                       <p className="truncate text-[9px] leading-3 text-slate-400">
                         {entry.kind === 'assignment' && (!entry.chapter.trim() || !entry.lesson.trim())
                           ? 'Bài tập tự do'
-                          : `${entry.kind === 'lesson' ? 'Bài giảng' : 'Bài tập'} · ${entry.chapter} · ${entry.lesson}${entry.period ? ` · ${entry.period}` : ''}`}
+                          : `${entry.kind === 'lesson' ? 'Bài giảng' : 'Bài tập'} - ${entry.chapter} - ${entry.lesson}${entry.period ? ` - ${entry.period}` : ''}`}
                       </p>
                       {entry.note && <p className="truncate text-[9px] leading-3 text-slate-500">{entry.note}</p>}
                     </div>
@@ -1022,8 +1050,8 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <header className="flex min-w-0 shrink-0 flex-nowrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 sm:px-4">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-slate-900" title={`${selectedSubject || 'Bài giảng'}${selectedClass ? ` · ${selectedClass.code}` : ''}`}>
-                {selectedSubject || 'Bài giảng'}{selectedClass ? ` · ${selectedClass.code}` : ''}
+              <p className="truncate text-sm font-bold text-slate-900" title={`${selectedSubject || 'Bài giảng'}${selectedClass ? ` - ${selectedClass.code}` : ''}`}>
+                {selectedSubject || 'Bài giảng'}{selectedClass ? ` - ${selectedClass.code}` : ''}
               </p>
             </div>
             <div className="flex shrink-0 flex-nowrap items-center gap-1">
@@ -1374,7 +1402,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                 <div className="mx-auto max-w-4xl">
                   <p className="text-sm font-semibold text-rose-700">
                     {selectedReviewAssignment.chapter.trim() && selectedReviewAssignment.lesson.trim()
-                      ? `${selectedReviewAssignment.chapter} · ${selectedReviewAssignment.lesson}`
+                      ? `${selectedReviewAssignment.chapter} - ${selectedReviewAssignment.lesson}`
                       : 'Bài tập tự do'}
                   </p>
                   <h1 className="mt-2 break-words text-2xl font-bold text-slate-950">{selectedReviewAssignment.title}</h1>
@@ -1390,10 +1418,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                   <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-blue-700">
-                        {selectedReviewResource.subject} · {selectedClass?.code} · Học kỳ {selectedReviewResource.semester.replace('Kỳ ', '')}
+                        {selectedReviewResource.subject} - {selectedClass?.code} - Học kỳ {selectedReviewResource.semester.replace('Kỳ ', '')}
                       </p>
                       <p className="mt-2 text-sm font-medium text-slate-600">
-                        {selectedReviewResource.chapter} · {selectedReviewResource.lesson}{selectedReviewResource.period ? ` · ${selectedReviewResource.period}` : ''}
+                        {selectedReviewResource.chapter} - {selectedReviewResource.lesson}{selectedReviewResource.period ? ` - ${selectedReviewResource.period}` : ''}
                       </p>
                       <h1 className="mt-2 break-words text-2xl font-bold text-slate-950">{selectedReviewResource.title}</h1>
                     </div>

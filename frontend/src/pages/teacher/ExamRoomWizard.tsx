@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, CalendarClock, Check, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, Search, ShieldCheck, Users, X } from 'lucide-react';
-import { demoClasses, demoSampleExam, demoStudents, examRoomDefaults, type ExamRoomRecord } from './examRoomDemoData';
-import { readSavedExams, type SavedExam } from './assessmentStorage';
+import { listClasses, listClassStudents, type SchoolClass } from '@/api/schoolApi';
+import { loadTeacherAssessments, type SavedExam } from './assessmentStorage';
+import { examRoomDefaults, type ExamRoomRecord } from './examRoomDemoData';
+import { ExamRoomPhasePreview } from './ExamRoomPhasePreview';
 import type { Page } from '@/types';
 
 const steps = [
@@ -17,13 +19,15 @@ function localDateTime(date: Date) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+function dateTimeInput(value: string) {
+  return localDateTime(new Date(value));
+}
+
 function getDateDefaults() {
   const start = new Date();
   start.setDate(start.getDate() + 1);
   start.setHours(8, 0, 0, 0);
-  const opens = new Date(start.getTime() - 30 * 60_000);
-  const ends = new Date(start.getTime() + 60 * 60_000);
-  return { opensAt: localDateTime(opens), startsAt: localDateTime(start), endsAt: localDateTime(ends) };
+  return { startsAt: localDateTime(start) };
 }
 
 function formatDate(value: string) {
@@ -37,105 +41,119 @@ function examReady(exam: SavedExam) {
     && exam.questions.every((question) => question.question.trim() && question.points > 0);
 }
 
+type RoomClass = SchoolClass & { studentCount: number };
+
 export function ExamRoomWizard({
   initialRoom,
+  initialExam,
   onCancel,
   onSave,
   onNavigate,
 }: {
   initialRoom?: ExamRoomRecord | null;
+  initialExam?: SavedExam | null;
   onCancel: () => void;
-  onSave: (room: ExamRoomRecord, publish: boolean) => void;
+  onSave: (room: ExamRoomRecord, publish: boolean) => Promise<void>;
   onNavigate: (page: Page) => void;
 }) {
   const dateDefaults = getDateDefaults();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initialExam ? 1 : 0);
   const [savedExams, setSavedExams] = useState<SavedExam[]>([]);
   const [examLoadError, setExamLoadError] = useState('');
+  const [classes, setClasses] = useState<RoomClass[]>([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState('');
   const [query, setQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
   const [examPage, setExamPage] = useState(0);
-  const [selectedExamId, setSelectedExamId] = useState(initialRoom?.examId ?? '');
+  const [selectedExamId, setSelectedExamId] = useState(initialRoom?.examId ?? initialExam?.id ?? '');
   const [previewExam, setPreviewExam] = useState<SavedExam | null>(null);
-  const [roomTitle, setRoomTitle] = useState(initialRoom?.title ?? '');
+  const [roomTitle, setRoomTitle] = useState(initialRoom?.title ?? initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialRoom?.instructions ?? '');
   const [classIds, setClassIds] = useState<string[]>(initialRoom?.classIds ?? []);
-  const [opensAt, setOpensAt] = useState(initialRoom?.opensAt ?? dateDefaults.opensAt);
-  const [startsAt, setStartsAt] = useState(initialRoom?.startsAt ?? dateDefaults.startsAt);
-  const [endsAt, setEndsAt] = useState(initialRoom?.endsAt ?? dateDefaults.endsAt);
-  const [durationMinutes, setDurationMinutes] = useState(initialRoom?.durationMinutes ?? 45);
-  const [allowLateEntry, setAllowLateEntry] = useState(initialRoom?.settings.allowLateEntry ?? true);
-  const [autoSubmitAtDeadline, setAutoSubmitAtDeadline] = useState(initialRoom?.settings.autoSubmitAtDeadline ?? true);
-  const [closeRoomAtDeadline, setCloseRoomAtDeadline] = useState(initialRoom?.settings.closeRoomAtDeadline ?? true);
-  const [maxAttempts, setMaxAttempts] = useState(initialRoom?.settings.maxAttempts ?? 1);
+  const [startsAt, setStartsAt] = useState(initialRoom ? dateTimeInput(initialRoom.startsAt) : dateDefaults.startsAt);
+  const [durationMinutes, setDurationMinutes] = useState(initialRoom?.durationMinutes ?? initialExam?.durationMinutes ?? 45);
   const [shuffleQuestions, setShuffleQuestions] = useState(initialRoom?.settings.shuffleQuestions ?? false);
-  const [shuffleAnswers, setShuffleAnswers] = useState(initialRoom?.settings.shuffleAnswers ?? false);
   const [allowBackNavigation, setAllowBackNavigation] = useState(initialRoom?.settings.allowBackNavigation ?? true);
   const [allowEarlySubmit, setAllowEarlySubmit] = useState(initialRoom?.settings.allowEarlySubmit ?? true);
-  const [scoreRelease, setScoreRelease] = useState(initialRoom?.settings.scoreRelease ?? 'after-close');
-  const [answerRelease, setAnswerRelease] = useState(initialRoom?.settings.answerRelease ?? 'never');
+  const [requireCamera, setRequireCamera] = useState(initialRoom?.settings.requireCamera ?? false);
+  const [requireMicrophone, setRequireMicrophone] = useState(initialRoom?.settings.requireMicrophone ?? false);
   const [monitorTabSwitch, setMonitorTabSwitch] = useState(initialRoom?.settings.monitorTabSwitch ?? true);
   const [monitorConnection, setMonitorConnection] = useState(initialRoom?.settings.monitorConnection ?? true);
   const [warningThreshold, setWarningThreshold] = useState(initialRoom?.settings.warningThreshold ?? 3);
-  const [warningAction, setWarningAction] = useState(initialRoom?.settings.warningAction ?? 'teacher-review');
+  const [showPhasePreview, setShowPhasePreview] = useState(false);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    try {
-      setSavedExams(readSavedExams());
-    } catch (loadError) {
-      console.error('Không thể đọc danh sách đề lưu trên thiết bị.', loadError);
-      setExamLoadError('Không đọc được danh sách đề đã lưu trên trình duyệt.');
-    }
+    let active = true;
+    loadTeacherAssessments('exam')
+      .then((items) => { if (active) setSavedExams(items); })
+      .catch((loadError: unknown) => {
+        console.error('Không thể tải danh sách đề lưu từ máy chủ.', loadError);
+        if (active) setExamLoadError(loadError instanceof Error ? loadError.message : 'Không thể tải danh sách đề đã lưu.');
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    listClasses()
+      .then(async (availableClasses) => {
+        const studentCounts = await Promise.all(availableClasses.map(async (classRoom) => (
+          (await listClassStudents(classRoom.id)).length
+        )));
+        if (active) {
+          setClasses(availableClasses.map((classRoom, index) => ({
+            ...classRoom,
+            studentCount: studentCounts[index],
+          })));
+        }
+      })
+      .catch((loadError: unknown) => {
+        console.error('Không thể tải lớp và danh sách học sinh để cấu hình phòng thi.', loadError);
+        if (active) setClassesError(loadError instanceof Error ? loadError.message : 'Không thể tải danh sách lớp.');
+      })
+      .finally(() => { if (active) setClassesLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const selectedExam = savedExams.find((exam) => exam.id === selectedExamId)
-    ?? (initialRoom?.examSnapshot.id === selectedExamId ? initialRoom.examSnapshot : null)
-    ?? (demoSampleExam.id === selectedExamId ? demoSampleExam : null);
+    ?? (initialExam?.id === selectedExamId ? initialExam : null)
+    ?? (initialRoom?.examSnapshot.id === selectedExamId ? initialRoom.examSnapshot : null);
+  useEffect(() => {
+    if (!initialRoom && selectedExam?.durationMinutes) setDurationMinutes(selectedExam.durationMinutes);
+  }, [initialRoom, selectedExam]);
   const filteredExams = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('vi');
-    return savedExams.filter((exam) => (
+    return savedExams.filter((exam) => examReady(exam) && (
       (!normalized || `${exam.title} ${exam.topic} ${exam.subject} ${exam.grade}`.toLocaleLowerCase('vi').includes(normalized))
       && (!gradeFilter || exam.grade === gradeFilter)
     ));
   }, [gradeFilter, query, savedExams]);
   const visibleExams = filteredExams.slice(examPage * 2, examPage * 2 + 2);
-  const sortedDemoClasses = [...demoClasses].sort((a, b) => (
+  const sortedClasses = [...classes].sort((a, b) => (
     Number(a.grade.replace(/\D/g, '')) - Number(b.grade.replace(/\D/g, ''))
   ));
-  const selectedClasses = demoClasses.filter((item) => classIds.includes(item.id));
+  const selectedClasses = classes.filter((item) => classIds.includes(item.id));
   const studentCount = selectedClasses.reduce((sum, item) => sum + item.studentCount, 0);
-  const selectedDemoStudents = selectedClasses.flatMap((classRoom) => demoStudents.filter((student) => student.classId === classRoom.id && student.status === 'active'));
   const totalPoints = selectedExam?.questions.reduce((sum, question) => sum + question.points, 0) ?? 0;
   const timeError = useMemo(() => {
-    const opens = new Date(opensAt).getTime();
     const starts = new Date(startsAt).getTime();
-    const ends = new Date(endsAt).getTime();
-    if (![opens, starts, ends].every(Number.isFinite)) return 'Hãy nhập đầy đủ các mốc thời gian.';
-    if (opens >= starts) return 'Thời điểm mở phòng phải trước thời gian bắt đầu.';
-    if (starts >= ends) return 'Hạn kết thúc chung phải sau thời gian bắt đầu.';
-    if (durationMinutes < 1 || durationMinutes > 600) return 'Thời lượng mỗi lượt phải từ 1 đến 600 phút.';
-    if (starts + durationMinutes * 60_000 > ends && !allowLateEntry) {
-      return 'Thời lượng làm bài vượt hạn kết thúc chung. Hãy tăng hạn kết thúc hoặc giảm thời lượng.';
-    }
+    if (!Number.isFinite(starts)) return 'Hãy nhập thời điểm bắt đầu hợp lệ.';
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 600) return 'Thời gian làm bài phải từ 1 đến 600 phút.';
     return '';
-  }, [allowLateEntry, durationMinutes, endsAt, opensAt, startsAt]);
+  }, [durationMinutes, startsAt]);
 
   const settings = {
-    allowLateEntry,
-    autoSubmitAtDeadline,
-    closeRoomAtDeadline,
-    maxAttempts,
     shuffleQuestions,
-    shuffleAnswers,
     allowBackNavigation,
     allowEarlySubmit,
-    scoreRelease,
-    answerRelease,
+    requireCamera,
+    requireMicrophone,
     monitorTabSwitch,
     monitorConnection,
     warningThreshold,
-    warningAction,
   } satisfies typeof examRoomDefaults;
 
   const goNext = () => {
@@ -159,48 +177,41 @@ export function ExamRoomWizard({
     setClassIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
 
-  const save = (publish: boolean) => {
+  const save = async (publish: boolean) => {
     if (!selectedExam || !examReady(selectedExam) || !roomTitle.trim() || classIds.length === 0 || timeError) {
       setError(!selectedExam ? 'Chọn một đề thi trước khi lưu.' : !roomTitle.trim() || classIds.length === 0 ? 'Bổ sung tên phòng và lớp tham gia.' : timeError || 'Đề thi cần ở trạng thái sẵn sàng sử dụng.');
       return;
     }
     const previous = initialRoom;
+    const roomId = previous?.id ?? crypto.randomUUID();
     const room: ExamRoomRecord = {
-      id: previous?.id ?? `demo-room-${Date.now()}`,
-      code: previous?.code ?? Date.now().toString(36).slice(-6).toLocaleUpperCase('en'),
+      id: roomId,
+      code: previous?.code ?? roomId.replace(/-/g, '').slice(-8).toLocaleUpperCase('en'),
       title: roomTitle.trim(),
       instructions: instructions.trim(),
       organizer: 'Giáo viên',
       classIds,
       classNames: selectedClasses.map((item) => item.name),
       studentCount,
-      opensAt,
-      startsAt,
-      endsAt,
+      startsAt: new Date(startsAt).toISOString(),
       durationMinutes,
       status: publish ? new Date(startsAt).getTime() > Date.now() ? 'scheduled' : 'open' : 'draft',
       examId: selectedExam.id,
       examSnapshot: { ...selectedExam, questions: selectedExam.questions.map((question) => ({ ...question, options: [...question.options] })) },
       settings,
-      sessions: previous?.sessions ?? selectedDemoStudents.map((student) => ({
-        id: `${previous?.id ?? 'demo-room'}-${student.id}`,
-        studentId: student.id,
-        studentName: student.name,
-        className: demoClasses.find((item) => item.id === student.classId)?.name ?? '',
-        status: 'not-started',
-        startedAt: null,
-        submittedAt: null,
-        remainingMinutes: null,
-        eventCount: 0,
-        risk: 'none',
-        events: [],
-        score: null,
-        needsManualGrading: 0,
-      })),
+      sessions: previous?.sessions ?? [],
       createdAt: previous?.createdAt ?? new Date().toISOString(),
-      isDemo: true,
+      isDemo: false,
     };
-    onSave(room, publish);
+    setSaving(true);
+    try {
+      await onSave(room, publish);
+    } catch (saveError) {
+      console.error('Không thể lưu cấu hình phòng thi.', saveError);
+      setError(saveError instanceof Error ? saveError.message : 'Không thể lưu cấu hình phòng thi.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const checkbox = (checked: boolean, onChange: (value: boolean) => void, label: string, description?: string) => (
@@ -265,9 +276,9 @@ export function ExamRoomWizard({
               {filteredExams.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
                   <FileText className="mx-auto h-8 w-8 text-slate-300" />
-                  <p className="mt-3 font-semibold text-slate-800">{savedExams.length ? 'Không tìm thấy đề phù hợp' : 'Chưa có đề đã lưu trên thiết bị này'}</p>
-                  <p className="mt-1 text-sm text-slate-500">{savedExams.length ? 'Thử đổi từ khóa hoặc bộ lọc.' : 'Lưu và xác nhận đề trong Ngân hàng câu hỏi & Đề thi để dùng tại đây.'}</p>
-                  <button type="button" onClick={() => onNavigate('exams')} className="mt-4 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Mở Ngân hàng đề thi</button>
+                  <p className="mt-3 font-semibold text-slate-800">{savedExams.some(examReady) ? 'Không tìm thấy đề phù hợp' : 'Chưa có đề sẵn sàng sử dụng'}</p>
+                  <p className="mt-1 text-sm text-slate-500">{savedExams.some(examReady) ? 'Thử đổi từ khóa hoặc bộ lọc.' : 'Chỉ đề đã sẵn sàng mới được dùng để tạo phòng thi.'}</p>
+                  {!savedExams.some(examReady) && <button type="button" onClick={() => onNavigate('exams')} className="mt-4 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Mở Ngân hàng đề thi</button>}
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
@@ -301,7 +312,10 @@ export function ExamRoomWizard({
               <label className="block text-sm font-medium text-slate-700">Hướng dẫn làm bài<textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} rows={3} className="input-field mt-1.5" placeholder="Nhập hướng dẫn hiển thị cho học sinh..." /></label>
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-semibold text-slate-800">Lớp tham gia</legend>
-                {sortedDemoClasses.map((classRoom) => (
+                {classesLoading && <p className="text-sm text-slate-500">Đang tải lớp được phân công...</p>}
+                {classesError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{classesError}</p>}
+                {!classesLoading && !classesError && classes.length === 0 && <p className="text-sm text-slate-500">Chưa có lớp nào được phân công cho tài khoản này.</p>}
+                {sortedClasses.map((classRoom) => (
                   <label key={classRoom.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50">
                     <input type="checkbox" checked={classIds.includes(classRoom.id)} onChange={() => toggleClass(classRoom.id)} className="accent-blue-700" />
                     <span className="min-w-0 flex-1 font-medium text-slate-900">{classRoom.name}</span>
@@ -315,15 +329,11 @@ export function ExamRoomWizard({
           {step === 2 && (
             <section className="mx-auto max-w-3xl space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">Mở phòng<input type="datetime-local" value={opensAt} onChange={(event) => setOpensAt(event.target.value)} className="input-field mt-1.5" /></label>
-                <label className="block text-sm font-medium text-slate-700">Bắt đầu làm bài<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="input-field mt-1.5" /></label>
-                <label className="block text-sm font-medium text-slate-700">Hạn kết thúc chung<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="input-field mt-1.5" /></label>
-                <label className="block text-sm font-medium text-slate-700">Thời lượng mỗi lượt (phút)<input type="number" min={1} max={600} value={durationMinutes} onChange={(event) => setDurationMinutes(Math.max(1, Math.min(600, Number(event.target.value) || 1)))} className="input-field mt-1.5" /></label>
+                <label className="block text-sm font-medium text-slate-700">Ngày giờ bắt đầu<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="input-field mt-1.5" /></label>
+                <label className="block text-sm font-medium text-slate-700">Thời gian làm bài (phút)<input type="number" min={1} max={600} value={durationMinutes} onChange={(event) => setDurationMinutes(Math.max(1, Math.min(600, Number(event.target.value) || 1)))} className="input-field mt-1.5" /></label>
               </div>
               {timeError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{timeError}</p>}
-              {checkbox(allowLateEntry, setAllowLateEntry, 'Cho phép học sinh vào muộn', 'Thời gian làm bài kết thúc tại mốc đến trước giữa thời lượng lượt và hạn đóng chung.')}
-              {checkbox(autoSubmitAtDeadline, setAutoSubmitAtDeadline, 'Tự nộp khi hết thời lượng', 'Cần máy chủ thực thi để áp dụng quy tắc này.')}
-              {checkbox(closeRoomAtDeadline, setCloseRoomAtDeadline, 'Đóng phòng ở hạn kết thúc chung')}
+              <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-900">Mỗi học sinh có đủ thời gian này kể từ lúc bắt đầu lượt làm bài. Hết giờ thì bài được nộp; không cần đặt thêm hạn kết thúc chung. Mốc bắt đầu là thời gian dự kiến, giáo viên chủ động mở và đóng phòng.</p>
             </section>
           )}
 
@@ -331,22 +341,17 @@ export function ExamRoomWizard({
             <section className="mx-auto max-w-3xl space-y-5">
               <div className="grid gap-3 sm:grid-cols-2">
                 {checkbox(shuffleQuestions, setShuffleQuestions, 'Trộn thứ tự câu hỏi')}
-                {checkbox(shuffleAnswers, setShuffleAnswers, 'Trộn thứ tự đáp án', 'Cần backend giữ đáp án đúng gắn với lựa chọn.')}
                 {checkbox(allowBackNavigation, setAllowBackNavigation, 'Cho quay lại câu trước')}
                 {checkbox(allowEarlySubmit, setAllowEarlySubmit, 'Cho phép nộp bài sớm')}
-              </div>
-              <label className="block text-sm font-medium text-slate-700">Số lượt làm tối đa<select value={maxAttempts} onChange={(event) => setMaxAttempts(Number(event.target.value) as 1 | 2 | 3)} className="input-field mt-1.5"><option value={1}>1 lượt</option><option value={2}>2 lượt</option><option value={3}>3 lượt</option></select></label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">Công bố điểm<select value={scoreRelease} onChange={(event) => setScoreRelease(event.target.value as typeof scoreRelease)} className="input-field mt-1.5"><option value="immediate">Ngay sau khi nộp</option><option value="after-close">Sau khi đóng phòng</option><option value="manual">Giáo viên công bố</option></select></label>
-                <label className="block text-sm font-medium text-slate-700">Công bố đáp án<select value={answerRelease} onChange={(event) => setAnswerRelease(event.target.value as typeof answerRelease)} className="input-field mt-1.5"><option value="never">Không công bố</option><option value="after-close">Sau khi đóng phòng</option><option value="manual">Giáo viên công bố</option></select></label>
+                {checkbox(requireCamera, setRequireCamera, 'Yêu cầu kiểm tra webcam trước khi thi')}
+                {checkbox(requireMicrophone, setRequireMicrophone, 'Yêu cầu kiểm tra micro trước khi thi')}
               </div>
               <div className="space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
                 <div className="flex items-center gap-2 font-semibold text-violet-950"><ShieldCheck className="h-4 w-4" /> Ghi nhận sự kiện</div>
-                {checkbox(monitorTabSwitch, setMonitorTabSwitch, 'Ghi nhận chuyển tab / rời màn hình', 'Sự kiện là cảnh báo để giáo viên xem xét, không tự động trừ điểm.')}
-                {checkbox(monitorConnection, setMonitorConnection, 'Theo dõi trạng thái kết nối phiên')}
+                {checkbox(monitorTabSwitch, setMonitorTabSwitch, 'Ghi nhận chuyển tab / rời màn hình')}
+                {checkbox(monitorConnection, setMonitorConnection, 'Ghi nhận mất / khôi phục kết nối')}
                 <label className="block text-sm font-medium text-slate-700">Ngưỡng cảnh báo<select value={warningThreshold} onChange={(event) => setWarningThreshold(Number(event.target.value))} className="input-field mt-1.5"><option value={1}>1 sự kiện</option><option value={2}>2 sự kiện</option><option value={3}>3 sự kiện</option><option value={5}>5 sự kiện</option></select></label>
-                <label className="block text-sm font-medium text-slate-700">Khi vượt ngưỡng<select value={warningAction} onChange={(event) => setWarningAction(event.target.value as typeof warningAction)} className="input-field mt-1.5"><option value="warn">Nhắc nhở học sinh</option><option value="teacher-review">Gửi giáo viên xem xét</option></select></label>
-                <p className="text-xs leading-5 text-violet-900">Không bật camera hay giám sát nâng cao. Frontend hiện không gửi/ghi nhận sự kiện lên máy chủ.</p>
+                <p className="text-xs leading-5 text-violet-900">Sự kiện được đưa vào danh sách giáo viên cần xem xét khi đạt ngưỡng; không tự động trừ điểm hay nộp bài. Hiện phần này là giao diện minh họa, chưa ghi sự kiện lên máy chủ.</p>
               </div>
             </section>
           )}
@@ -361,20 +366,21 @@ export function ExamRoomWizard({
                   <p><span className="text-slate-500">Đề:</span> {selectedExam?.title ?? 'Chưa chọn'} - {selectedExam?.questions.length ?? 0} câu - {totalPoints} điểm</p>
                   <p><span className="text-slate-500">Lớp:</span> {selectedClasses.map((item) => item.name).join(', ') || 'Chưa chọn'} - {studentCount} học sinh</p>
                   <p><span className="text-slate-500">Người tổ chức:</span> Giáo viên</p>
-                  <p><span className="text-slate-500">Mở:</span> {formatDate(opensAt)}</p>
-                  <p><span className="text-slate-500">Bắt đầu:</span> {formatDate(startsAt)} - {durationMinutes} phút/lượt</p>
-                  <p><span className="text-slate-500">Hạn chung:</span> {formatDate(endsAt)}</p>
+                  <p><span className="text-slate-500">Bắt đầu:</span> {formatDate(startsAt)}</p>
+                  <p><span className="text-slate-500">Thời gian làm bài:</span> {durationMinutes} phút mỗi học sinh</p>
                 </article>
                 <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <h4 className="font-semibold text-slate-900">Quy tắc</h4>
-                  <p>{maxAttempts} lượt - {shuffleQuestions ? 'Có' : 'Không'} trộn câu - {shuffleAnswers ? 'Có' : 'Không'} trộn đáp án</p>
+                  <p>{shuffleQuestions ? 'Có' : 'Không'} trộn câu hỏi</p>
                   <p>{allowBackNavigation ? 'Được' : 'Không được'} quay lại - {allowEarlySubmit ? 'Được' : 'Không được'} nộp sớm</p>
-                  <p>Điểm: {scoreRelease === 'immediate' ? 'ngay sau nộp' : scoreRelease === 'after-close' ? 'sau khi đóng' : 'giáo viên công bố'}</p>
-                  <p>Đáp án: {answerRelease === 'never' ? 'không công bố' : answerRelease === 'after-close' ? 'sau khi đóng' : 'giáo viên công bố'}</p>
-                  <p>Giám sát: {monitorTabSwitch || monitorConnection ? [monitorTabSwitch && 'chuyển tab', monitorConnection && 'kết nối'].filter(Boolean).join(', ') : 'tắt'}</p>
+                  <p>Ghi nhận: {monitorTabSwitch || monitorConnection ? [monitorTabSwitch && 'chuyển tab', monitorConnection && 'mất kết nối'].filter(Boolean).join(', ') : 'tắt'}</p>
+                  <p>Chuyển giáo viên xem xét từ {warningThreshold} sự kiện</p>
+                  <p>Thiết bị: {requireCamera || requireMicrophone ? [requireCamera && 'webcam', requireMicrophone && 'micro'].filter(Boolean).join(', ') : 'không yêu cầu webcam/micro'}</p>
                 </article>
               </div>
-              <p className="text-xs leading-5 text-slate-500">Phòng chỉ được giữ trong phiên làm việc hiện tại, chưa đồng bộ lên máy chủ.</p>
+              <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">Mã phòng: <strong className="tracking-widest">{initialRoom?.code ?? 'Tạo xong sẽ hiển thị mã phòng'}</strong></p>
+              <button type="button" onClick={() => setShowPhasePreview(true)} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100"><Eye className="h-4 w-4" /> Xem trước 3 giai đoạn của học sinh</button>
+              <p className="text-xs leading-5 text-slate-500">Cấu hình phòng và bản chụp đề sẽ được lưu vào cơ sở dữ liệu.</p>
             </section>
           )}
           {previewExam && (
@@ -385,12 +391,20 @@ export function ExamRoomWizard({
               </section>
             </div>
           )}
+          {showPhasePreview && (
+            <ExamRoomPhasePreview
+              examTitle={selectedExam?.title ?? roomTitle}
+              durationMinutes={durationMinutes}
+              warningThreshold={warningThreshold}
+              onClose={() => setShowPhasePreview(false)}
+            />
+          )}
         </div>
         <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
           <button type="button" onClick={() => step === 0 ? onCancel() : (setError(''), setStep((current) => current - 1))} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ArrowLeft className="h-4 w-4" /> {step === 0 ? 'Hủy' : 'Quay lại'}</button>
           <div className="flex min-w-0 flex-wrap justify-end gap-2">
-            {step === 4 && <button type="button" onClick={() => save(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Lưu bản nháp</button>}
-            {step < 4 ? <button type="button" onClick={goNext} disabled={step === 0 && (!selectedExam || !examReady(selectedExam))} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Tiếp tục <ArrowRight className="h-4 w-4" /></button> : <button type="button" onClick={() => save(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800"><Check className="h-4 w-4" /> Tạo phòng</button>}
+            {step === 4 && <button type="button" onClick={() => void save(false)} disabled={saving} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Lưu bản nháp</button>}
+            {step < 4 ? <button type="button" onClick={goNext} disabled={saving || (step === 0 && (!selectedExam || !examReady(selectedExam)))} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Tiếp tục <ArrowRight className="h-4 w-4" /></button> : <button type="button" onClick={() => void save(true)} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"><Check className="h-4 w-4" /> {saving ? 'Đang lưu...' : 'Tạo phòng'}</button>}
           </div>
         </footer>
       </section>

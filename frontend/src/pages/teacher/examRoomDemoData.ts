@@ -5,20 +5,14 @@ export type ExamRoomStatus = 'draft' | 'scheduled' | 'open' | 'closed' | 'comple
 export type ExamSessionStatus = 'not-started' | 'in-progress' | 'submitted' | 'disconnected' | 'review';
 
 export interface ExamRoomSettings {
-  allowLateEntry: boolean;
-  autoSubmitAtDeadline: boolean;
-  closeRoomAtDeadline: boolean;
-  maxAttempts: number;
   shuffleQuestions: boolean;
-  shuffleAnswers: boolean;
   allowBackNavigation: boolean;
   allowEarlySubmit: boolean;
-  scoreRelease: 'immediate' | 'after-close' | 'manual';
-  answerRelease: 'never' | 'after-close' | 'manual';
+  requireCamera: boolean;
+  requireMicrophone: boolean;
   monitorTabSwitch: boolean;
   monitorConnection: boolean;
   warningThreshold: number;
-  warningAction: 'warn' | 'teacher-review';
 }
 
 export interface DemoExamSession {
@@ -46,9 +40,7 @@ export interface ExamRoomRecord {
   classIds: string[];
   classNames: string[];
   studentCount: number;
-  opensAt: string;
   startsAt: string;
-  endsAt: string;
   durationMinutes: number;
   status: ExamRoomStatus;
   examId: string;
@@ -56,7 +48,7 @@ export interface ExamRoomRecord {
   settings: ExamRoomSettings;
   sessions: DemoExamSession[];
   createdAt: string;
-  isDemo: true;
+  isDemo: boolean;
 }
 
 export const demoClasses = mockClasses;
@@ -79,20 +71,14 @@ export const demoSampleExam: SavedExam = {
 };
 
 const defaultSettings: ExamRoomSettings = {
-  allowLateEntry: true,
-  autoSubmitAtDeadline: true,
-  closeRoomAtDeadline: true,
-  maxAttempts: 1,
   shuffleQuestions: false,
-  shuffleAnswers: false,
   allowBackNavigation: true,
   allowEarlySubmit: true,
-  scoreRelease: 'after-close',
-  answerRelease: 'never',
+  requireCamera: false,
+  requireMicrophone: false,
   monitorTabSwitch: true,
   monitorConnection: true,
   warningThreshold: 3,
-  warningAction: 'teacher-review',
 };
 
 const localDateTime = (date: Date) => {
@@ -121,8 +107,6 @@ function makeSampleRoom({
 }): ExamRoomRecord {
   const classRoom = demoClasses.find((item) => item.id === classId) ?? demoClasses[0];
   const starts = new Date(Date.now() + startsInMinutes * 60_000);
-  const opens = new Date(starts.getTime() - 30 * 60_000);
-  const ends = new Date(starts.getTime() + durationMinutes * 60_000);
   const students = demoStudents.filter((student) => student.classId === classId && student.status === 'active');
   return {
     id,
@@ -133,9 +117,7 @@ function makeSampleRoom({
     classIds: [classId],
     classNames: [classRoom.name],
     studentCount: classRoom.studentCount,
-    opensAt: localDateTime(opens),
     startsAt: localDateTime(starts),
-    endsAt: localDateTime(ends),
     durationMinutes,
     status,
     examId: demoSampleExam.id,

@@ -80,6 +80,55 @@
   }
 }
 
+@keyframes exam-score-intro {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  16% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  76% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(1.4);
+  }
+}
+
+.exam-score-intro {
+  animation: exam-score-intro 5s ease-in-out forwards;
+}
+
+@keyframes exam-score-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.exam-score-pop {
+  animation: exam-score-pop 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exam-score-intro,
+  .exam-score-pop {
+    animation-duration: 1ms;
+  }
+}
+
 .login-primary {
   background-color: #2563eb !important;
   border: 1px solid #2563eb !important;

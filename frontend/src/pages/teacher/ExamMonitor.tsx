@@ -10,11 +10,11 @@ import {
   FileText,
   Play,
   Search,
-  ShieldCheck,
   Trash2,
   Users,
   X,
 } from 'lucide-react';
+import { defaultAssessmentSections } from './assessmentStorage';
 import type { ExamRoomRecord, ExamRoomStatus, ExamSessionStatus } from './examRoomDemoData';
 
 const roomStatusLabels: Record<ExamRoomStatus, string> = {
@@ -46,23 +46,51 @@ const roomStatusTextStyles: Record<ExamRoomStatus, string> = {
   scheduled: 'text-amber-700',
   open: 'text-emerald-700',
   closed: 'text-slate-600',
-  completed: 'text-blue-700',
+  completed: 'text-slate-600',
 };
 
 type DetailTab = 'overview' | 'monitor' | 'events';
 type SessionFilter = 'all' | ExamSessionStatus;
 
+function examFormat(room: ExamRoomRecord) {
+  const sections = room.examSnapshot.sections ?? defaultAssessmentSections(room.examSnapshot.questions);
+  return sections.map((section) => ({
+    ...section,
+    questionCount: section.questionIds.filter((id) => room.examSnapshot.questions.some((question) => question.id === id)).length,
+  }));
+}
+
 function dateLabel(value: string) {
-  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium' }).format(new Date(value));
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value));
+}
+
+function effectiveRoomStatus(room: ExamRoomRecord, now: number): ExamRoomStatus {
+  if (!['scheduled', 'open'].includes(room.status)) return room.status;
+  const startsAt = new Date(room.startsAt).getTime();
+  if (!Number.isFinite(startsAt)) return room.status;
+  if (now >= startsAt + room.durationMinutes * 60_000) return 'completed';
+  if (now < startsAt && (room.status === 'scheduled' || room.status === 'open')) return 'scheduled';
+  return room.status === 'scheduled' ? 'open' : room.status;
 }
 
 function examTimeRange(startsAt: string, durationMinutes: number) {
-  const startTime = startsAt.split('T')[1]?.slice(0, 5);
-  if (!startTime) return '';
-  const [hours, minutes] = startTime.split(':').map(Number);
-  const endMinutes = hours * 60 + minutes + durationMinutes;
-  const endTime = `${String(Math.floor(endMinutes / 60) % 24).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
-  return `${startTime} - ${endTime}`;
+  const startDate = new Date(startsAt);
+  if (!Number.isFinite(startDate.getTime())) return '';
+  const endDate = new Date(startDate.getTime() + durationMinutes * 60_000);
+  const formatTime = (date: Date) => new Intl.DateTimeFormat('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+  return `${formatTime(startDate)} - ${formatTime(endDate)}`;
+}
+
+function countdownLabel(targetTime: number, now: number) {
+  const totalSeconds = Math.max(0, Math.ceil((targetTime - now) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
 }
 
 function roomCode(room: ExamRoomRecord) {
@@ -73,16 +101,23 @@ function countStatus(room: ExamRoomRecord, status: ExamSessionStatus) {
   return room.sessions.filter((session) => session.status === status).length;
 }
 
+function sortSessionsByAlertCount(sessions: ExamRoomRecord['sessions']) {
+  const alertLevel = (eventCount: number) => eventCount >= 3 ? 2 : eventCount > 0 ? 1 : 0;
+  return [...sessions].sort((first, second) => (
+    alertLevel(second.eventCount) - alertLevel(first.eventCount)
+    || second.eventCount - first.eventCount
+    || first.studentName.localeCompare(second.studentName, 'vi')
+  ));
+}
+
 export function ExamMonitor({
   rooms,
-  onCreateRoom,
   onEditDraft,
   onUpdateRoom,
   onDeleteRoom,
   openRoomId,
 }: {
   rooms: ExamRoomRecord[];
-  onCreateRoom: () => void;
   onEditDraft: (room: ExamRoomRecord) => void;
   onUpdateRoom: (room: ExamRoomRecord) => void;
   onDeleteRoom: (roomId: string) => void;
@@ -94,11 +129,16 @@ export function ExamMonitor({
   const [roomSearch, setRoomSearch] = useState('');
   const [sessionFilter, setSessionFilter] = useState<SessionFilter>('all');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const selectedRoom = rooms.find((room) => room.id === selectedRoomId);
+  const [now, setNow] = useState(Date.now);
+  const effectiveRooms = useMemo(
+    () => rooms.map((room) => ({ ...room, status: effectiveRoomStatus(room, now) })),
+    [now, rooms],
+  );
+  const selectedRoom = effectiveRooms.find((room) => room.id === selectedRoomId);
   const selectedSession = selectedRoom?.sessions.find((session) => session.id === selectedSessionId);
   const filteredRooms = useMemo(() => {
     const normalizedQuery = roomSearch.trim().toLocaleLowerCase('vi');
-    return rooms.filter((room) => {
+    return effectiveRooms.filter((room) => {
       const matchesStatus = roomFilter === 'all'
         || (roomFilter === 'closed' ? room.status === 'closed' || room.status === 'completed' : room.status === roomFilter);
       const matchesSearch = !normalizedQuery
@@ -106,14 +146,15 @@ export function ExamMonitor({
         || room.code.toLocaleLowerCase('vi').includes(normalizedQuery);
       return matchesStatus && matchesSearch;
     });
-  }, [roomFilter, roomSearch, rooms]);
+  }, [effectiveRooms, roomFilter, roomSearch]);
   const roomStatusCounts = {
-    open: rooms.filter((room) => room.status === 'open').length,
-    scheduled: rooms.filter((room) => room.status === 'scheduled').length,
-    closed: rooms.filter((room) => room.status === 'closed' || room.status === 'completed').length,
-    all: rooms.length,
+    open: effectiveRooms.filter((room) => room.status === 'open').length,
+    scheduled: effectiveRooms.filter((room) => room.status === 'scheduled').length,
+    closed: effectiveRooms.filter((room) => room.status === 'closed' || room.status === 'completed').length,
+    all: effectiveRooms.length,
   };
   const visibleSessions = selectedRoom?.sessions.filter((session) => sessionFilter === 'all' || session.status === sessionFilter) ?? [];
+  const sessionsByAlertCount = selectedRoom ? sortSessionsByAlertCount(selectedRoom.sessions) : [];
 
   useEffect(() => {
     if (openRoomId) {
@@ -122,6 +163,11 @@ export function ExamMonitor({
       setSelectedSessionId(null);
     }
   }, [openRoomId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const updateStatus = (room: ExamRoomRecord, status: ExamRoomStatus) => {
     onUpdateRoom({ ...room, status });
@@ -134,6 +180,7 @@ export function ExamMonitor({
   };
 
   if (selectedRoom) {
+    const formatSections = examFormat(selectedRoom);
     const isEnded = selectedRoom.status === 'closed' || selectedRoom.status === 'completed';
     const tabs: { id: DetailTab; label: string }[] = [
       { id: 'overview', label: 'Tổng quan' },
@@ -147,7 +194,7 @@ export function ExamMonitor({
           <button type="button" onClick={() => { setSelectedRoomId(null); setSelectedSessionId(null); }} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900"><ArrowLeft className="h-4 w-4" /> Danh sách phòng</button>
           <div className="flex flex-wrap gap-2">
             {selectedRoom.status === 'draft' && <button type="button" onClick={() => onEditDraft(selectedRoom)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Tiếp tục cấu hình</button>}
-            {canStart && <button type="button" onClick={() => updateStatus(selectedRoom, 'open')} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><Play className="h-4 w-4" /> Mở phòng sớm</button>}
+            {canStart && <button type="button" onClick={() => updateStatus(selectedRoom, 'open')} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><Play className="h-4 w-4" /> Mở phòng</button>}
           </div>
         </div>
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -171,16 +218,40 @@ export function ExamMonitor({
           {detailTab === 'overview' && (
             <div className="space-y-4 p-4 sm:p-5">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <article className="rounded-xl border border-blue-100 bg-blue-50/70 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-blue-800"><Users className="h-4 w-4" /> Học sinh tham gia</div><p className="mt-2 text-2xl font-black text-slate-950">{selectedRoom.sessions.length}<span className="text-base font-semibold text-slate-500"> / {selectedRoom.studentCount}</span></p></article>
+                <article className="rounded-xl border border-blue-100 bg-blue-50/70 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-blue-800"><Users className="h-4 w-4" /> Học sinh tham gia</div><p className="mt-2 text-2xl font-black text-slate-950">{selectedRoom.sessions.filter((session) => session.status !== 'not-started').length}<span className="text-base font-semibold text-slate-500"> / {selectedRoom.studentCount}</span></p></article>
                 <article className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-indigo-800"><Check className="h-4 w-4" /> Đã nộp</div><p className="mt-2 text-2xl font-black text-slate-950">{countStatus(selectedRoom, 'submitted')}</p></article>
-                <article className="rounded-xl border border-amber-100 bg-amber-50/70 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-amber-800"><AlertTriangle className="h-4 w-4" /> Cần xem</div><p className="mt-2 text-2xl font-black text-slate-950">{countStatus(selectedRoom, 'review') + countStatus(selectedRoom, 'disconnected')}</p></article>
+                <article className="rounded-xl border border-amber-100 bg-amber-50/70 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-amber-800"><AlertTriangle className="h-4 w-4" /> Cần xem</div><p className="mt-2 text-2xl font-black text-slate-950">{selectedRoom.sessions.filter((session) => session.eventCount >= 3).length}</p></article>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <article className="rounded-xl border border-slate-200 border-t-4 border-t-blue-500 bg-white p-4"><h2 className="flex items-center gap-2 font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" /> Lịch thi</h2><dl className="mt-3 space-y-2 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">Mở phòng</dt><dd className="text-right">{dateLabel(selectedRoom.opensAt)}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Bắt đầu</dt><dd className="text-right">{dateLabel(selectedRoom.startsAt)}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Hạn kết thúc</dt><dd className="text-right">{dateLabel(selectedRoom.endsAt)}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Thời lượng/lượt</dt><dd>{selectedRoom.durationMinutes} phút ({examTimeRange(selectedRoom.startsAt, selectedRoom.durationMinutes)})</dd></div></dl></article>
-                <article className="rounded-xl border border-slate-200 border-t-4 border-t-indigo-500 bg-white p-4"><h2 className="flex items-center gap-2 font-bold text-slate-900"><FileText className="h-4 w-4 text-indigo-600" /> Đề thi</h2><p className="mt-2 font-semibold text-slate-800">{selectedRoom.examSnapshot.title}</p><p className="mt-1 text-sm text-slate-500">{selectedRoom.examSnapshot.subject} - {selectedRoom.examSnapshot.grade} - {selectedRoom.examSnapshot.questions.length} câu - {selectedRoom.examSnapshot.questions.reduce((sum, q) => sum + q.points, 0)} điểm</p><p className="mt-3 text-sm text-slate-600">{selectedRoom.instructions || 'Chưa có hướng dẫn.'}</p></article>
-                <article className="rounded-xl border border-slate-200 border-t-4 border-t-emerald-500 bg-white p-4"><h2 className="flex items-center gap-2 font-bold text-slate-900"><Users className="h-4 w-4 text-emerald-600" /> Tiến độ học sinh</h2><div className="mt-3 grid grid-cols-2 gap-2 text-sm">{(['not-started', 'in-progress', 'submitted', 'review'] as const).map((status) => <p key={status} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>{sessionStatusLabels[status]}</span><strong>{countStatus(selectedRoom, status)}</strong></p>)}</div></article>
-                <article className="rounded-xl border border-slate-200 border-t-4 border-t-violet-500 bg-white p-4"><h2 className="flex items-center gap-2 font-bold text-slate-900"><ShieldCheck className="h-4 w-4 text-violet-600" /> Quy tắc và giám sát</h2><p className="mt-2 text-sm leading-6 text-slate-600">{selectedRoom.settings.maxAttempts} lượt - {selectedRoom.settings.allowLateEntry ? 'Cho vào muộn' : 'Không vào muộn'} - {selectedRoom.settings.monitorTabSwitch ? 'Có cấu hình ghi nhận chuyển tab' : 'Không ghi nhận chuyển tab'} - {selectedRoom.settings.monitorConnection ? 'Có cấu hình trạng thái kết nối' : 'Không theo dõi kết nối'}</p><p className="mt-3 text-xs text-violet-800">Thiết lập giao diện chưa được backend thực thi.</p></article>
+                <article className="rounded-xl border border-slate-200 border-t-4 border-t-blue-500 bg-white p-4"><h2 className="flex items-center gap-2 font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" /> Lịch thi</h2><dl className="mt-3 space-y-2 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-500">Thời điểm bắt đầu</dt><dd className="text-right">{dateLabel(selectedRoom.startsAt)}</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Thời gian làm bài</dt><dd>{selectedRoom.durationMinutes} phút mỗi học sinh</dd></div><div className="flex justify-between gap-3"><dt className="text-slate-500">Khung giờ dự kiến</dt><dd>{examTimeRange(selectedRoom.startsAt, selectedRoom.durationMinutes)}</dd></div></dl></article>
+                <article className="rounded-xl border border-slate-200 border-t-4 border-t-indigo-500 bg-white p-4"><h2 className="flex items-center gap-2 font-bold text-slate-900"><FileText className="h-4 w-4 text-indigo-600" /> Đề thi</h2><p className="mt-2 font-semibold text-slate-800">{selectedRoom.examSnapshot.title}</p><div className="mt-1 text-sm text-slate-500"><p>Format đề:</p>{formatSections.length > 0 ? <ul className="mt-1 space-y-1">{formatSections.map((section) => <li key={section.id}><span className="font-medium">{section.title}</span> · {section.questionCount} câu{section.description && <p className="text-xs">{section.description}</p>}</li>)}</ul> : <p>Chưa có phần thi</p>}</div><p className="mt-3 text-sm text-slate-600">{selectedRoom.instructions || 'Chưa có hướng dẫn.'}</p></article>
               </div>
+              <article className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <h2 className="font-bold text-slate-900">Danh sách học sinh trong lớp</h2>
+                </div>
+                {selectedRoom.sessions.length === 0 ? (
+                  <p className="p-4 text-sm text-slate-500">Chưa có học sinh trong lớp được giao.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-left text-sm">
+                      <thead className="bg-slate-50 text-xs text-slate-500">
+                        <tr><th className="px-4 py-2.5">Học sinh</th><th className="px-4 py-2.5">Lớp</th><th className="px-4 py-2.5">Trạng thái</th><th className="px-4 py-2.5">Thời điểm nộp</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedRoom.sessions.map((session) => (
+                          <tr key={session.id}>
+                            <td className="px-4 py-3 font-semibold text-slate-900">{session.studentName}</td>
+                            <td className="px-4 py-3 text-slate-600">{session.className}</td>
+                            <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sessionStatusStyles[session.status]}`}>{sessionStatusLabels[session.status]}</span></td>
+                            <td className="px-4 py-3 text-slate-600">{session.submittedAt ? new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(session.submittedAt)) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </article>
             </div>
           )}
 
@@ -188,14 +259,58 @@ export function ExamMonitor({
             <section className="p-4">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold text-slate-900">Danh sách phiên</h2><select value={sessionFilter} onChange={(event) => setSessionFilter(event.target.value as SessionFilter)} className="input-field w-auto"><option value="all">Mọi trạng thái</option>{Object.entries(sessionStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
               {visibleSessions.length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có phiên ở trạng thái này.</p> : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Học sinh</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Còn lại</th><th className="px-4 py-3">Sự kiện</th><th className="px-4 py-3">Cảnh báo</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y divide-slate-100">{visibleSessions.map((session) => <tr key={session.id}><td className="px-4 py-3"><p className="font-semibold text-slate-900">{session.studentName}</p><p className="text-xs text-slate-500">{session.className}</p></td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sessionStatusStyles[session.status]}`}>{sessionStatusLabels[session.status]}</span></td><td className="px-4 py-3">{session.remainingMinutes === null ? '—' : `${session.remainingMinutes} phút`}</td><td className="px-4 py-3">{session.eventCount}</td><td className="px-4 py-3">{session.risk === 'none' ? <span className="text-slate-400">Không có</span> : <span className={session.risk === 'review' ? 'font-semibold text-rose-700' : 'text-amber-700'}>{session.risk === 'review' ? 'Cần xem xét' : 'Cảnh báo'}</span>}</td><td className="px-4 py-3"><button type="button" onClick={() => setSelectedSessionId(session.id)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-4 w-4" /> Chi tiết</button></td></tr>)}</tbody></table></div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Học sinh</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Còn lại</th><th className="px-4 py-3">Sự kiện</th><th className="px-4 py-3">Cảnh báo</th><th className="px-4 py-3"></th></tr></thead><tbody className="divide-y divide-slate-100">{visibleSessions.map((session) => <tr key={session.id}><td className="px-4 py-3"><p className="font-semibold text-slate-900">{session.studentName}</p><p className="text-xs text-slate-500">{session.className}</p></td><td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${sessionStatusStyles[session.status]}`}>{sessionStatusLabels[session.status]}</span></td><td className="px-4 py-3">{session.remainingMinutes === null ? '—' : `${session.remainingMinutes} phút`}</td><td className="px-4 py-3">{session.eventCount}</td><td className="px-4 py-3">{session.eventCount >= 3 ? <span className="font-semibold text-rose-700">Cần xem xét</span> : session.eventCount > 0 ? <span className="font-semibold text-amber-700">Cần kiểm tra</span> : <span className="text-slate-500">Không có</span>}</td><td className="px-4 py-3">{session.status === 'not-started' ? <span className="text-slate-400">—</span> : <button type="button" onClick={() => setSelectedSessionId(session.id)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-4 w-4" /> Chi tiết</button>}</td></tr>)}</tbody></table></div>
               )}
               <p className="mt-3 text-xs leading-5 text-slate-500">Chưa hỗ trợ camera hoặc theo dõi trình duyệt nền.</p>
             </section>
           )}
 
           {detailTab === 'events' && (
-            <section className="p-4"><h2 className="mb-3 font-semibold text-slate-900">Nhật ký sự kiện</h2>{selectedRoom.sessions.flatMap((session) => session.events.map((event) => ({ ...event, studentName: session.studentName }))).length === 0 ? <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có sự kiện.</p> : <ol className="space-y-2">{selectedRoom.sessions.flatMap((session) => session.events.map((event) => ({ ...event, studentName: session.studentName }))).map((event) => <li key={event.id} className={`flex flex-wrap justify-between gap-2 rounded-xl border p-3 text-sm ${event.kind === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}><span>{event.studentName} - {event.label}</span><time className="text-slate-500">{event.at}</time></li>)}</ol>}</section>
+            <section className="space-y-3 p-4">
+              <h2 className="font-semibold text-slate-900">Nhật ký cảnh báo của cả lớp</h2>
+              {sessionsByAlertCount.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có học sinh trong lớp.</p>
+              ) : (
+                <ol className="space-y-2">
+                  {sessionsByAlertCount.map((session) => {
+                    const hasCriticalAlerts = session.eventCount >= 3;
+                    const hasAlerts = session.eventCount > 0;
+                    return (
+                      <li
+                        key={session.id}
+                        className={`rounded-xl border p-3 ${
+                          hasCriticalAlerts
+                            ? 'border-rose-300 bg-rose-50 text-rose-950'
+                            : hasAlerts
+                              ? 'border-amber-300 bg-amber-50 text-amber-950'
+                              : 'border-slate-200 bg-white text-slate-900'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold">{session.studentName}</p>
+                            <p className="text-xs opacity-75">{session.className} · {sessionStatusLabels[session.status]}</p>
+                          </div>
+                          <span className="text-sm font-semibold">
+                            {hasCriticalAlerts ? `Cảnh báo đỏ · ${session.eventCount} lần` : hasAlerts ? `Cần kiểm tra · ${session.eventCount} lần` : 'Không có cảnh báo'}
+                          </span>
+                        </div>
+                        {session.events.length > 0 && (
+                          <ul className="mt-2 space-y-1 border-t border-current/10 pt-2 text-sm">
+                            {session.events.map((event) => (
+                              <li key={event.id} className="flex flex-wrap justify-between gap-2">
+                                <span>{event.label}</span>
+                                <time className="text-xs opacity-75">{event.at}</time>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </section>
           )}
         </section>
 
@@ -247,7 +362,7 @@ export function ExamMonitor({
             );
           })}
         </div>
-        {filteredRooms.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center"><BookOpenCheck className="mx-auto h-8 w-8 text-slate-300" /><h2 className="mt-3 font-semibold text-slate-800">Không tìm thấy phòng phù hợp</h2><p className="mt-1 text-sm text-slate-500">Thử đổi tên, mã phòng hoặc trạng thái lọc.</p><button type="button" onClick={onCreateRoom} className="mt-4 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Tạo phòng</button></div> : (
+        {filteredRooms.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center"><BookOpenCheck className="mx-auto h-8 w-8 text-slate-300" /><h2 className="mt-3 font-semibold text-slate-800">{effectiveRooms.length ? 'Không tìm thấy phòng phù hợp' : 'Chưa có phòng thi nào'}</h2><p className="mt-1 text-sm text-slate-500">{effectiveRooms.length ? 'Thử đổi tên, mã phòng hoặc trạng thái lọc.' : 'Tạo phòng thi từ mục Đề thi đã lưu.'}</p></div> : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredRooms.map((room) => {
               const submittedCount = countStatus(room, 'submitted');
@@ -255,6 +370,11 @@ export function ExamMonitor({
               const flaggedCount = countStatus(room, 'review') + countStatus(room, 'disconnected');
               const ended = room.status === 'completed' || room.status === 'closed';
               const active = room.status === 'open';
+              const startsAt = new Date(room.startsAt).getTime();
+              const hasStarted = Number.isFinite(startsAt) && now >= startsAt;
+              const countdownTarget = !ended
+                ? hasStarted ? startsAt + room.durationMinutes * 60_000 : startsAt
+                : null;
               return <article key={room.id} className="group relative flex h-full min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-lg">
                 <div className="flex items-center justify-between gap-2 pr-1">
                   <span className="min-w-0 text-xl font-black leading-7 text-slate-950 sm:text-2xl">{room.examSnapshot.subject}</span>
@@ -268,6 +388,16 @@ export function ExamMonitor({
                     <span><Clock3 className="mr-1 inline h-3.5 w-3.5" />{room.durationMinutes} phút ({examTimeRange(room.startsAt, room.durationMinutes)})</span>
                     <span><Users className="mr-1 inline h-3.5 w-3.5" />{activeCount} đang làm - {submittedCount}/{room.studentCount} nộp</span>
                   </div>
+                  {countdownTarget !== null && Number.isFinite(countdownTarget) && (
+                    <div className="rounded-lg border border-blue-100 bg-white px-3 py-2 text-center">
+                      <p className={`text-xs font-semibold ${hasStarted ? 'text-emerald-700' : 'text-blue-700'}`}>
+                        {hasStarted ? 'Thời gian làm bài còn' : 'Mở phòng sau'}
+                      </p>
+                      <p aria-label={`${hasStarted ? 'Thời gian làm bài còn' : 'Mở phòng sau'} ${countdownLabel(countdownTarget, now)}`} className={`mt-0.5 font-mono text-2xl font-black leading-tight tabular-nums sm:text-3xl ${hasStarted ? 'text-emerald-600' : 'text-blue-700'}`}>
+                        {countdownLabel(countdownTarget, now)}
+                      </p>
+                    </div>
+                  )}
                   <div className="min-h-4">
                     <span className={`font-medium ${flaggedCount > 0 ? 'text-amber-700' : 'text-slate-400'}`}><AlertTriangle className="mr-1 inline h-3.5 w-3.5" />{flaggedCount} cần xem</span>
                   </div>
@@ -279,7 +409,7 @@ export function ExamMonitor({
                     className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${active ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
                   >
                     {active ? <Eye className="h-4 w-4" /> : null}
-                    {active ? 'Xem phòng' : ended ? 'Xem phòng' : 'Cài đặt phòng'}
+                    {active ? 'Xem phòng' : ended ? 'Kiểm tra thông tin phòng' : 'Cài đặt phòng'}
                   </button>
                 </div>
               </article>;

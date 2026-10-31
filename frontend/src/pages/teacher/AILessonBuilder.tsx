@@ -4,7 +4,8 @@ import { AIQuizGenerator } from '@/pages/teacher/AIQuizGenerator';
 import { LessonPlan } from '@/pages/teacher/LessonPlan';
 import { LessonSlides } from '@/pages/teacher/LessonSlides';
 import type { LessonFormat } from '@/pages/teacher/LessonFormatSelector';
-import { readQuestionSets, readSavedExams, writeQuestionSets, writeSavedExams, type ExamQuestion } from '@/pages/teacher/assessmentStorage';
+import { saveTeacherAssessment } from '@/api/schoolApi';
+import type { ExamQuestion } from '@/pages/teacher/assessmentStorage';
 import type { QuizQuestion } from '@/types';
 
 type BuilderMode = 'lesson' | 'lecture' | 'assessment';
@@ -45,30 +46,47 @@ export function AILessonBuilder({
     }
   }, [initialMode]);
 
-  const saveQuestionSet = (generated: { topic: string; subject: string; grade: string; questions: QuizQuestion[] }) => {
+  const saveAssignment = async (generated: {
+    topic: string;
+    subject: string;
+    grade: string;
+    questions: QuizQuestion[];
+    durationMinutes?: number | null;
+  }) => {
     try {
       const next = {
         ...generated,
-        id: `bank-${Date.now()}`,
+        id: `assignment-${Date.now()}`,
+        title: generated.topic,
         createdAt: new Date().toLocaleDateString('vi-VN'),
+        durationMinutes: generated.durationMinutes ?? null,
+        status: 'draft' as const,
+        questions: generated.questions.map((question): ExamQuestion => ({
+          ...question,
+          type: question.type ?? 'multiple-choice',
+          correctAnswer: question.correctAnswer ?? question.options[question.correctIndex] ?? '',
+          correctAnswers: question.correctAnswers,
+          points: question.type === 'essay' ? 3 : question.type === 'short-answer' ? 2 : 1,
+        })),
       };
-      writeQuestionSets([next, ...readQuestionSets()]);
-      setFeedback('Đã lưu bộ câu hỏi vào Ngân hàng câu hỏi.');
+      await saveTeacherAssessment('assignment', next);
+      setFeedback('Đã lưu bài tập vào tab Bài tập đã lưu.');
       setError('');
     } catch (saveError) {
-      console.error('Không thể lưu bộ câu hỏi trên thiết bị.', saveError);
-      setError('Không lưu được bộ câu hỏi trên trình duyệt.');
+      console.error('Không thể lưu bài tập vào cơ sở dữ liệu.', saveError);
+      setError(saveError instanceof Error ? saveError.message : 'Không thể lưu bài tập vào cơ sở dữ liệu.');
       setFeedback('');
     }
   };
 
-  const saveExam = (generated: {
+  const saveExam = async (generated: {
     topic: string;
     subject: string;
     grade: string;
     questions: QuizQuestion[];
     durationMinutes?: number | null;
     structureSummary?: string[];
+    sectionPoints?: Record<NonNullable<QuizQuestion['type']>, number>;
     writtenSection?: string;
   }) => {
     try {
@@ -84,17 +102,18 @@ export function AILessonBuilder({
           type: question.type ?? 'multiple-choice',
           correctAnswer: question.correctAnswer ?? question.options[question.correctIndex] ?? '',
           correctAnswers: question.correctAnswers,
-          points: question.type === 'essay' ? 3 : question.type === 'short-answer' ? 2 : 1,
+          points: question.points ?? (question.type === 'essay' ? 3 : question.type === 'short-answer' ? 2 : 1),
         })),
         structureSummary: generated.structureSummary,
+        sectionPoints: generated.sectionPoints,
         writtenSection: generated.writtenSection,
       };
-      writeSavedExams([next, ...readSavedExams()]);
+      await saveTeacherAssessment('exam', next);
       setFeedback('Đã lưu đề kiểm tra vào Đề thi đã lưu.');
       setError('');
     } catch (saveError) {
-      console.error('Không thể lưu đề kiểm tra trên thiết bị.', saveError);
-      setError('Không lưu được đề kiểm tra trên trình duyệt.');
+      console.error('Không thể lưu đề kiểm tra vào cơ sở dữ liệu.', saveError);
+      setError(saveError instanceof Error ? saveError.message : 'Không thể lưu đề kiểm tra vào cơ sở dữ liệu.');
       setFeedback('');
     }
   };
@@ -140,7 +159,7 @@ export function AILessonBuilder({
               examMode={mode === 'assessment' && assessmentType === 'official'}
               assessmentType={assessmentType}
               onAssessmentTypeChange={setAssessmentType}
-              onSaveQuestions={mode === 'assessment' && assessmentType === 'official' ? saveExam : saveQuestionSet}
+              onSaveQuestions={mode === 'assessment' && assessmentType === 'official' ? saveExam : saveAssignment}
               saveLabel={mode === 'assessment' && assessmentType === 'official' ? 'Lưu đề kiểm tra' : 'Lưu bài tập'}
             />
           )}

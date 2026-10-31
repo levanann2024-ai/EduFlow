@@ -107,7 +107,7 @@ export function HomeroomClassOverview({
               <BookOpenCheck className="h-4 w-4 text-blue-600" />
               Điểm trung bình theo môn
             </p>
-            <span className="text-xs text-slate-500">{summary.students.length} học sinh · {academicYear} · {semester}</span>
+            <span className="text-xs text-slate-500">{summary.students.length} học sinh - {academicYear} - {semester}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-left text-sm">

@@ -81,7 +81,7 @@ export function TeacherClassAssignments({
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold text-slate-900">{assignment.title}</h3>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {assignment.subject} · {assignment.semester}
+                        {assignment.subject} - {assignment.semester}
                       </span>
                     </div>
                     {assignment.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{assignment.description}</p>}

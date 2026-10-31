@@ -183,7 +183,7 @@ export function ClassAnalytics() {
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 p-4">
               <h2 className="font-semibold text-slate-900">
-                Tiến độ từng học sinh · {selectedClass?.name} · {subject} · {semester}
+                Tiến độ từng học sinh - {selectedClass?.name} - {subject} - {semester}
               </h2>
               <p className="mt-1 text-xs text-slate-500">
                 Điểm trung bình là trung bình cộng của các cột điểm đã nhập, không áp dụng trọng số.

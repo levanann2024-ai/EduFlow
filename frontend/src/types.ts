@@ -10,6 +10,7 @@ export type Page =
   | 'lesson-slides'
   | 'lesson-builder'
   | 'question-bank'
+  | 'saved-assignments'
   | 'exams'
   | 'exam-monitor'
   | 'appeals'
@@ -76,6 +77,7 @@ export interface QuizQuestion {
   type?: 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
   correctAnswer?: string;
   correctAnswers?: boolean[];
+  points?: number;
   explanation: string;
   difficulty: 'easy' | 'medium' | 'hard';
 }

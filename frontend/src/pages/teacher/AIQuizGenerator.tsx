@@ -15,6 +15,7 @@ interface GeneratedQuestionSet {
   questions: QuizQuestion[];
   durationMinutes?: number | null;
   structureSummary?: string[];
+  sectionPoints?: Record<GeneratedQuestionType, number>;
   writtenSection?: string;
 }
 
@@ -32,6 +33,7 @@ interface GeneratedAssessmentDraft {
   vietnameseCounts: { recognition: number; comprehension: number; application: number; advanced: number };
   englishCounts: { notice: number; ordering: number; cloze: number; reading: number };
   generalCounts: { multipleChoice: number; trueFalse: number; shortAnswer: number; essay: number };
+  sectionPoints: Record<GeneratedQuestionType, number>;
   writtenSection: string;
   questions: QuizQuestion[];
 }
@@ -62,6 +64,12 @@ function readAssessmentDraft(type: AssessmentType): GeneratedAssessmentDraft | n
       vietnameseCounts: draft.vietnameseCounts ?? { recognition: 1, comprehension: 1, application: 1, advanced: 1 },
       englishCounts: draft.englishCounts ?? { notice: 12, ordering: 5, cloze: 5, reading: 18 },
       generalCounts: draft.generalCounts ?? { multipleChoice: 12, trueFalse: 2, shortAnswer: 4, essay: 6 },
+      sectionPoints: draft.sectionPoints ?? {
+        'multiple-choice': 3,
+        'true-false': 2,
+        'short-answer': 2,
+        essay: 3,
+      },
       writtenSection: typeof draft.writtenSection === 'string' ? draft.writtenSection : '',
       questions: draft.questions.map((question, index) => ({
         ...question,
@@ -129,6 +137,17 @@ function normalizeGeneratedQuestion(value: unknown, index: number): QuizQuestion
     && rawCorrectAnswers.every((item) => typeof item === 'boolean')
     ? rawCorrectAnswers as boolean[]
     : undefined;
+  const difficulty = ['easy', 'medium', 'hard'].includes(String(raw.difficulty))
+    ? raw.difficulty as QuizQuestion['difficulty']
+    : 'medium';
+  const basePoints = type === 'multiple-choice' ? 0.25
+    : type === 'true-false' ? 1
+      : type === 'short-answer' ? 0.5
+        : 2;
+  const difficultyMultiplier = difficulty === 'easy' ? 0.75 : difficulty === 'hard' ? 1.5 : 1;
+  const points = typeof raw.points === 'number' && Number.isFinite(raw.points) && raw.points > 0
+    ? raw.points
+    : Math.max(0.25, Math.round(basePoints * difficultyMultiplier * 4) / 4);
 
   if (type === 'multiple-choice' && (options.length !== 4 || correctIndex < 0 || correctIndex >= options.length)) {
     throw new Error(`Câu ${index + 1} trắc nghiệm cần 4 phương án và đáp án đúng hợp lệ.`);
@@ -148,10 +167,9 @@ function normalizeGeneratedQuestion(value: unknown, index: number): QuizQuestion
     correctIndex: type === 'multiple-choice' ? correctIndex : -1,
     correctAnswer: answerText || (type === 'multiple-choice' ? options[correctIndex] : ''),
     correctAnswers,
+    points,
     explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
-    difficulty: ['easy', 'medium', 'hard'].includes(String(raw.difficulty))
-      ? raw.difficulty as QuizQuestion['difficulty']
-      : 'medium',
+    difficulty,
   };
 }
 
@@ -164,11 +182,20 @@ const difficulties = [
   { value: 'hard', label: 'Khó', activeClass: 'bg-rose-50 border-rose-300 text-rose-700' },
 ] as const;
 
-const difficultyStyle: Record<string, { badge: string; dot: string }> = {
-  easy: { badge: 'bg-green-50 text-green-700', dot: 'bg-green-500' },
-  medium: { badge: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
-  hard: { badge: 'bg-rose-50 text-rose-700', dot: 'bg-rose-500' },
-};
+function distributeQuestionPoints(
+  questions: QuizQuestion[],
+  sectionPoints: Record<GeneratedQuestionType, number>,
+) {
+  const counts = questions.reduce<Record<GeneratedQuestionType, number>>((result, question) => {
+    const type = question.type ?? 'multiple-choice';
+    result[type] += 1;
+    return result;
+  }, { 'multiple-choice': 0, 'true-false': 0, 'short-answer': 0, essay: 0 });
+  return questions.map((question) => {
+    const type = question.type ?? 'multiple-choice';
+    return { ...question, points: sectionPoints[type] / counts[type] };
+  });
+}
 
 export function AIQuizGenerator({
   onSaveQuestions,
@@ -193,6 +220,12 @@ export function AIQuizGenerator({
   const [vietnameseCounts, setVietnameseCounts] = useState(initialDraft?.vietnameseCounts ?? { recognition: 1, comprehension: 1, application: 1, advanced: 1 });
   const [englishCounts, setEnglishCounts] = useState(initialDraft?.englishCounts ?? { notice: 12, ordering: 5, cloze: 5, reading: 18 });
   const [generalCounts, setGeneralCounts] = useState(initialDraft?.generalCounts ?? { multipleChoice: 12, trueFalse: 2, shortAnswer: 4, essay: 6 });
+  const [sectionPoints, setSectionPoints] = useState<Record<GeneratedQuestionType, number>>(initialDraft?.sectionPoints ?? {
+    'multiple-choice': 3,
+    'true-false': 2,
+    'short-answer': 2,
+    essay: 3,
+  });
   const [writtenSection, setWrittenSection] = useState(initialDraft?.writtenSection ?? '');
   const [questions, setQuestions] = useState<QuizQuestion[]>(initialDraft?.questions ?? []);
   const [generating, setGenerating] = useState(false);
@@ -213,6 +246,7 @@ export function AIQuizGenerator({
       setVietnameseCounts(draft.vietnameseCounts);
       setEnglishCounts(draft.englishCounts);
       setGeneralCounts(draft.generalCounts);
+      setSectionPoints(draft.sectionPoints);
       setWrittenSection(draft.writtenSection);
       setQuestions(draft.questions);
     } else {
@@ -229,6 +263,24 @@ export function AIQuizGenerator({
   const isEnglish = subject === 'Tiếng Anh';
   const currentCounts = isVietnamese ? vietnameseCounts : isEnglish ? englishCounts : generalCounts;
   const totalExamQuestions = Object.values(currentCounts).reduce((total, count) => total + count, 0);
+  const sectionCounts: Record<GeneratedQuestionType, number> = {
+    'multiple-choice': generalCounts.multipleChoice,
+    'true-false': generalCounts.trueFalse,
+    'short-answer': generalCounts.shortAnswer,
+    essay: generalCounts.essay,
+  };
+  const totalSectionPoints = Object.values(sectionPoints).reduce((total, points) => total + points, 0);
+  const sectionPointsValid = Object.values(sectionPoints).every((points) => Number.isFinite(points) && points >= 0)
+    && Math.abs(totalSectionPoints - 10) < 0.000001
+    && Object.entries(sectionPoints).every(([type, points]) => (
+      sectionCounts[type as GeneratedQuestionType] > 0 ? points > 0 : points === 0
+    ));
+  const generatedStructureMatches = Object.entries(sectionCounts).every(([type, count]) => (
+    questions.filter((question) => (question.type ?? 'multiple-choice') === type).length === count
+  ));
+  const distributedQuestions = examMode && !isVietnamese && !isEnglish
+    ? distributeQuestionPoints(questions, sectionPoints)
+    : questions;
   const examQuestionLimitExceeded = examMode && totalExamQuestions > 50;
   const requestedQuestionCount = examMode ? totalExamQuestions : numQuestions;
   const examStructure = isVietnamese
@@ -263,6 +315,10 @@ export function AIQuizGenerator({
 
   const handleGenerate = async () => {
     if (!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) return;
+    if (examMode && !isVietnamese && !isEnglish && !sectionPointsValid) {
+      setError('Tổng điểm các phần phải bằng 10; phần có câu hỏi phải có điểm, phần trống phải đặt 0.');
+      return;
+    }
     setGenerating(true);
     setQuestions([]);
     setError('');
@@ -314,7 +370,7 @@ export function AIQuizGenerator({
       if (result.data.length !== quantity) {
         throw new Error(`AI trả về ${result.data.length} câu, trong khi yêu cầu ${quantity} câu. Hãy thử tạo lại.`);
       }
-      const normalizedQuestions = result.data.map(normalizeGeneratedQuestion);
+      let normalizedQuestions = result.data.map(normalizeGeneratedQuestion);
       if (expectedTypes.length > 0) {
         const mismatchIndex = normalizedQuestions.findIndex((question, index) => question.type !== expectedTypes[index]);
         if (mismatchIndex >= 0) {
@@ -322,6 +378,9 @@ export function AIQuizGenerator({
             `AI trả về dạng câu chưa đúng ở câu ${mismatchIndex + 1}: yêu cầu ${questionTypeLabel(expectedTypes[mismatchIndex])}, nhận ${questionTypeLabel(normalizedQuestions[mismatchIndex].type)}. Backend/API có thể chưa được cập nhật phiên bản hỗ trợ cấu trúc câu hỏi mới.`,
           );
         }
+      }
+      if (examMode && !isVietnamese && !isEnglish) {
+        normalizedQuestions = distributeQuestionPoints(normalizedQuestions, sectionPoints);
       }
       setQuestions(normalizedQuestions);
       if (assessmentType) {
@@ -336,6 +395,7 @@ export function AIQuizGenerator({
             vietnameseCounts,
             englishCounts,
             generalCounts,
+            sectionPoints,
             writtenSection,
             questions: normalizedQuestions,
           } satisfies GeneratedAssessmentDraft));
@@ -523,19 +583,62 @@ export function AIQuizGenerator({
                       ))}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {([
-                        ['multipleChoice', 'Trắc nghiệm ABCD'],
-                        ['trueFalse', 'Đúng / Sai - 4 ý a, b, c, d mỗi câu'],
-                        ['shortAnswer', 'Trả lời ngắn'],
-                        ['essay', 'Tự luận'],
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className="flex items-center justify-between gap-3 text-sm text-slate-700">
-                          {label}
-                          <input type="number" min={0} max={100} value={generalCounts[key]} onChange={(event) => setCount(setGeneralCounts, key, Number(event.target.value))} className="input-field h-9 w-20 text-center" />
-                        </label>
-                      ))}
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        {([
+                          ['multipleChoice', 'Trắc nghiệm ABCD'],
+                          ['trueFalse', 'Đúng / Sai - 4 ý a, b, c, d mỗi câu'],
+                          ['shortAnswer', 'Trả lời ngắn'],
+                          ['essay', 'Tự luận'],
+                        ] as const).map(([key, label]) => (
+                          <label key={key} className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                            {label}
+                            <input type="number" min={0} max={100} value={generalCounts[key]} onChange={(event) => setCount(setGeneralCounts, key, Number(event.target.value))} className="input-field h-9 w-20 text-center" />
+                          </label>
+                        ))}
+                      </div>
+                      <div className="space-y-2 border-t border-blue-100 pt-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-800">Tổng điểm từng phần</p>
+                          <span className={`text-xs font-bold ${sectionPointsValid ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {totalSectionPoints.toFixed(2)} / 10 điểm
+                          </span>
+                        </div>
+                        {([
+                          ['multiple-choice', 'Phần I - Trắc nghiệm ABCD'],
+                          ['true-false', 'Phần II - Đúng / Sai'],
+                          ['short-answer', 'Phần III - Trả lời ngắn'],
+                          ['essay', 'Phần IV - Tự luận'],
+                        ] as const).map(([type, label]) => (
+                          <label key={type} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2 text-xs text-slate-700">
+                            <span>{label} <span className="text-slate-400">({sectionCounts[type]} câu · {sectionCounts[type] ? (sectionPoints[type] / sectionCounts[type]).toFixed(2) : '0.00'} điểm/câu)</span></span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={10}
+                              step={0.25}
+                              value={sectionPoints[type]}
+                              onChange={(event) => setSectionPoints((current) => ({
+                                ...current,
+                                [type]: Math.max(0, Number(event.target.value) || 0),
+                              }))}
+                              aria-label={`${label}, tổng điểm phần`}
+                              className="input-field h-9 w-20 text-center"
+                            />
+                          </label>
+                        ))}
+                        {!sectionPointsValid && (
+                          <p className="text-xs font-medium text-rose-700">
+                            Tổng điểm phải bằng 10; phần có câu hỏi cần điểm lớn hơn 0 và phần trống cần đặt 0.
+                          </p>
+                        )}
+                        {questions.length > 0 && !generatedStructureMatches && (
+                          <p className="text-xs font-medium text-rose-700">
+                            Số câu đã thay đổi; hãy tạo lại đề trước khi lưu.
+                          </p>
+                        )}
+                      </div>
+                    </>
                   )}
                   <p className="text-xs text-slate-500">Có thể thay đổi số câu từng phần theo yêu cầu của lớp.</p>
                 </div>
@@ -584,7 +687,7 @@ export function AIQuizGenerator({
               </div>}
 
               {examQuestionLimitExceeded && <p role="alert" className="text-sm text-rose-700">Đề thi tối đa 50 câu. Hãy giảm số câu trong cấu trúc đề.</p>}
-              <button onClick={handleGenerate} disabled={(!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) || generating || (examMode && (totalExamQuestions === 0 || examQuestionLimitExceeded))} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <button onClick={handleGenerate} disabled={(!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) || generating || (examMode && (totalExamQuestions === 0 || examQuestionLimitExceeded || (!isVietnamese && !isEnglish && !sectionPointsValid)))} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {generating ? (
                   <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Đang tạo...</>
                 ) : (
@@ -617,7 +720,11 @@ export function AIQuizGenerator({
                   <div>
                     <p className="font-semibold text-slate-800 text-sm">{assessmentType === 'official' ? 'Đã tạo đề kiểm tra' : assessmentType === 'practice' ? 'Đã tạo bài tập tự luyện' : `Đã tạo ${questions.length} câu hỏi`}</p>
                     {assessmentType && <p className="text-xs text-slate-500">{questions.length} câu hỏi được AI trả về</p>}
-                    <p className="text-sm text-slate-400">{subject} • {grade} • {examMode ? `${questions.length} câu` : difficulties.find((d) => d.value === difficulty)?.label}</p>
+                    <p className="text-sm text-slate-400">
+                      {subject} • {grade} • {examMode
+                        ? `${questions.length} câu${!isVietnamese && !isEnglish ? ' • 10 điểm' : ''}`
+                        : difficulties.find((d) => d.value === difficulty)?.label}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -627,13 +734,22 @@ export function AIQuizGenerator({
                   <button onClick={handleDownload} className="btn-outline">
                     <Download className="w-3.5 h-3.5" /> Tải xuống
                   </button>
-                  <button onClick={() => onSaveQuestions({
+                  <button
+                    disabled={examMode && !isVietnamese && !isEnglish && (!sectionPointsValid || !generatedStructureMatches)}
+                    onClick={() => onSaveQuestions({
                     topic: topic.trim() || (examMode ? writtenSection.trim().slice(0, 80) : topic),
                     subject,
                     grade,
-                    questions,
-                    ...(examMode ? { durationMinutes: null, structureSummary: examStructure, writtenSection } : {}),
-                  })} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
+                    questions: distributedQuestions,
+                    ...(examMode ? {
+                      durationMinutes: null,
+                      structureSummary: examStructure,
+                      sectionPoints: !isVietnamese && !isEnglish ? sectionPoints : undefined,
+                      writtenSection,
+                    } : {}),
+                  })}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
                     <Plus className="w-3.5 h-3.5" /> {saveLabel}
                   </button>
                 </div>
@@ -641,7 +757,7 @@ export function AIQuizGenerator({
 
               {questions.map((q, i) => {
                 const expanded = expandedId === q.id;
-                const ds = difficultyStyle[q.difficulty];
+                const displayedQuestion = distributedQuestions[i];
                 return (
                   <div key={q.id} className="card overflow-hidden">
                     <div className="p-4">
@@ -652,13 +768,11 @@ export function AIQuizGenerator({
                         <div className="flex-1 min-w-0">
                           <div className="mb-2 flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="mb-1 text-[11px] font-semibold text-blue-700">{questionTypeLabel(q.type)}</p>
+                              <p className="mb-1 text-[11px] font-semibold text-blue-700">
+                                {questionTypeLabel(q.type)}{examMode && ` · ${Number(displayedQuestion.points?.toFixed(2) ?? 0)} điểm`}
+                              </p>
                               <MathText text={q.question} className="font-medium text-slate-800 text-sm leading-relaxed" />
                             </div>
-                            <span className={`badge ${ds.badge} shrink-0`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${ds.dot}`} />
-                              {difficulties.find((d) => d.value === q.difficulty)?.label}
-                            </span>
                           </div>
                           {q.type === 'multiple-choice' && <div className="mt-2.5 space-y-1.5">
                             {q.options.map((opt, j) => (

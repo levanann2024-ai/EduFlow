@@ -23,7 +23,9 @@ import { StudentDashboard } from '@/pages/student/StudentDashboard';
 import { StudentProfile } from '@/pages/student/StudentProfile';
 import { PracticeHistory } from '@/pages/student/PracticeHistory';
 import { OnlineExamRooms } from '@/pages/student/OnlineExamRooms';
+import { MobileExamUploadPage } from '@/pages/student/exams/MobileExamUploadPage';
 import type { SavedQuiz } from '@/pages/student/savedItems';
+import type { SavedExam } from '@/pages/teacher/assessmentStorage';
 import { Users } from '@/pages/staff/Users';
 import { Settings } from '@/pages/Settings';
 import { FirstLoginSetup } from '@/auth/FirstLoginSetup';
@@ -32,7 +34,7 @@ import { demoLogin, login as authenticate, logout as endSession, restoreSession,
 import type { Page, Role } from '@/types';
 
 const allowedPages: Record<Role, Page[]> = {
-  lecturer: ['dashboard', 'classes', 'lessons', 'lesson-builder', 'question-bank', 'exams', 'exam-monitor', 'appeals', 'ai-grading', 'analytics', 'settings'],
+  lecturer: ['dashboard', 'classes', 'lessons', 'lesson-builder', 'question-bank', 'saved-assignments', 'exams', 'exam-monitor', 'appeals', 'ai-grading', 'analytics', 'settings'],
   student: ['dashboard', 'schedule', 'my-classes', 'assignments', 'ai-learning', 'ai-chat', 'ai-practice', 'my-results', 'leaderboard', 'saved', 'feedback', 'profile', 'practice-history', 'online-exams', 'settings'],
   admin: ['dashboard', 'users', 'lectures', 'analytics', 'settings'],
 };
@@ -43,6 +45,7 @@ const teacherPageByPath: Record<string, Page> = {
   '/teacher/lessons': 'lessons',
   '/teacher/ai-lesson-builder': 'lesson-builder',
   '/teacher/question-bank': 'question-bank',
+  '/teacher/saved-assignments': 'saved-assignments',
   '/teacher/exams': 'exams',
   '/teacher/exam-monitor': 'exam-monitor',
   '/teacher/appeals': 'appeals',
@@ -63,6 +66,7 @@ function App() {
   const [practiceSeed, setPracticeSeed] = useState<SavedQuiz | null>(null);
   const [resourceSubjectSeed, setResourceSubjectSeed] = useState<string | null>(null);
   const [lessonBuilderInitialMode, setLessonBuilderInitialMode] = useState<'lesson' | 'exam'>('lesson');
+  const [roomExamSeed, setRoomExamSeed] = useState<SavedExam | null>(null);
   const [lessonRepositoryDraft, setLessonRepositoryDraft] = useState<LessonRepositoryDraft | null>(null);
   const [lessonsWorkspaceVisited, setLessonsWorkspaceVisited] = useState(
     () => window.location.pathname === '/teacher/lessons',
@@ -133,8 +137,8 @@ function App() {
     navigateToPage('ai-chat');
   };
 
-  const askStudentAI = (prompt: string) => {
-    setStudentChatSeed({ subject: '', prompt });
+  const askStudentAI = (prompt: string, subject = '') => {
+    setStudentChatSeed({ subject, prompt });
     navigateToPage('ai-chat');
   };
 
@@ -144,6 +148,10 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    if (window.location.pathname === '/upload-mobile') {
+      setAuthLoading(false);
+      return () => { cancelled = true; };
+    }
     restoreSession()
       .then((user) => {
         if (!cancelled && user) {
@@ -170,6 +178,10 @@ function App() {
     window.addEventListener('popstate', syncTeacherRoute);
     return () => window.removeEventListener('popstate', syncTeacherRoute);
   }, [role]);
+
+  if (window.location.pathname === '/upload-mobile') {
+    return <MobileExamUploadPage />;
+  }
 
   if (authLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Đang khôi phục phiên đăng nhập…</div>;
@@ -297,21 +309,47 @@ function App() {
                   />
                 </div>
               )}
-              {role === 'lecturer' && (activePage === 'question-bank' || activePage === 'exams') && <ExamQuestionWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
+              {role === 'lecturer' && (activePage === 'question-bank' || activePage === 'saved-assignments' || activePage === 'exams') && (
+                <ExamQuestionWorkspace
+                  currentPage={activePage}
+                  onNavigate={navigateToPage}
+                  onCreateExamRoom={(exam) => {
+                    setRoomExamSeed(exam);
+                    navigateToPage('exam-monitor');
+                  }}
+                  onAssignAssignment={(draft) => {
+                    setLessonRepositoryDraft({
+                      ...draft,
+                      id: `assignment-draft-${Date.now()}`,
+                      contentType: 'assignment',
+                    });
+                    navigateToPage('lessons');
+                  }}
+                />
+              )}
               {role === 'lecturer' && (activePage === 'ai-grading' || activePage === 'analytics') && <GradingAnalyticsWorkspace currentPage={activePage} />}
-              {role === 'lecturer' && (activePage === 'exam-monitor' || activePage === 'appeals') && <ProctoringWorkspace currentPage={activePage} onNavigate={navigateToPage} />}
+              {role === 'lecturer' && (activePage === 'exam-monitor' || activePage === 'appeals') && (
+                <ProctoringWorkspace
+                  currentPage={activePage}
+                  onNavigate={navigateToPage}
+                  initialExam={roomExamSeed}
+                  onInitialExamConsumed={() => setRoomExamSeed(null)}
+                />
+              )}
               {activePage === 'analytics' && role !== 'lecturer' && <Analytics role={role} />}
               {activePage === 'lectures' && <Lectures role={role} />}
               {activePage === 'my-classes' && (
                 <MyClasses
+                  studentUserId={authUser.id}
                   initialSubjectCode={resourceSubjectSeed}
                   initialSubjectView={initialSubjectView}
                   initialSubjectTopic={initialSubjectTopic}
                   onOpenSchedule={() => navigateToPage('schedule')}
+                  onAskAI={askStudentAI}
                 />
               )}
               {activePage === 'assignments' && <Assignments />}
-              {activePage === 'my-results' && <MyResults />}
+              {activePage === 'my-results' && <MyResults studentName={authUser.fullName} />}
               {activePage === 'schedule' && (
                 <div className="student-schedule-scale">
                   <StudentSchedule onOpenContent={openScheduledContent} onOpenApp={openScheduledApp} />

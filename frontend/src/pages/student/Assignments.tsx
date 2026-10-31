@@ -49,7 +49,7 @@ function AssignmentCard({
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
             <ClipboardList className="h-4 w-4" />
           </span>
-          <span className="truncate">{assignment.subject} · {assignment.className}</span>
+          <span className="truncate">{assignment.subject} - {assignment.className}</span>
         </span>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${submitted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
           {submitted ? 'Đã nộp' : 'Chưa nộp'}
@@ -115,20 +115,34 @@ export function Assignments() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError('');
-    listStudentAssignments()
-      .then((result) => {
-        if (active) setAssignments(result);
-      })
-      .catch((requestError: unknown) => {
+    let inFlight = false;
+    const refreshAssignments = async (silent = false) => {
+      if (inFlight) return;
+      inFlight = true;
+      if (!silent) setLoading(true);
+      try {
+        const result = await listStudentAssignments();
+        if (active) {
+          setAssignments(result);
+          setError('');
+        }
+      } catch (requestError: unknown) {
         if (active) setError(requestError instanceof Error ? requestError.message : 'Không thể tải danh sách bài tập.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      } finally {
+        inFlight = false;
+        if (active && !silent) setLoading(false);
+      }
+    };
+    void refreshAssignments();
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void refreshAssignments(true);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 5_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       active = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [reloadKey]);
 

@@ -71,7 +71,9 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
   const [appealSubmitted, setAppealSubmitted] = useState(false);
   const [appealId, setAppealId] = useState<string | null>(null);
   const [appealDecision, setAppealDecision] = useState<'Đã duyệt' | 'Đã từ chối' | null>(null);
-  const score = summary.total ? (summary.correct / summary.total) * 10 : 0;
+  const correctCount = summary.correct ?? 0;
+  const wrongCount = summary.wrong ?? summary.total;
+  const score = summary.total ? (correctCount / summary.total) * 10 : 0;
 
   useEffect(() => {
     if (!appealId) return;
@@ -205,16 +207,16 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
             </div>
             <div>
               <p className="text-xs font-medium text-slate-500">Đúng</p>
-              <p className="mt-1 text-2xl font-extrabold text-emerald-600">{summary.correct}/{summary.total}</p>
+              <p className="mt-1 text-2xl font-extrabold text-emerald-600">{correctCount}/{summary.total}</p>
             </div>
             <div>
               <p className="text-xs font-medium text-slate-500">Sai</p>
-              <p className="mt-1 text-2xl font-extrabold text-rose-600">{summary.wrong}</p>
+              <p className="mt-1 text-2xl font-extrabold text-rose-600">{wrongCount}</p>
             </div>
           </div>
 
-          <div className="mt-6 h-2.5 overflow-hidden rounded-full bg-rose-100" aria-label={`Đúng ${summary.correct}, sai ${summary.wrong}`}>
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${summary.total ? (summary.correct / summary.total) * 100 : 0}%` }} />
+          <div className="mt-6 h-2.5 overflow-hidden rounded-full bg-rose-100" aria-label={`Đúng ${correctCount}, sai ${wrongCount}`}>
+            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${summary.total ? (correctCount / summary.total) * 100 : 0}%` }} />
           </div>
           <p className="mt-2 text-xs text-slate-500">
             Nộp lúc {new Date(summary.submittedAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
@@ -234,7 +236,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
           >
             <span>
               <span className="block font-bold text-slate-900">Chi tiết bài làm</span>
-              <span className="mt-1 block text-xs text-slate-500">Đúng {summary.correct}/{summary.total} câu - Xem đáp án đã chọn và đáp án đúng</span>
+              <span className="mt-1 block text-xs text-slate-500">Đúng {correctCount}/{summary.total} câu - Xem đáp án đã chọn và đáp án đúng</span>
             </span>
             {detailsOpen ? <ArrowUp className="h-5 w-5 text-slate-500" /> : <ArrowDown className="h-5 w-5 text-slate-500" />}
           </button>

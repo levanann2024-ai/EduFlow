@@ -233,7 +233,7 @@ export function ClassManagement() {
         <p className="mt-1 text-sm text-slate-600">
           {loading
             ? 'Đang tải danh sách lớp...'
-            : `Bạn đang dạy ${classes.length} lớp${homeroomClasses.length ? ` · chủ nhiệm ${homeroomClasses.length} lớp` : ''}`}
+            : `Bạn đang dạy ${classes.length} lớp${homeroomClasses.length ? ` - chủ nhiệm ${homeroomClasses.length} lớp` : ''}`}
         </p>
       </section>
 

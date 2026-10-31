@@ -2,9 +2,13 @@ export type QuestionKind = 'choice' | 'true-false' | 'short' | 'essay';
 
 export interface ExamQuestion {
   id: number;
+  displayNumber?: number;
   kind: QuestionKind;
   prompt: string;
   points: number;
+  sectionId?: string;
+  sectionTitle?: string;
+  sectionInstruction?: string;
   options?: string[];
   statements?: string[];
   correctAnswer: string | Record<number, string>;

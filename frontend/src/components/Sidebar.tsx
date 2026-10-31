@@ -59,6 +59,7 @@ const menuIcons: Record<Page, LucideIcon> = {
   'lesson-slides': Sparkles,
   'lesson-builder': PenLine,
   'question-bank': Puzzle,
+  'saved-assignments': ClipboardCheck,
   lessons: BookOpen,
   exams: ClipboardList,
   'exam-monitor': Eye,
@@ -148,7 +149,7 @@ function isMenuItemActive(role: Role, item: MenuItem, current: Page) {
   if (current === item.id) return true;
   if (role === 'student' && item.id === 'ai-learning') return current === 'ai-chat' || current === 'ai-practice';
   if (role !== 'lecturer') return false;
-  if (item.id === 'exams') return current === 'question-bank';
+  if (item.id === 'exams') return current === 'question-bank' || current === 'saved-assignments';
   if (item.id === 'exam-monitor') return current === 'appeals';
   return false;
 }
