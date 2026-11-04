@@ -1,0 +1,51 @@
+# ==========================================
+# 1. Hệ thống Logs & Debug (Mặc định)
+# ==========================================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# 2. Thư viện nặng & Thư mục Build (Quét toàn bộ dự án)
+# ==========================================
+node_modules/
+**/node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+dist/
+dist-ssr/
+frontend/dist/
+*.local
+
+# ==========================================
+# 3. Cấu hình Editor / Hệ điều hành (VS Code, WebStorm, macOS)
+# ==========================================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==========================================
+# 4. Bảo mật: Chặn Tuyệt Đối File Chứa API Key Gemini
+# ==========================================
+.env
+.env.local
+.env.development
+.env.production
+*.env
+
+# Chặn chi tiết các file môi trường trong thư mục con
+backend/.env
+backend/.env.local
+frontend/.env
+frontend/.env.local
