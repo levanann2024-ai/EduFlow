@@ -306,7 +306,7 @@ function loginWithPassword(email, password) {
   });
 }
 
-test('LAN frontend origin is trusted for authentication while other origins remain blocked', async () => {
+test('LAN and production frontend origins are trusted while other origins remain blocked', async () => {
   const allowedResponse = await fetch(`${baseUrl}/api/auth/demo`, {
     method: 'POST',
     headers: {
@@ -316,6 +316,16 @@ test('LAN frontend origin is trusted for authentication while other origins rema
     body: JSON.stringify({ role: 'student' }),
   });
   assert.equal(allowedResponse.status, 200);
+
+  const productionResponse = await fetch(`${baseUrl}/api/auth/demo`, {
+    method: 'POST',
+    headers: {
+      Origin: 'https://edu-flow-dun.vercel.app',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ role: 'student' }),
+  });
+  assert.equal(productionResponse.status, 200);
 
   const blockedResponse = await fetch(`${baseUrl}/api/auth/demo`, {
     method: 'POST',
