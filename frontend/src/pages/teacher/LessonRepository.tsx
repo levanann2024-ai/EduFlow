@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
 import { MathText } from '@/components/MathText';
+import { showToast } from '@/components/toast';
 import { parseAssignmentContent } from '@/pages/student/assignmentQuestions';
 import {
   createClassAssignment,
@@ -655,7 +656,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setDocumentContent('');
       setPreviousLatexContent(null);
       setFiles([]);
-      setFeedback(contentType === 'lesson' ? 'Bài giảng đã được đăng.' : 'Bài tập đã được giao.');
+      showToast(contentType === 'lesson' ? 'Bài giảng đã được đăng.' : 'Bài tập đã được giao.');
       const [resources, assignments] = await Promise.all([
         listClassLearningResources(classId),
         listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
@@ -729,7 +730,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         }
         : entry));
       setEditingReview(false);
-      setFeedback('Bài giảng đã được cập nhật và đăng lại cho học sinh.');
+      showToast('Bài giảng đã được cập nhật và đăng lại cho học sinh.');
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể cập nhật bài giảng.');
     } finally {
@@ -774,7 +775,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         return next;
       });
       setEditingChapterName(null);
-      setFeedback('Đã đổi tên chương cho các bài giảng trong học kỳ này.');
+      showToast('Đã đổi tên chương cho các bài giảng trong học kỳ này.');
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể đổi tên chương.');
     } finally {
@@ -819,7 +820,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setEditingReview(false);
       setReplacementFile(null);
       setEditingChapterName(null);
-      setFeedback(`Đã xóa chương "${chapterName}" cùng các bài giảng và tệp thuộc chương.`);
+      showToast(`Đã xóa chương "${chapterName}" cùng các bài giảng và tệp thuộc chương.`);
       setEditingLesson(null);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể xóa chương.');
@@ -866,7 +867,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         return next;
       });
       setEditingLesson(null);
-      setFeedback(`Đã đổi tên bài "${currentLesson}" thành "${nextLesson}".`);
+      showToast(`Đã đổi tên bài "${currentLesson}" thành "${nextLesson}".`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể đổi tên bài.');
     } finally {
@@ -914,7 +915,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         setEditingReview(false);
       }
       setEditingLesson(null);
-      setFeedback(`Đã xóa bài "${lessonName}" cùng các bài giảng và tệp thuộc bài.`);
+      showToast(`Đã xóa bài "${lessonName}" cùng các bài giảng và tệp thuộc bài.`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể xóa bài.');
     } finally {
@@ -938,7 +939,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setSelectedReviewId(null);
       setEditingReview(false);
       setReplacementFile(null);
-      setFeedback(`Đã xóa bài giảng "${resource.title}" và tệp đính kèm.`);
+      showToast(`Đã xóa bài giảng "${resource.title}" và tệp đính kèm.`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể xóa bài giảng.');
     } finally {
@@ -999,7 +1000,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         }
         : entry));
       setEditingReviewAssignment(false);
-      setFeedback('Đã cập nhật bài tập và nội dung học sinh sẽ nhìn thấy.');
+      showToast('Đã cập nhật bài tập và nội dung học sinh sẽ nhìn thấy.');
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể cập nhật bài tập.');
     } finally {
@@ -1028,7 +1029,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setRecentEntries((current) => current.filter((entry) => entry.id !== assignment.id));
       setSelectedReviewAssignmentId(null);
       setEditingReviewAssignment(false);
-      setFeedback(`Đã xóa bài tập "${assignment.title}".`);
+      showToast(`Đã xóa bài tập "${assignment.title}".`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể xóa bài tập.');
     } finally {
@@ -1076,7 +1077,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         return next;
       });
       setEditingAssignmentChapter(null);
-      setFeedback(`Đã đổi tên chương bài tập thành "${nextChapter}".`);
+      showToast(`Đã đổi tên chương bài tập thành "${nextChapter}".`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể đổi tên chương bài tập.');
     } finally {
@@ -1111,7 +1112,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         return next;
       });
       setEditingAssignmentChapter(null);
-      setFeedback(`Đã xóa chương "${chapterName}" và các bài tập đang còn hạn trong chương.`);
+      showToast(`Đã xóa chương "${chapterName}" và các bài tập đang còn hạn trong chương.`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể xóa chương bài tập.');
     } finally {
@@ -1160,7 +1161,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         return next;
       });
       setEditingAssignmentLesson(null);
-      setFeedback(`Đã đổi tên bài tập thành "${nextLesson}".`);
+      showToast(`Đã đổi tên bài tập thành "${nextLesson}".`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể đổi tên bài tập.');
     } finally {
@@ -1196,7 +1197,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         return next;
       });
       setEditingAssignmentLesson(null);
-      setFeedback(`Đã xóa bài "${lessonName}" và các bài tập đang còn hạn thuộc bài.`);
+      showToast(`Đã xóa bài "${lessonName}" và các bài tập đang còn hạn thuộc bài.`);
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể xóa bài tập.');
     } finally {

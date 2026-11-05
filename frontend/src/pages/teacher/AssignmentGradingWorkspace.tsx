@@ -3,6 +3,7 @@ import {
   AlertCircle, BookOpen, Check, CheckCircle2, Clock3, FileText, LoaderCircle, Save, Sparkles, Trash2,
 } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
+import { showToast } from '@/components/toast';
 import {
   deleteClassAssignment,
   listClassAssignmentSubmissions,
@@ -88,7 +89,6 @@ export function AssignmentGradingWorkspace() {
   const [saving, setSaving] = useState(false);
   const [deletingAssignment, setDeletingAssignment] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
 
   const selectedClass = classes.find((classroom) => classroom.id === selectedClassId) ?? null;
   const selectedAssignment = assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null;
@@ -367,7 +367,6 @@ export function AssignmentGradingWorkspace() {
     }
     setSaving(true);
     setError('');
-    setNotice('');
     try {
       const result = await saveClassAssignmentGrade(
         selectedClassId,
@@ -396,7 +395,7 @@ export function AssignmentGradingWorkspace() {
             : student),
         }
         : assignment));
-      setNotice('Đã lưu điểm từng câu và nhận xét.');
+      showToast('Đã lưu điểm từng câu và nhận xét.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể lưu điểm.');
     } finally {
@@ -414,7 +413,6 @@ export function AssignmentGradingWorkspace() {
     )) return;
     setDeletingAssignment(true);
     setError('');
-    setNotice('');
     try {
       await deleteClassAssignment(selectedClass.id, selectedAssignment.id, {
         academicYear: selectedClass.academic_year,
@@ -431,7 +429,7 @@ export function AssignmentGradingWorkspace() {
       setQuestionScoreInputs({});
       setQuestionFeedbackInputs({});
       setQuestionAiHelp({});
-      setNotice(`Đã xóa bài tập "${selectedAssignment.title}" và dữ liệu bài nộp liên quan.`);
+      showToast(`Đã xóa bài tập "${selectedAssignment.title}" và dữ liệu bài nộp liên quan.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể xóa bài tập.');
     } finally {
@@ -519,7 +517,6 @@ export function AssignmentGradingWorkspace() {
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
         </div>
       )}
-      {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
       {activeTab === 'exams' ? (
         <ExamGradingWorkspace />

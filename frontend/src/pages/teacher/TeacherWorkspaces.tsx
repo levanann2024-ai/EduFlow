@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BookOpenCheck, ClipboardList, FileText } from 'lucide-react';
 import { deleteTeacherExamRoom, listTeacherExamRooms, saveTeacherExamRoom } from '@/api/schoolApi';
+import { showToast } from '@/components/toast';
 import type { Page } from '@/types';
 import type { SavedExam } from './assessmentStorage';
 import { AssignmentGradingWorkspace } from './AssignmentGradingWorkspace';
@@ -90,11 +91,15 @@ export function ExamQuestionWorkspace({
           { page: 'exams', label: 'Đề thi đã lưu', icon: FileText },
         ]}
       >
-        {(activePage) => activePage === 'question-bank'
-          ? <QuestionBank />
-          : activePage === 'saved-assignments'
-            ? <AssignmentManagement onAssignToClass={onAssignAssignment} />
-            : <ExamManagement onCreateExamRoom={onCreateExamRoom} />}
+        {(activePage) => (
+          <>
+            {activePage === 'question-bank'
+              ? <QuestionBank />
+              : activePage === 'saved-assignments'
+                ? <AssignmentManagement onAssignToClass={onAssignAssignment} />
+                : <ExamManagement onCreateExamRoom={onCreateExamRoom} />}
+          </>
+        )}
       </WorkspaceTabs>
     </div>
   );
@@ -124,7 +129,6 @@ export function ProctoringWorkspace({
   const [editingRoom, setEditingRoom] = useState<ExamRoomRecord | null>(null);
   const [openRoomId, setOpenRoomId] = useState<string | null>(null);
   const [wizardExam, setWizardExam] = useState<SavedExam | null>(null);
-  const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const roomsRefreshInFlight = useRef(false);
 
@@ -165,7 +169,6 @@ export function ProctoringWorkspace({
     setEditingRoom(null);
     setWizardExam(initialExam);
     setWizardOpen(true);
-    setFeedback('');
     setError('');
     onInitialExamConsumed();
   }, [initialExam, onInitialExamConsumed]);
@@ -173,7 +176,7 @@ export function ProctoringWorkspace({
   const saveRoom = async (room: ExamRoomRecord, publish: boolean) => {
     const saved = await saveTeacherExamRoom(room, Boolean(editingRoom));
     setRooms((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
-    setFeedback(publish ? 'Đã tạo và lưu phòng thi.' : 'Đã lưu cấu hình phòng thi.');
+    showToast(publish ? 'Đã tạo và lưu phòng thi.' : 'Đã lưu cấu hình phòng thi.');
     setError('');
     setWizardOpen(false);
     setEditingRoom(null);
@@ -183,7 +186,6 @@ export function ProctoringWorkspace({
 
   return (
     <div className="space-y-4">
-      {feedback && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{feedback}</p>}
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
       {roomsLoading
         ? <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Đang tải phòng thi...</p>
@@ -196,10 +198,9 @@ export function ProctoringWorkspace({
               setEditingRoom(null);
               setWizardExam(null);
               setWizardOpen(true);
-              setFeedback('');
               setError('');
             }}
-            onEditDraft={(room) => { setEditingRoom(room); setWizardOpen(true); setFeedback(''); setError(''); }}
+            onEditDraft={(room) => { setEditingRoom(room); setWizardOpen(true); setError(''); }}
             onUpdateRoom={(updatedRoom) => {
               void saveTeacherExamRoom(updatedRoom, true)
                 .then((saved) => {
@@ -215,7 +216,7 @@ export function ProctoringWorkspace({
               void deleteTeacherExamRoom(roomId)
                 .then(() => {
                   setRooms((current) => current.filter((room) => room.id !== roomId));
-                  setFeedback('Đã xóa phòng thi.');
+                  showToast('Đã xóa phòng thi.');
                   setError('');
                 })
                 .catch((deleteError: unknown) => {

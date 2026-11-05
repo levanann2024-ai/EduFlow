@@ -39,6 +39,41 @@
     @apply bg-white rounded-xl border border-slate-200;
   }
 
+  @keyframes toast-progress-fill {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  .toast-progress-fill {
+    animation: toast-progress-fill 5s linear forwards;
+  }
+
+  @keyframes session-loading {
+    from {
+      transform: translateX(-105%);
+    }
+    to {
+      transform: translateX(215%);
+    }
+  }
+
+  .session-loading-bar {
+    animation: session-loading 1.6s ease-in-out infinite;
+  }
+
+  .reduce-motion .toast-progress-fill {
+    animation: none;
+    transform: scaleX(1);
+  }
+
+  .reduce-motion .toast-item {
+    transition-duration: 0ms;
+  }
+
   @keyframes dashboard-cycle-enter {
     from {
       opacity: 0.45;
@@ -72,6 +107,11 @@
   @media (prefers-reduced-motion: reduce) {
     .dashboard-cycle-enter {
       animation: none;
+    }
+
+    .session-loading-bar {
+      animation: none;
+      opacity: 0.55;
     }
 
     .student-dashboard-cycle-track {

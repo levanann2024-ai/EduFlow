@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
-  Check,
   ImagePlus,
   KeyRound,
   Languages,
@@ -12,6 +11,7 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import { changePassword, completeProfile, saveAvatar, type AuthUser } from '@/auth/authApi';
+import { showToast } from '@/components/toast';
 import {
   backgroundPresets,
   isSafeImageUrl,
@@ -188,18 +188,15 @@ export function Settings({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
-  const [passwordSaved, setPasswordSaved] = useState(false);
   const [displayName, setDisplayName] = useState(user.fullName);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState('');
-  const [profileSaved, setProfileSaved] = useState(false);
   const [avatarError, setAvatarError] = useState('');
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [backgroundError, setBackgroundError] = useState('');
   const [imageUrlDraft, setImageUrlDraft] = useState(settings.avatar.startsWith('http') ? settings.avatar : '');
   const [backgroundUrlDraft, setBackgroundUrlDraft] = useState(settings.backgroundUrl);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [exportNotice, setExportNotice] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initials = user.fullName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase(settings.language);
   const supportEmail = 'eduflow.contact2026@gmail.com';
@@ -275,7 +272,6 @@ export function Settings({
   const handlePasswordChange = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPasswordError('');
-    setPasswordSaved(false);
     if (newPassword.length < 12 || newPassword.length > 128) {
       setPasswordError(text.passwordLengthError);
       return;
@@ -290,7 +286,7 @@ export function Settings({
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setPasswordSaved(true);
+      showToast(text.passwordSuccess);
     } catch (error) {
       setPasswordError(error instanceof Error ? error.message : text.passwordFail);
     } finally {
@@ -301,7 +297,6 @@ export function Settings({
   const handleProfileSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setProfileError('');
-    setProfileSaved(false);
     if (displayName.trim().length < 2 || displayName.trim().length > 120) {
       setProfileError(settings.language === 'en'
         ? 'Display name must be between 2 and 120 characters.'
@@ -312,7 +307,7 @@ export function Settings({
     try {
       const updatedUser = await completeProfile(displayName.trim());
       onUserUpdate(updatedUser);
-      setProfileSaved(true);
+      showToast(text.profileSaved);
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : text.profileFail);
     } finally {
@@ -335,7 +330,7 @@ export function Settings({
     anchor.download = 'eduflow-account-settings.json';
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setExportNotice(settings.language === 'en'
+    showToast(settings.language === 'en'
       ? 'Downloaded profile and preferences. Academic records are not included.'
       : 'Đã tải hồ sơ và cài đặt. Tệp không gồm dữ liệu học tập.');
   };
@@ -410,7 +405,6 @@ export function Settings({
               </div>
             </label>
             {profileError && <p role="alert" className="mt-2 text-sm text-rose-700">{profileError}</p>}
-            {profileSaved && <p role="status" className="mt-2 text-sm text-emerald-700">{text.profileSaved}</p>}
           </form>
         )}
       </section>
@@ -544,7 +538,6 @@ export function Settings({
               </label>
             </div>
             {passwordError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{passwordError}</p>}
-            {passwordSaved && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800"><Check className="mr-1 inline h-4 w-4" />{text.passwordSuccess}</p>}
             <div className="flex justify-end border-t border-slate-100 pt-4">
               <button type="submit" disabled={savingPassword} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60">
                 <KeyRound className="h-4 w-4" />{savingPassword ? text.saving : text.updatePassword}
@@ -585,7 +578,6 @@ export function Settings({
         <button type="button" onClick={downloadSettingsCopy} className="mt-4 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
           {settings.language === 'en' ? 'Download profile and settings' : 'Tải hồ sơ và cài đặt'}
         </button>
-        {exportNotice && <p role="status" className="mt-2 text-xs text-emerald-700">{exportNotice}</p>}
       </section>
 
       <section aria-labelledby="session-title" className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">

@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { BookOpen, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   error?: string;
   busy?: boolean;
   onLogin: (email: string, password: string) => Promise<void>;
+  onBackToLanding: () => void;
 }
 
-export function Login({ error, busy = false, onLogin }: LoginProps) {
+export function Login({ error, busy = false, onLogin, onBackToLanding }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -22,9 +23,7 @@ export function Login({ error, busy = false, onLogin }: LoginProps) {
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-md flex-col justify-center sm:min-h-[calc(100vh-7rem)]">
         <section className="rounded-2xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-9 sm:py-10">
           <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-700 text-white">
-              <BookOpen className="h-5 w-5" aria-hidden="true" />
-            </div>
+            <img src="/eduflow-mark.png" alt="" className="h-10 w-10 rounded-xl object-cover" />
             <span className="text-lg font-semibold tracking-tight text-slate-900">EduFlow</span>
           </div>
 
@@ -96,6 +95,9 @@ export function Login({ error, busy = false, onLogin }: LoginProps) {
               EduFlow đang trong giai đoạn thử nghiệm. Một số tính năng có thể chưa hoàn thiện. Mọi góp ý của bạn đều giúp chúng tôi cải thiện hệ thống.
             </p>
           </form>
+          <button type="button" onClick={onBackToLanding} className="mt-4 text-sm font-medium text-blue-700 hover:text-blue-900">
+            Tìm hiểu về EduFlow
+          </button>
         </section>
       </div>
     </main>

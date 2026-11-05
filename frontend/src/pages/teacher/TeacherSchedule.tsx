@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { showToast } from '@/components/toast';
 import { BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, Save, Sparkles, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import {
@@ -503,7 +504,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
       setFreeTime(savedNotes.freeTime);
       setBusyTime(savedNotes.busyTime);
       setLegacyNote(savedNotes.legacyNote);
-      setMessage(status === 'published' ? 'Đã lưu và công bố lịch cho học sinh.' : 'Đã lưu bản nháp thời khóa biểu.');
+      showToast(status === 'published' ? 'Đã lưu và công bố lịch cho học sinh.' : 'Đã lưu bản nháp thời khóa biểu.');
       return saved;
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể lưu thời khóa biểu.');

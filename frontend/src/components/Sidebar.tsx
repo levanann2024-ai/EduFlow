@@ -15,6 +15,7 @@ import {
   FileText,
   Eye,
   GraduationCap,
+  CircleHelp,
   History,
   LayoutDashboard,
   LogOut,
@@ -275,9 +276,7 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
       {/* 1. Phần Logo cố định ở trên */}
       <div className={`flex shrink-0 items-center border-b border-slate-800 py-4 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'justify-between gap-1.5 px-2' : 'justify-between px-4'}`}>
         <div className={`flex min-w-0 items-center ${tightSpacingViewport ? 'gap-1.5' : 'gap-2'}`}>
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-            <BookOpen className="w-[18px] h-[18px] text-white" />
-          </div>
+          <img src="/eduflow-mark.png" alt="" className="h-10 w-10 shrink-0 rounded-xl object-contain" />
           {!iconOnly && <span className="truncate font-semibold text-slate-100 text-base tracking-tight">EduFlow</span>}
         </div>
         {!iconOnly && (
@@ -455,6 +454,7 @@ export function TopBar({
   onOpenResources,
   onOpenAssignments,
   onAskAI,
+  onShowGuide,
   unreadNotificationCount = 0,
   language = 'vi',
 }: {
@@ -469,6 +469,7 @@ export function TopBar({
   onOpenResources?: (subjectCode: string) => void;
   onOpenAssignments?: (subjectCode: string) => void;
   onAskAI?: (prompt: string) => void;
+  onShowGuide: () => void;
   unreadNotificationCount?: number;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -596,6 +597,17 @@ export function TopBar({
             </span>
           )}
         </button>
+        {(isStudent || isLecturer) && (
+          <button
+            type="button"
+            onClick={onShowGuide}
+            aria-label={language === 'en' ? 'Open user guide' : 'Mở hướng dẫn sử dụng'}
+            title={language === 'en' ? 'User guide' : 'Hướng dẫn sử dụng'}
+            className="rounded-lg p-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <CircleHelp className="h-5 w-5" aria-hidden="true" />
+          </button>
+        )}
         <div className="group relative">
           <button type="button" aria-haspopup="menu" className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             {avatarUrl ? (

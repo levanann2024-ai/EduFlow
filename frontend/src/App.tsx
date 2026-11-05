@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sidebar, MobileNav, NotificationDrawer, TopBar } from '@/components/Sidebar';
+import { ToastViewport } from '@/components/ToastNotifications';
 import { Login } from '@/pages/Login';
+import { Landing } from '@/pages/Landing';
+import { OnboardingGuide } from '@/pages/OnboardingGuide';
+import { readOnboardingStatus, saveOnboardingCompletion } from '@/auth/onboarding';
 import { Dashboard } from '@/pages/Dashboard';
 import { ClassManagement } from '@/pages/teacher/ClassManagement';
 import { AIChat } from '@/pages/AIChat';
@@ -75,6 +79,11 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authScreen, setAuthScreen] = useState<'landing' | 'login'>(
+    () => window.location.pathname === '/' ? 'landing' : 'login',
+  );
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingStorageError, setOnboardingStorageError] = useState('');
   const [page, setPage] = useState<Page>(() => teacherPageByPath[window.location.pathname] ?? 'dashboard');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
@@ -98,6 +107,24 @@ function App() {
   const [initialSubjectView, setInitialSubjectView] = useState<'lessons' | 'assignments' | 'exam' | null>(null);
   const [initialSubjectTopic, setInitialSubjectTopic] = useState<string | null>(null);
   const [initialExamSessionId, setInitialExamSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncAuthScreen = () => setAuthScreen(window.location.pathname === '/' ? 'landing' : 'login');
+    window.addEventListener('popstate', syncAuthScreen);
+    return () => window.removeEventListener('popstate', syncAuthScreen);
+  }, []);
+
+  useEffect(() => {
+    if (!authUser || (authUser.role !== 'student' && authUser.role !== 'lecturer')
+      || authUser.mustChangePassword || !authUser.profileComplete) {
+      setOnboardingOpen(false);
+      setOnboardingStorageError('');
+      return;
+    }
+    const status = readOnboardingStatus(authUser.id, authUser.role);
+    setOnboardingOpen(!status.completed);
+    setOnboardingStorageError(status.error);
+  }, [authUser]);
 
   useEffect(() => {
     if (!authUser) {
@@ -177,8 +204,30 @@ function App() {
     }
     setAuthUser(null);
     setRole(null);
+    setOnboardingOpen(false);
+    setAuthScreen('landing');
     window.history.replaceState(null, '', '/');
   };
+
+  const openLogin = () => {
+    window.history.pushState(null, '', '/login');
+    setAuthScreen('login');
+  };
+
+  const openLanding = () => {
+    window.history.pushState(null, '', '/');
+    setAuthScreen('landing');
+  };
+
+  const dismissOnboarding = () => {
+    if (!authUser || (authUser.role !== 'student' && authUser.role !== 'lecturer')) return null;
+    const error = saveOnboardingCompletion(authUser.id, authUser.role);
+    if (error) return `Không thể lưu trạng thái hướng dẫn: ${error}`;
+    setOnboardingOpen(false);
+    setOnboardingStorageError('');
+    return null;
+  };
+
 
   const openSubjectResources = (subjectCode: string) => {
     navigateToPage('my-classes');
@@ -349,7 +398,35 @@ function App() {
   }
 
   if (authLoading) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">Đang khôi phục phiên đăng nhập…</div>;
+    return (
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f7faff] px-5 py-10">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -left-32 -top-40 h-96 w-96 rounded-full bg-blue-200/30 blur-3xl" />
+          <div className="absolute -bottom-48 -right-32 h-[28rem] w-[28rem] rounded-full bg-sky-200/30 blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#f7faff_75%)]" />
+        </div>
+        <section
+          role="status"
+          aria-live="polite"
+          className="relative w-full max-w-md rounded-3xl border border-white/80 bg-white/90 px-7 py-9 text-center shadow-[0_24px_80px_-36px_rgba(37,99,235,0.3)] backdrop-blur sm:px-10 sm:py-11"
+        >
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 shadow-sm">
+            <img src="/eduflow-mark.png" alt="" className="h-11 w-11 rounded-xl object-cover" />
+          </div>
+          <p className="mt-4 text-sm font-bold tracking-wide text-slate-800">EduFlow</p>
+          <h1 className="mt-5 text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
+            Đang khôi phục phiên đăng nhập
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Đang chuẩn bị không gian học tập của bạn.
+          </p>
+          <div className="mx-auto mt-7 h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-blue-50" aria-hidden="true">
+            <span className="session-loading-bar block h-full w-[32%] rounded-full bg-gradient-to-r from-blue-400 via-blue-600 to-sky-400" />
+          </div>
+          <p className="mt-3 text-xs font-medium text-slate-400">Vui lòng đợi trong giây lát</p>
+        </section>
+      </main>
+    );
   }
 
   const invitationToken = new URLSearchParams(window.location.hash.slice(1)).get('invite');
@@ -368,6 +445,7 @@ function App() {
   }
 
   if (!role || !authUser) {
+    if (authScreen === 'landing') return <Landing onLogin={openLogin} />;
     const completeLogin = (user: AuthUser) => {
       setAuthUser(user);
       setRole(user.role);
@@ -381,6 +459,7 @@ function App() {
       <Login
         error={authError}
         busy={authBusy}
+        onBackToLanding={openLanding}
         onLogin={async (email, password) => {
           setAuthBusy(true);
           setAuthError('');
@@ -414,6 +493,7 @@ function App() {
       className={`flex min-h-screen bg-slate-50 ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface md:h-dvh md:overflow-hidden' : ''}`}
       style={backgroundStyle(userSettings)}
     >
+      <ToastViewport />
       <Sidebar
         current={activePage}
         onNavigate={navigateToPage}
@@ -437,6 +517,10 @@ function App() {
           onOpenResources={role === 'student' ? openSubjectResources : undefined}
           onOpenAssignments={role === 'student' ? openSubjectAssignments : undefined}
           onAskAI={role === 'student' ? askStudentAI : undefined}
+          onShowGuide={() => {
+            setOnboardingStorageError('');
+            setOnboardingOpen(true);
+          }}
         />
         <div className={`app-page-content mx-auto w-full min-w-0 max-w-[1480px] flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-8 ${role === 'lecturer' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-0' : role === 'student' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-8' : role === 'lecturer' && activePage === 'lessons' ? 'flex min-h-0 flex-col p-3 pb-24 sm:p-3 sm:pb-24 md:overflow-hidden md:p-3 md:pb-3 lg:max-w-none lg:p-4 lg:pb-3' : 'lg:p-8 lg:pb-8'}`}>
           {role === 'student' && activePage === 'dashboard' ? (
@@ -593,6 +677,15 @@ function App() {
         role={role}
         language={userSettings.language}
       />
+      {onboardingOpen && authUser && (role === 'student' || role === 'lecturer') && (
+        <OnboardingGuide
+          key={`${authUser.id}:${role}`}
+          role={role}
+          initialStorageError={onboardingStorageError}
+          onDismiss={dismissOnboarding}
+          onCloseWithoutSaving={() => setOnboardingOpen(false)}
+        />
+      )}
       {notificationsOpen && (
         <NotificationDrawer
           notifications={notifications}

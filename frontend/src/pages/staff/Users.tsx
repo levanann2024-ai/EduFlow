@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, Search, UserPlus } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
+import { showToast } from '@/components/toast';
 import type { AuthUser } from '@/auth/authApi';
 import type { Role } from '@/types';
 
@@ -61,7 +62,6 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const [schoolId, setSchoolId] = useState(currentUser.schoolIds.length === 1 ? currentUser.schoolIds[0] : '');
   const [schoolName, setSchoolName] = useState('');
   const [inviteLink, setInviteLink] = useState('');
-  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusBusyId, setStatusBusyId] = useState('');
@@ -95,7 +95,6 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const createSchool = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
-    setNotice('');
     try {
       const result = await requestJson<School>('/api/auth/schools', 'POST', { name: schoolName });
       const school = result.school;
@@ -103,7 +102,7 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
       setSchools((existing) => [...existing, school]);
       setSchoolId(school.id);
       setSchoolName('');
-      setNotice('Đã tạo trường.');
+      showToast('Đã tạo trường.');
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Không thể tạo trường.');
     }
@@ -112,14 +111,13 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const createInvitation = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
-    setNotice('');
     setInviteLink('');
     try {
       const result = await requestJson<never>('/api/auth/invitations', 'POST', { email, role, schoolId });
       if (!result.invitationToken) throw new Error('Phản hồi tạo lời mời thiếu mã token.');
       setInviteLink(`${window.location.origin}/#invite=${encodeURIComponent(result.invitationToken)}`);
       setEmail('');
-      setNotice('Đã tạo lời mời. Hãy gửi liên kết bảo mật này cho người được mời.');
+      showToast('Đã tạo lời mời. Hãy gửi liên kết bảo mật này cho người được mời.');
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Không thể tạo lời mời.');
     }
@@ -128,7 +126,7 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const copyInviteLink = async () => {
     try {
       await navigator.clipboard.writeText(inviteLink);
-      setNotice('Đã sao chép liên kết lời mời.');
+      showToast('Đã sao chép liên kết lời mời.');
       setError('');
     } catch {
       setError('Không thể sao chép. Hãy chọn và sao chép liên kết thủ công.');
@@ -142,7 +140,6 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
 
     setStatusBusyId(user.id);
     setError('');
-    setNotice('');
     try {
       const result = await requestJson<{ id: string; status: 'active' | 'disabled' }>(
         `/api/auth/users/${encodeURIComponent(user.id)}/status`,
@@ -153,7 +150,7 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
       setUsers((existing) => existing.map((item) => (
         item.id === result.user?.id ? { ...item, status: result.user.status } : item
       )));
-      setNotice(status === 'disabled'
+      showToast(status === 'disabled'
         ? `Đã khóa tài khoản ${user.full_name} và thu hồi các phiên đăng nhập.`
         : `Đã mở khóa tài khoản ${user.full_name}.`);
     } catch (statusError) {
@@ -185,7 +182,6 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
       </div>
 
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
-      {notice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</p>}
 
       {currentUser.adminScope === 'system' && (
         <form onSubmit={(event) => void createSchool(event)} className="card flex flex-wrap items-end gap-3 p-4">

@@ -596,7 +596,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
             />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-blue-950/40 via-blue-900/15 to-transparent" />
             <div className="relative z-10 flex min-h-[270px] flex-col justify-center sm:min-h-[286px] sm:max-w-[76%]">
-              <p className="text-xs font-medium text-blue-50">Chào {greetingName}!</p>
+              <p className="text-lg font-bold tracking-wide text-white sm:text-xl">Chào {greetingName}!</p>
               <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight sm:text-3xl">
                 Học đúng trọng tâm.<br className="hidden sm:block" /> Tiến bộ <span className="text-amber-300">từng ngày.</span>
               </h1>

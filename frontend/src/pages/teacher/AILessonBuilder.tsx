@@ -8,6 +8,7 @@ import { saveTeacherAssessment } from '@/api/schoolApi';
 import type { ExamQuestion } from '@/pages/teacher/assessmentStorage';
 import { distributeAssignmentPoints } from '@/pages/student/assignmentQuestions';
 import type { QuizQuestion } from '@/types';
+import { showToast } from '@/components/toast';
 
 type BuilderMode = 'lesson' | 'lecture' | 'assessment';
 type AssessmentType = 'practice' | 'official';
@@ -31,7 +32,6 @@ export function AILessonBuilder({
   const [mode, setMode] = useState<BuilderMode>(() => getBuilderMode(initialMode));
   const [lessonFormat, setLessonFormat] = useState<LessonFormat>(initialMode === 'slides' ? 'slides' : 'text');
   const [assessmentType, setAssessmentType] = useState<AssessmentType>(initialMode === 'exam' ? 'official' : 'practice');
-  const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -72,12 +72,11 @@ export function AILessonBuilder({
         })),
       };
       await saveTeacherAssessment('assignment', next);
-      setFeedback('Đã lưu bài tập vào tab Bài tập đã lưu.');
+      showToast('Đã lưu bài tập vào tab Bài tập đã lưu.');
       setError('');
     } catch (saveError) {
       console.error('Không thể lưu bài tập vào cơ sở dữ liệu.', saveError);
       setError(saveError instanceof Error ? saveError.message : 'Không thể lưu bài tập vào cơ sở dữ liệu.');
-      setFeedback('');
     }
   };
 
@@ -111,12 +110,11 @@ export function AILessonBuilder({
         writtenSection: generated.writtenSection,
       };
       await saveTeacherAssessment('exam', next);
-      setFeedback('Đã lưu đề kiểm tra vào Đề thi đã lưu.');
+      showToast('Đã lưu đề kiểm tra vào Đề thi đã lưu.');
       setError('');
     } catch (saveError) {
       console.error('Không thể lưu đề kiểm tra vào cơ sở dữ liệu.', saveError);
       setError(saveError instanceof Error ? saveError.message : 'Không thể lưu đề kiểm tra vào cơ sở dữ liệu.');
-      setFeedback('');
     }
   };
 
@@ -132,14 +130,13 @@ export function AILessonBuilder({
             key={value}
             role="tab"
             aria-selected={mode === value}
-            onClick={() => { setMode(value); setFeedback(''); setError(''); }}
+            onClick={() => { setMode(value); setError(''); }}
             className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${mode === value ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'}`}
           >
             <Icon className="h-4 w-4" /> {label}
           </button>
         ))}
       </div>
-      {feedback && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{feedback}</p>}
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
       {mode === 'lesson' ? <LessonPlan />
         : mode === 'lecture' ? (

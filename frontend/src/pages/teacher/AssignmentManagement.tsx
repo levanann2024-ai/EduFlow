@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ClipboardList, Eye, FileText, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { deleteTeacherAssessment, saveTeacherAssessment } from '@/api/schoolApi';
+import { showToast } from '@/components/toast';
 import { defaultAssessmentSections, loadTeacherAssessments, type SavedAssignment } from '@/pages/teacher/assessmentStorage';
 import { ExamEditor } from '@/pages/teacher/ExamEditor';
 
@@ -51,7 +52,6 @@ export function AssignmentManagement({
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -82,12 +82,11 @@ export function AssignmentManagement({
       const saved = await saveTeacherAssessment('assignment', assignment);
       setAssignments((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       setError('');
-      setFeedback(successMessage);
+      showToast(successMessage);
       return true;
     } catch (saveError) {
       console.error('Không thể lưu bài tập vào cơ sở dữ liệu.', saveError);
       setError(saveError instanceof Error ? saveError.message : 'Không thể lưu bài tập vào cơ sở dữ liệu.');
-      setFeedback('');
       return false;
     }
   };
@@ -102,7 +101,6 @@ export function AssignmentManagement({
   const createAssignment = () => {
     const createdAt = Date.now();
     setError('');
-    setFeedback('');
     setSelectedAssignment({
       id: `assignment-${createdAt}`,
       title: '',
@@ -122,12 +120,11 @@ export function AssignmentManagement({
       await deleteTeacherAssessment('assignment', assignment.id);
       setAssignments((current) => current.filter((item) => item.id !== assignment.id));
       setError('');
-      setFeedback('Đã xóa bài tập.');
+      showToast('Đã xóa bài tập.');
       if (selectedAssignment?.id === assignment.id) setSelectedAssignment(null);
     } catch (deleteError) {
       console.error('Không thể xóa bài tập khỏi cơ sở dữ liệu.', deleteError);
       setError(deleteError instanceof Error ? deleteError.message : 'Không thể xóa bài tập.');
-      setFeedback('');
     }
   };
 
@@ -140,7 +137,6 @@ export function AssignmentManagement({
       </div>
 
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
-      {feedback && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{feedback}</p>}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_repeat(3,minmax(135px,190px))]">

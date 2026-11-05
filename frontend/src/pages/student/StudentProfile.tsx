@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, BookMarked, BookOpen, Building2, CalendarDays, Check, ChevronRight, CircleAlert, Copy, GraduationCap, History, KeyRound, LogOut, ScanLine, Search, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { showToast } from '@/components/toast';
+import { Activity, BookMarked, BookOpen, Building2, CalendarDays, ChevronRight, CircleAlert, Copy, GraduationCap, History, KeyRound, LogOut, ScanLine, Search, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import type { AuthUser } from '@/auth/authApi';
 import { changePassword } from '@/auth/authApi';
 import { readUserSettings, saveUserSettings } from '@/settings/userSettings';
@@ -63,10 +64,8 @@ export function StudentProfile({
   const [preferences, setPreferences] = useState<StudyPreferences>({
     explanationStyle: 'detailed',
   });
-  const [passwordNotice, setPasswordNotice] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [copyNotice, setCopyNotice] = useState('');
   const [error, setError] = useState('');
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
   const [studentResults, setStudentResults] = useState<StudentExamResult[]>([]);
@@ -258,26 +257,24 @@ export function StudentProfile({
   const copyParentCode = async () => {
     try {
       await navigator.clipboard.writeText(PARENT_LINK_CODE);
-      setCopyNotice('Đã sao chép mã liên kết.');
+      showToast('Đã sao chép mã liên kết.');
       setError('');
     } catch {
-      setCopyNotice('');
       setError('Không thể sao chép mã. Hãy chọn và sao chép mã thủ công.');
     }
   };
 
   const requestPasswordChange = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setPasswordNotice('');
     if (user.isDemo) {
-      setPasswordNotice('Chế độ demo không lưu thay đổi mật khẩu.');
+      showToast('Chế độ demo không lưu thay đổi mật khẩu.', 'info');
       return;
     }
     try {
       await changePassword(currentPassword, newPassword);
       setCurrentPassword('');
       setNewPassword('');
-      setPasswordNotice('Đã đổi mật khẩu.');
+      showToast('Đã đổi mật khẩu.');
     } catch (passwordError) {
       setError(passwordError instanceof Error ? passwordError.message : 'Không thể đổi mật khẩu.');
     }
@@ -408,12 +405,10 @@ export function StudentProfile({
               <p className="mt-1 text-xs text-slate-500">Phụ huynh có thể dùng mã này để gửi yêu cầu liên kết.</p>
             </div>
             <button type="button" onClick={() => void copyParentCode()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700">
-              {copyNotice ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-              {copyNotice ? 'Đã sao chép' : 'Sao chép mã'}
+              <Copy className="h-4 w-4" />Sao chép mã
             </button>
           </div>}
         </div>
-        {copyNotice && <p role="status" className="mt-3 text-sm text-emerald-700">{copyNotice}</p>}
       </section>
       )}
 
@@ -613,7 +608,6 @@ export function StudentProfile({
             <KeyRound className="h-4 w-4" /> Đổi mật khẩu
           </button>
           </form>
-          {passwordNotice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{passwordNotice}</p>}
           <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500"></p>
             <button type="button" onClick={onLogout} className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">

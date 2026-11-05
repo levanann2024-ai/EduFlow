@@ -7,6 +7,7 @@ import {
   type TermGrades,
 } from '@/api/schoolApi';
 import { sortByVietnameseName } from './studentSorting';
+import { showToast } from '@/components/toast';
 
 interface TeacherClassGradebookProps {
   classId: string;
@@ -51,7 +52,6 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
   const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [saveMessage, setSaveMessage] = useState('');
   const sortedStudents = useMemo(() => sortByVietnameseName(students, (student) => student.fullName), [students]);
 
   useEffect(() => {
@@ -105,7 +105,6 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
   const saveGrades = async () => {
     if (changedStudents.length === 0) return;
     setSaveError('');
-    setSaveMessage('');
     const invalidStudent = changedStudents.find((student) => (
       (drafts[student.id] ?? toInputs(student.grades))
         .some((value) => value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 10))
@@ -131,7 +130,7 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
           };
         }),
       });
-      setSaveMessage(`Đã lưu bảng điểm cho ${saved.length} học sinh.`);
+      showToast(`Đã lưu bảng điểm cho ${saved.length} học sinh.`);
       setReloadKey((key) => key + 1);
     } catch (requestError) {
       setSaveError(requestError instanceof Error ? requestError.message : 'Không thể lưu bảng điểm.');
@@ -189,7 +188,6 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
         </div>
 
         {saveError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{saveError}</p>}
-        {saveMessage && <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{saveMessage}</p>}
         {error ? (
           <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
             <p>{error}</p>

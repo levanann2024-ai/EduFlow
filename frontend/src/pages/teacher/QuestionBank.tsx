@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { saveTeacherAssessment } from '@/api/schoolApi';
+import { showToast } from '@/components/toast';
 import { defaultAssessmentSections, readQuestionSets, writeQuestionSets, type ExamQuestion, type QuestionSet, type SavedAssignment } from '@/pages/teacher/assessmentStorage';
 import type { QuizQuestion } from '@/types';
 
@@ -44,7 +45,6 @@ export function QuestionBank() {
   const [assignmentDuration, setAssignmentDuration] = useState(45);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
     try {
@@ -76,12 +76,11 @@ export function QuestionBank() {
       writeQuestionSets(next);
       setSets(next);
       setError('');
-      setFeedback(successMessage);
+      showToast(successMessage);
       return true;
     } catch (saveError) {
       console.error('Không thể cập nhật ngân hàng câu hỏi trên thiết bị.', saveError);
       setError('Không lưu được thay đổi. Hãy kiểm tra dung lượng lưu trữ của trình duyệt.');
-      setFeedback('');
       return false;
     }
   };
@@ -105,17 +104,14 @@ export function QuestionBank() {
     const options = editing.question.options.map((option) => option.trim());
     if (editing.isNew && (!editing.set.subject.trim() || !editing.set.grade.trim() || !editing.set.topic.trim())) {
       setError('Hãy nhập đầy đủ môn học, khối lớp và chủ đề.');
-      setFeedback('');
       return;
     }
     if (editing.isNew && (type === 'multiple-choice' || type === 'true-false') && options.some((option) => !option)) {
       setError(type === 'multiple-choice' ? 'Hãy nhập đủ 4 phương án trả lời.' : 'Hãy nhập đủ 4 nhận định đúng / sai.');
-      setFeedback('');
       return;
     }
     if (editing.isNew && (type === 'short-answer' || type === 'essay') && !editing.question.correctAnswer?.trim()) {
       setError('Hãy nhập đáp án tham khảo.');
-      setFeedback('');
       return;
     }
 
@@ -160,7 +156,6 @@ export function QuestionBank() {
 
   const openNewQuestion = () => {
     setError('');
-    setFeedback('');
     setEditing({
       isNew: true,
       index: -1,
@@ -219,11 +214,10 @@ export function QuestionBank() {
       setAssignmentTitle('');
       setCreatingAssignment(false);
       setError('');
-      setFeedback('Đã tạo bài tập từ các câu hỏi đã chọn. Mở tab Bài tập đã lưu để xem bài tập.');
+      showToast('Đã tạo bài tập từ các câu hỏi đã chọn. Mở tab Bài tập đã lưu để xem bài tập.');
     } catch (saveError) {
       console.error('Không thể tạo bài tập từ câu hỏi đã chọn trong cơ sở dữ liệu.', saveError);
       setError(saveError instanceof Error ? saveError.message : 'Không thể lưu bài tập vào cơ sở dữ liệu.');
-      setFeedback('');
     }
   };
 
@@ -242,7 +236,6 @@ export function QuestionBank() {
       </div>
 
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
-      {feedback && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{feedback}</p>}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="space-y-3 border-b border-slate-100 p-4">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, CheckCircle2, Clock3, FileImage, FileText, X } from 'lucide-react';
 import { MathText } from '@/components/MathText';
+import { showToast } from '@/components/toast';
 import { TeacherExamSubmissionFiles } from '@/components/TeacherExamSubmissionFiles';
 import { sortByVietnameseName } from './studentSorting';
 import {
@@ -172,7 +173,6 @@ export function ExamGradingWorkspace() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
   const [syncError, setSyncError] = useState('');
-  const [notice, setNotice] = useState('');
   const selectedExamIdRef = useRef('');
   const selectedStudentIdRef = useRef('');
 
@@ -307,7 +307,6 @@ export function ExamGradingWorkspace() {
     setNewEvidenceFiles([]);
     setDeletedEvidenceIds([]);
     setError('');
-    setNotice('');
   }
 
   function chooseStudent(student: TeacherExamGradingStudent) {
@@ -319,7 +318,6 @@ export function ExamGradingWorkspace() {
     setNewEvidenceFiles([]);
     setDeletedEvidenceIds([]);
     setError('');
-    setNotice('');
   }
 
   async function saveGrade() {
@@ -330,7 +328,6 @@ export function ExamGradingWorkspace() {
     ]));
     setSaving(true);
     setError('');
-    setNotice('');
     try {
       const grade = await saveTeacherExamSessionGrade(
         selectedExam.room.id,
@@ -353,7 +350,7 @@ export function ExamGradingWorkspace() {
         }));
       setNewEvidenceFiles([]);
       setDeletedEvidenceIds([]);
-      setNotice('Đã lưu điểm, lời phê và ảnh minh chứng.');
+      showToast('Đã lưu điểm, lời phê và ảnh minh chứng.');
     } catch (saveError: unknown) {
       setError(saveError instanceof Error ? saveError.message : 'Không thể lưu điểm bài thi.');
     } finally {
@@ -365,7 +362,6 @@ export function ExamGradingWorkspace() {
     if (!selectedExam || gradedCount <= 0 || publishing) return;
     setPublishing(true);
     setError('');
-    setNotice('');
     try {
       const publication = await publishTeacherExamRoomGrades(selectedExam.room.id);
       setExams((current) => current.map((exam) => exam.room.id !== selectedExam.room.id
@@ -378,7 +374,7 @@ export function ExamGradingWorkspace() {
               : student
           )),
         }));
-      setNotice(`Đã cập nhật điểm cho ${publication.publishedCount} học sinh.`);
+      showToast(`Đã cập nhật điểm cho ${publication.publishedCount} học sinh.`);
     } catch (publishError: unknown) {
       setError(publishError instanceof Error ? publishError.message : 'Không thể cập nhật điểm bài thi.');
     } finally {
@@ -393,7 +389,6 @@ export function ExamGradingWorkspace() {
   function updateScore(question: TeacherExamGradingQuestion, index: number, raw: string) {
     if (raw !== '' && (!Number.isFinite(Number(raw)) || Number(raw) < 0 || Number(raw) > question.points)) return;
     setScoreInputs((current) => ({ ...current, [getQuestionId(question, index)]: raw }));
-    setNotice('');
   }
 
   return (
@@ -454,7 +449,6 @@ export function ExamGradingWorkspace() {
               </button>
             </div>
           )}
-          {notice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
           <div className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
             <main className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -669,7 +663,6 @@ export function ExamGradingWorkspace() {
                     </section>
                   ))}
 
-                  {notice && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
                   <button
                     type="button"
                     disabled={!allQuestionsScored || saving}

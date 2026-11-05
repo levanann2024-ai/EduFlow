@@ -2,6 +2,7 @@ import { useState } from 'react';
 import pptxgen from 'pptxgenjs';
 import { BookOpen, ChevronLeft, ChevronRight, Download, FileText, GraduationCap, LayoutTemplate, Layers, Palette, Target, WandSparkles, X } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
+import { showToast } from '@/components/toast';
 import { LessonFormatSelector, type LessonFormat } from '@/pages/teacher/LessonFormatSelector';
 import { textbookSeries } from './textbookOptions';
 
@@ -27,7 +28,6 @@ export function LessonSlides({
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [exportError, setExportError] = useState('');
-  const [exportMessage, setExportMessage] = useState('');
   const [slideCount, setSlideCount] = useState(8);
   const [style, setStyle] = useState('Trực quan');
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -94,7 +94,6 @@ export function LessonSlides({
 
     setExporting(true);
     setExportError('');
-    setExportMessage('');
     try {
       const presentation = new pptxgen();
       presentation.layout = 'LAYOUT_WIDE';
@@ -151,7 +150,7 @@ export function LessonSlides({
       downloadLink.click();
       downloadLink.remove();
       window.setTimeout(() => URL.revokeObjectURL(fileUrl), 1_000);
-      setExportMessage(`Đã tạo ${fileName}. Kiểm tra thư mục Tải xuống nếu trình duyệt không tự mở tệp.`);
+      showToast(`Đã tạo ${fileName}. Kiểm tra thư mục Tải xuống nếu trình duyệt không tự mở tệp.`);
     } catch (exportRequestError) {
       setExportError(exportRequestError instanceof Error
         ? `Không thể xuất PowerPoint: ${exportRequestError.message}`
@@ -285,7 +284,6 @@ export function LessonSlides({
             </div>
           </div>
           {exportError && <p role="alert" className="mt-3 text-sm text-rose-700">{exportError}</p>}
-          {exportMessage && <p role="status" className="mt-3 text-sm text-emerald-700">{exportMessage}</p>}
           <div className="grid sm:grid-cols-2 gap-3 mt-5">
             {error ? <p className="text-sm text-rose-600">{error}</p> : generatedSlides.map((slide, index) => (
               <div key={`${slide.title}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-4 hover:border-blue-300 transition-colors">

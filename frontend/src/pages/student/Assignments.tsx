@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { CalendarDays, CheckCircle2, ClipboardList, Clock3, Send } from 'lucide-react';
 import { listStudentAssignments, submitAssignment, type StudentAssignment } from '@/api/schoolApi';
+import { showToast } from '@/components/toast';
 
 function ErrorMessage({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -23,17 +24,15 @@ function AssignmentCard({
   const [responseText, setResponseText] = useState(assignment.responseText ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   const submitted = assignment.submittedAt !== null;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     setError('');
-    setMessage('');
     try {
       await submitAssignment(assignment.id, responseText);
-      setMessage('Đã nộp bài.');
+      showToast('Đã nộp bài.');
       onSubmitted();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể nộp bài.');
@@ -93,7 +92,6 @@ function AssignmentCard({
           />
         </label>
         {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
-        {message && <p role="status" className="text-sm text-emerald-700">{message}</p>}
         <button
           type="submit"
           disabled={saving}
