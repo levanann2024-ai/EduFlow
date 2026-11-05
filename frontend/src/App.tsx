@@ -44,7 +44,7 @@ import {
 } from '@/settings/userSettings';
 import { FirstLoginSetup } from '@/auth/FirstLoginSetup';
 import { InvitationAcceptance } from '@/auth/InvitationAcceptance';
-import { demoLogin, login as authenticate, logout as endSession, restoreSession, saveAvatar, type AuthUser } from '@/auth/authApi';
+import { login as authenticate, logout as endSession, restoreSession, saveAvatar, type AuthUser } from '@/auth/authApi';
 import type { Page, Role } from '@/types';
 
 const allowedPages: Record<Role, Page[]> = {
@@ -392,17 +392,6 @@ function App() {
             setAuthBusy(false);
           }
         }}
-        onDemoLogin={async (demoRole) => {
-          setAuthBusy(true);
-          setAuthError('');
-          try {
-            completeLogin(await demoLogin(demoRole));
-          } catch (error) {
-            setAuthError(error instanceof Error ? error.message : 'Không thể vào chế độ demo.');
-          } finally {
-            setAuthBusy(false);
-          }
-        }}
       />
     );
   }
@@ -422,7 +411,7 @@ function App() {
   const activePage = allowedPages[role].includes(page) ? page : 'dashboard';
   return (
     <div
-      className={`flex min-h-screen bg-slate-50 ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface h-screen overflow-hidden' : ''}`}
+      className={`flex min-h-screen bg-slate-50 ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface md:h-dvh md:overflow-hidden' : ''}`}
       style={backgroundStyle(userSettings)}
     >
       <Sidebar
@@ -434,7 +423,7 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
-      <div className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-56'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-[clamp(80px,14vw,224px)]'}`}>
         <TopBar
           role={role}
           userId={authUser.id}
@@ -449,7 +438,7 @@ function App() {
           onOpenAssignments={role === 'student' ? openSubjectAssignments : undefined}
           onAskAI={role === 'student' ? askStudentAI : undefined}
         />
-        <div className={`mx-auto w-full max-w-[1480px] flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-24 ${role === 'lecturer' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-0' : role === 'student' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-8' : role === 'lecturer' && activePage === 'lessons' ? 'flex min-h-0 flex-col overflow-hidden p-3 pb-3 sm:p-3 md:p-3 lg:max-w-none lg:p-4 lg:pb-3' : 'lg:p-8 lg:pb-8'}`}>
+        <div className={`app-page-content mx-auto w-full min-w-0 max-w-[1480px] flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-8 ${role === 'lecturer' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-0' : role === 'student' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-8' : role === 'lecturer' && activePage === 'lessons' ? 'flex min-h-0 flex-col p-3 pb-24 sm:p-3 sm:pb-24 md:overflow-hidden md:p-3 md:pb-3 lg:max-w-none lg:p-4 lg:pb-3' : 'lg:p-8 lg:pb-8'}`}>
           {role === 'student' && activePage === 'dashboard' ? (
             <StudentDashboard
               userName={authUser.fullName}

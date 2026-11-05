@@ -398,6 +398,47 @@ function mapTeacherTimetableEntries(rows, classIds, isTemplate) {
     }));
 }
 
+function mergeTeacherExamRoomNotes(entries, roomEvents) {
+  const merged = entries.map((entry) => ({ ...entry }));
+  for (const event of roomEvents) {
+    const weekday = Number(event.weekday);
+    const period = Number(event.period_number);
+    const existingIndex = merged.findIndex((entry) => (
+      entry.weekday === weekday && entry.period === period && entry.classId === event.class_id
+    ));
+    if (existingIndex >= 0) {
+      merged[existingIndex] = { ...merged[existingIndex], roomExamTitle: event.exam_title };
+      continue;
+    }
+    if (merged.some((entry) => entry.weekday === weekday && entry.period === period)) continue;
+
+    merged.push({
+      weekday,
+      period,
+      classId: event.class_id,
+      classCode: event.class_code,
+      className: event.class_name,
+      isHomeroom: event.is_homeroom,
+      subject: event.subject,
+      type: 'lesson',
+      title: '',
+      topic: '',
+      dueAt: null,
+      hasHomework: false,
+      homeworkTitle: '',
+      homeworkDueAt: null,
+      hasExam: false,
+      examTitle: '',
+      examStartsAt: null,
+      hasExamReturn: false,
+      examReturnNote: '',
+      examReturnAt: null,
+      roomExamTitle: event.exam_title,
+    });
+  }
+  return merged.sort((first, second) => first.weekday - second.weekday || first.period - second.period);
+}
+
 async function getTeacherTimetable(auth, filters) {
   assertTeacher(auth);
   const semester = validateSemester(filters?.semester);
@@ -436,11 +477,27 @@ async function getTeacherTimetable(auth, filters) {
     timetable = templateResult.rows[0];
     isTemplate = Boolean(timetable);
   }
+  const roomEventsResult = await getPool().query(
+    `SELECT extract(isodow FROM event_date)::int AS weekday, e.period_number, e.class_id,
+            e.subject, e.exam_title, c.code AS class_code, c.name AS class_name,
+            EXISTS (
+              SELECT 1 FROM class_homeroom_assignments hra
+               WHERE hra.class_id = e.class_id AND hra.teacher_user_id = $1
+            ) AS is_homeroom
+       FROM class_timetable_events e
+       JOIN classes c ON c.id = e.class_id AND c.school_id = e.school_id
+      WHERE e.teacher_user_id = $1 AND e.school_id = $2 AND e.academic_year = $3
+        AND e.semester = $4 AND e.event_date >= $5::date AND e.event_date < ($5::date + 7)
+        AND e.source_exam_room_id IS NOT NULL
+      ORDER BY e.event_date, e.period_number`,
+    [auth.userId, schoolId, filters.academicYear, semester, weekStart],
+  );
+  const roomEntries = mergeTeacherExamRoomNotes([], roomEventsResult.rows);
   if (!timetable) {
     return {
       classes: classes.filter((item) => item.academicYear === filters.academicYear),
       timetable: null,
-      entries: [],
+      entries: roomEntries,
       upcomingWork: work,
       weekNumber,
     };
@@ -476,7 +533,10 @@ async function getTeacherTimetable(auth, filters) {
       dailyNote: isTemplate ? '' : timetable.daily_note,
     },
     weekNumber,
-    entries: mapTeacherTimetableEntries(entriesResult.rows, classIds, isTemplate),
+    entries: mergeTeacherExamRoomNotes(
+      mapTeacherTimetableEntries(entriesResult.rows, classIds, isTemplate),
+      roomEventsResult.rows,
+    ),
     upcomingWork: work,
   };
 }
@@ -547,22 +607,55 @@ async function saveTeacherTimetable(auth, input) {
     await client.query(
       `DELETE FROM class_timetable_events
         WHERE teacher_user_id = $1 AND school_id = $2 AND academic_year = $3 AND semester = $4
-          AND event_date >= $5::date AND event_date < ($5::date + 7)`,
+          AND event_date >= $5::date AND event_date < ($5::date + 7)
+          AND source_exam_room_id IS NULL`,
       [auth.userId, schoolId, schedule.academicYear, schedule.semester, schedule.weekStart],
     );
     if (schedule.status === 'published') {
       for (const entry of schedule.entries) {
-        await client.query(
+        const eventDate = getEventDate(schedule.weekStart, entry.weekday);
+        if (entry.type === 'cancelled' || entry.hasExam) {
+          const roomEvent = await client.query(
+            `SELECT id FROM class_timetable_events
+              WHERE class_id = $1 AND event_date = $2::date AND period_number = $3
+                AND source_exam_room_id IS NOT NULL
+              FOR UPDATE`,
+            [entry.classId, eventDate, entry.period],
+          );
+          if (roomEvent.rowCount) {
+            throw timetableError(
+              409,
+              'SCHOOL_TIMETABLE_SLOT_CONFLICT',
+              'Tiết này đã được đặt cho một phòng thi. Hãy chọn khung giờ khác hoặc cập nhật phòng thi.',
+            );
+          }
+        }
+        const eventResult = await client.query(
           `INSERT INTO class_timetable_events
              (id, class_id, school_id, teacher_user_id, academic_year, semester, event_date,
               period_number, operation, subject, title, lesson_topic, has_homework, homework_title,
               homework_due_at, has_exam, exam_title, exam_starts_at, has_exam_return,
               exam_return_note, exam_return_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13, $14,
-                   $15::timestamptz, $16, $17, $18::timestamptz, $19, $20, $21::timestamptz)`,
+                   $15::timestamptz, $16, $17, $18::timestamptz, $19, $20, $21::timestamptz)
+           ON CONFLICT (class_id, event_date, period_number) DO UPDATE
+             SET operation = EXCLUDED.operation, subject = EXCLUDED.subject, title = EXCLUDED.title,
+                 lesson_topic = EXCLUDED.lesson_topic, has_homework = EXCLUDED.has_homework,
+                 homework_title = EXCLUDED.homework_title, homework_due_at = EXCLUDED.homework_due_at,
+                 has_exam = CASE WHEN class_timetable_events.source_exam_room_id IS NOT NULL
+                                 THEN class_timetable_events.has_exam ELSE EXCLUDED.has_exam END,
+                 exam_title = CASE WHEN class_timetable_events.source_exam_room_id IS NOT NULL
+                                   THEN class_timetable_events.exam_title ELSE EXCLUDED.exam_title END,
+                 exam_starts_at = CASE WHEN class_timetable_events.source_exam_room_id IS NOT NULL
+                                       THEN class_timetable_events.exam_starts_at ELSE EXCLUDED.exam_starts_at END,
+                 has_exam_return = EXCLUDED.has_exam_return,
+                 exam_return_note = EXCLUDED.exam_return_note, exam_return_at = EXCLUDED.exam_return_at,
+                 source_exam_room_created_event = false, updated_at = now()
+             WHERE class_timetable_events.teacher_user_id = EXCLUDED.teacher_user_id
+           RETURNING id`,
           [
             randomUUID(), entry.classId, schoolId, auth.userId, schedule.academicYear, schedule.semester,
-            getEventDate(schedule.weekStart, entry.weekday), entry.period,
+            eventDate, entry.period,
             entry.type === 'cancelled' ? 'cancel' : entry.type === 'makeup' ? 'makeup' : 'override',
             entry.type === 'cancelled' ? null : entry.subject, entry.title, entry.topic,
             entry.hasHomework, entry.homeworkTitle, entry.homeworkDueAt,
@@ -570,6 +663,13 @@ async function saveTeacherTimetable(auth, input) {
             entry.hasExamReturn, entry.examReturnNote, entry.examReturnAt,
           ],
         );
+        if (!eventResult.rowCount) {
+          throw timetableError(
+            409,
+            'SCHOOL_TIMETABLE_SLOT_CONFLICT',
+            'Lớp đã có nội dung khác ở tiết này trong tuần. Hãy kiểm tra lịch trước khi công bố.',
+          );
+        }
       }
     }
     await client.query('COMMIT');
@@ -760,6 +860,7 @@ module.exports = {
   generateStudentTimetableSuggestion,
   generateTeacherTimetableSuggestion,
   getTeacherTimetable,
+  mergeTeacherExamRoomNotes,
   mapTeacherTimetableEntries,
   saveTeacherTimetable,
   validateStudentSchedulePlan,

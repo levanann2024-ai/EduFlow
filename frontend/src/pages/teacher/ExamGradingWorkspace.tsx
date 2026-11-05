@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, CheckCircle2, Clock3, FileImage, FileText, X } from 'lucide-react';
 import { MathText } from '@/components/MathText';
 import { TeacherExamSubmissionFiles } from '@/components/TeacherExamSubmissionFiles';
+import { sortByVietnameseName } from './studentSorting';
 import {
   getTeacherExamRoomGrading,
   listTeacherExamAppeals,
@@ -267,13 +268,10 @@ export function ExamGradingWorkspace() {
     () => selectedExam?.students.filter((student) => student.status === 'submitted') ?? [],
     [selectedExam],
   );
-  const sortedStudents = useMemo(() => [...(selectedExam?.students ?? [])].sort((first, second) => {
-    const priority = (student: TeacherExamGradingStudent) => (
-      student.status !== 'submitted' ? 0 : student.grade ? 2 : 1
-    );
-    return priority(first) - priority(second)
-      || first.studentName.localeCompare(second.studentName, 'vi');
-  }), [selectedExam]);
+  const sortedStudents = useMemo(
+    () => sortByVietnameseName(selectedExam?.students ?? [], (student) => student.studentName),
+    [selectedExam],
+  );
   const gradedCount = submittedStudents.filter((student) => student.grade).length;
   const selectedStudent = selectedExam?.students.find((student) => student.studentId === selectedStudentId) ?? null;
   const selectedStudentAppeal = appeals.find((appeal) => appeal.sessionId === selectedStudent?.sessionId);

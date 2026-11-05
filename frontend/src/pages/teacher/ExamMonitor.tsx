@@ -9,6 +9,7 @@ import {
   Eye,
   FileText,
   Play,
+  Plus,
   Search,
   Trash2,
   Users,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { defaultAssessmentSections } from './assessmentStorage';
 import type { ExamBehaviorLog, ExamRoomRecord, ExamRoomStatus, ExamSessionStatus } from './examRoomDemoData';
+import { sortByVietnameseName } from './studentSorting';
 
 const roomStatusLabels: Record<ExamRoomStatus, string> = {
   draft: 'Bản nháp',
@@ -101,16 +103,8 @@ function countStatus(room: ExamRoomRecord, status: ExamSessionStatus) {
   return room.sessions.filter((session) => session.status === status).length;
 }
 
-function sortSessionsByAlertCount(sessions: ExamRoomRecord['sessions']) {
-  const alertLevel = (eventCount: number) => eventCount >= 3 ? 2 : eventCount > 0 ? 1 : 0;
-  const totalEvents = (session: ExamRoomRecord['sessions'][number]) => (
-    session.eventCount + (session.behaviorLogCount ?? session.behaviorLogs?.length ?? 0)
-  );
-  return [...sessions].sort((first, second) => (
-    alertLevel(totalEvents(second)) - alertLevel(totalEvents(first))
-    || totalEvents(second) - totalEvents(first)
-    || first.studentName.localeCompare(second.studentName, 'vi')
-  ));
+function sortSessionsByStudentName(sessions: ExamRoomRecord['sessions']) {
+  return sortByVietnameseName(sessions, (session) => session.studentName);
 }
 
 const behaviorLogLabels: Record<ExamBehaviorLog['eventType'], string> = {
@@ -136,12 +130,14 @@ export function ExamMonitor({
   onEditDraft,
   onUpdateRoom,
   onDeleteRoom,
+  onCreateRoom,
   openRoomId,
 }: {
   rooms: ExamRoomRecord[];
   onEditDraft: (room: ExamRoomRecord) => void;
   onUpdateRoom: (room: ExamRoomRecord) => void;
   onDeleteRoom: (roomId: string) => void;
+  onCreateRoom: () => void;
   openRoomId: string | null;
 }) {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -175,7 +171,7 @@ export function ExamMonitor({
     all: effectiveRooms.length,
   };
   const visibleSessions = selectedRoom?.sessions.filter((session) => sessionFilter === 'all' || session.status === sessionFilter) ?? [];
-  const sessionsByAlertCount = selectedRoom ? sortSessionsByAlertCount(selectedRoom.sessions) : [];
+  const sessionsByStudentName = selectedRoom ? sortSessionsByStudentName(selectedRoom.sessions) : [];
 
   useEffect(() => {
     if (openRoomId) {
@@ -296,11 +292,11 @@ export function ExamMonitor({
                 <h2 className="font-semibold text-slate-900">Nhật ký học sinh</h2>
                 <p className="mt-1 text-xs leading-5 text-slate-500">Chỉ lưu loại sự kiện, thời điểm và thời lượng; không lưu ảnh, video hoặc âm thanh. Nhật ký không tự động thay đổi điểm hay trạng thái bài thi.</p>
               </div>
-              {sessionsByAlertCount.length === 0 ? (
+              {sessionsByStudentName.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Chưa có học sinh trong lớp.</p>
               ) : (
                 <ol className="space-y-2">
-                  {sessionsByAlertCount.map((session) => {
+                  {sessionsByStudentName.map((session) => {
                     const behaviorLogs = session.behaviorLogs ?? [];
                     const hasLogs = behaviorLogs.length > 0;
                     const hasAlerts = session.eventCount > 0;
@@ -402,6 +398,14 @@ export function ExamMonitor({
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={roomSearch} onChange={(event) => setRoomSearch(event.target.value)} placeholder="Tìm theo tên hoặc mã phòng..." className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
           </label>
+          <button
+            type="button"
+            onClick={onCreateRoom}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2"
+          >
+            <Plus className="h-4 w-4" />
+            Tạo phòng thi
+          </button>
         </div>
         <div role="group" aria-label="Lọc phòng theo trạng thái" className="flex flex-wrap gap-2">
           {([

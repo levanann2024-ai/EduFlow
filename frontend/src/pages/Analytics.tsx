@@ -97,15 +97,15 @@ export function Analytics({ role }: AnalyticsProps) {
             <p className="text-sm text-slate-400 mt-0.5">Theo dõi lịch sử thao tác của các tài khoản trên hệ thống</p>
           </div>
           <div className="divide-y divide-slate-100 text-sm">
-            <div className="px-4 py-2.5 flex justify-between items-center hover:bg-slate-50">
+            <div className="px-4 py-2.5 flex flex-col gap-1 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-700"><strong>Giáo viên</strong> đã tạo một bộ đề trắc nghiệm Vật lý 10.</span>
               <span className="text-slate-400">10 phút trước</span>
             </div>
-            <div className="px-4 py-2.5 flex justify-between items-center hover:bg-slate-50">
+            <div className="px-4 py-2.5 flex flex-col gap-1 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-700"><strong>Giáo viên</strong> đã xuất file giáo án chương 3.</span>
               <span className="text-slate-400">25 phút trước</span>
             </div>
-            <div className="px-4 py-2.5 flex justify-between items-center hover:bg-slate-50">
+            <div className="px-4 py-2.5 flex flex-col gap-1 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-slate-700">Hệ thống đã tự động sao lưu dữ liệu định kỳ (Auto-backup).</span>
               <span className="text-slate-400">2 giờ trước</span>
             </div>
@@ -218,6 +218,25 @@ export function Analytics({ role }: AnalyticsProps) {
           </div>
           <Users className="w-4 h-4 text-slate-300" />
         </div>
+        <div className="divide-y divide-slate-100 sm:hidden">
+          {atRiskStudents.map((student) => (
+            <div key={student.id} className="flex items-start gap-3 px-4 py-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                <Users className="h-4 w-4 text-slate-500" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-sm font-semibold text-slate-800">{student.name}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {student.class} · Điểm TB {student.avgScore} · Chuyên cần {student.attendance}%
+                </p>
+                <span className={`mt-2 inline-flex text-xs font-semibold ${student.risk === 'high' ? 'text-rose-700' : student.risk === 'medium' ? 'text-amber-700' : 'text-green-700'}`}>
+                  {student.risk === 'high' ? 'Nguy cơ cao' : student.risk === 'medium' ? 'Cần theo dõi' : 'Ổn định'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto sm:block">
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
@@ -253,6 +272,7 @@ export function Analytics({ role }: AnalyticsProps) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Class progress table */}
@@ -261,6 +281,26 @@ export function Analytics({ role }: AnalyticsProps) {
           <h3 className="font-semibold text-slate-900 text-sm">Tiến độ theo lớp</h3>
           <p className="text-sm text-slate-400 mt-0.5">Tỷ lệ hoàn thành chương trình</p>
         </div>
+        <div className="divide-y divide-slate-100 sm:hidden">
+          {mockClasses.map((classItem) => (
+            <div key={classItem.id} className="space-y-2 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-800">{classItem.name} <span className="font-normal text-slate-400">{classItem.grade}</span></p>
+                  <p className="mt-0.5 text-sm text-slate-600">{classItem.subject}</p>
+                </div>
+                <span className="shrink-0 text-xs text-slate-500">{classItem.studentCount} HS</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-blue-600" style={{ width: `${classItem.progress}%` }} />
+                </div>
+                <span className="w-9 text-right text-xs font-semibold tabular-nums text-slate-600">{classItem.progress}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto sm:block">
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
@@ -291,6 +331,7 @@ export function Analytics({ role }: AnalyticsProps) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

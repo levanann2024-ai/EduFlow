@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, CalendarClock, Check, ChevronLeft, ChevronRight, Eye, FileCheck2, FileText, Search, ShieldCheck, Users, X } from 'lucide-react';
-import { listClasses, listClassStudents, type SchoolClass } from '@/api/schoolApi';
+import { listClasses, listClassStudents, listClassSubjects, type SchoolClass } from '@/api/schoolApi';
 import { loadTeacherAssessments, type SavedExam } from './assessmentStorage';
 import { examRoomDefaults, type ExamRoomRecord } from './examRoomDemoData';
 import { ExamRoomPhasePreview } from './ExamRoomPhasePreview';
@@ -71,6 +71,12 @@ export function ExamRoomWizard({
   const [roomTitle, setRoomTitle] = useState(initialRoom?.title ?? initialExam?.title ?? '');
   const [instructions, setInstructions] = useState(initialRoom?.instructions ?? '');
   const [classIds, setClassIds] = useState<string[]>(initialRoom?.classIds ?? []);
+  const [classSubjects, setClassSubjects] = useState<Record<string, string[]>>({});
+  const [classSubjectsLoading, setClassSubjectsLoading] = useState(false);
+  const [classSubjectsError, setClassSubjectsError] = useState('');
+  const [roomSubject, setRoomSubject] = useState(
+    initialRoom?.examSnapshot.subject ?? initialExam?.subject ?? '',
+  );
   const [startsAt, setStartsAt] = useState(initialRoom ? dateTimeInput(initialRoom.startsAt) : dateDefaults.startsAt);
   const [durationMinutes, setDurationMinutes] = useState(initialRoom?.durationMinutes ?? initialExam?.durationMinutes ?? 45);
   const [shuffleQuestions, setShuffleQuestions] = useState(initialRoom?.settings.shuffleQuestions ?? false);
@@ -120,9 +126,58 @@ export function ExamRoomWizard({
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    if (classIds.length === 0) {
+      setClassSubjects({});
+      setClassSubjectsError('');
+      setClassSubjectsLoading(false);
+      return () => { active = false; };
+    }
+
+    setClassSubjectsLoading(true);
+    setClassSubjectsError('');
+    Promise.all(classIds.map(async (classId) => [classId, await listClassSubjects(classId)] as const))
+      .then((items) => {
+        if (active) setClassSubjects(Object.fromEntries(items));
+      })
+      .catch((loadError: unknown) => {
+        console.error('Không thể tải môn học được phân công cho các lớp đã chọn.', loadError);
+        if (active) {
+          setClassSubjects({});
+          setClassSubjectsError(loadError instanceof Error ? loadError.message : 'Không thể tải môn được phân công.');
+        }
+      })
+      .finally(() => { if (active) setClassSubjectsLoading(false); });
+    return () => { active = false; };
+  }, [classIds]);
+
   const selectedExam = savedExams.find((exam) => exam.id === selectedExamId)
     ?? (initialExam?.id === selectedExamId ? initialExam : null)
     ?? (initialRoom?.examSnapshot.id === selectedExamId ? initialRoom.examSnapshot : null);
+  const commonSubjects = useMemo(() => {
+    if (classIds.length === 0 || !classSubjects[classIds[0]]) return [];
+    return classSubjects[classIds[0]]
+      .filter((subject) => subject.trim() !== ''
+        && subject.trim().toLocaleLowerCase('vi') !== 'chưa phân loại')
+      .filter((subject) => classIds.every((classId) => (
+        classSubjects[classId]?.some((item) => item.toLocaleLowerCase('vi') === subject.toLocaleLowerCase('vi'))
+      )))
+      .sort((first, second) => first.localeCompare(second, 'vi'));
+  }, [classIds, classSubjects]);
+  const savedExamSubject = selectedExam?.subject.trim() ?? '';
+  const preferredSubject = commonSubjects.find((subject) => (
+    subject.toLocaleLowerCase('vi') === savedExamSubject.toLocaleLowerCase('vi')
+  ));
+  const defaultRoomSubject = preferredSubject
+    ?? commonSubjects[0]
+    ?? (savedExamSubject.toLocaleLowerCase('vi') === 'chưa phân loại' ? '' : savedExamSubject);
+  useEffect(() => {
+    setRoomSubject((current) => (
+      commonSubjects.find((subject) => subject.toLocaleLowerCase('vi') === current.trim().toLocaleLowerCase('vi'))
+      ?? defaultRoomSubject
+    ));
+  }, [commonSubjects, defaultRoomSubject, selectedExam?.id]);
   useEffect(() => {
     if (!initialRoom && selectedExam?.durationMinutes) setDurationMinutes(selectedExam.durationMinutes);
   }, [initialRoom, selectedExam]);
@@ -140,6 +195,9 @@ export function ExamRoomWizard({
   const selectedClasses = classes.filter((item) => classIds.includes(item.id));
   const studentCount = selectedClasses.reduce((sum, item) => sum + item.studentCount, 0);
   const totalPoints = selectedExam?.questions.reduce((sum, question) => sum + question.points, 0) ?? 0;
+  const showExamTitle = Boolean(
+    selectedExam && selectedExam.title.trim().toLocaleLowerCase('vi') !== roomTitle.trim().toLocaleLowerCase('vi'),
+  );
   const timeError = useMemo(() => {
     const starts = new Date(startsAt).getTime();
     if (!Number.isFinite(starts)) return 'Hãy nhập thời điểm bắt đầu hợp lệ.';
@@ -201,7 +259,11 @@ export function ExamRoomWizard({
       durationMinutes,
       status: publish ? new Date(startsAt).getTime() > Date.now() ? 'scheduled' : 'open' : 'draft',
       examId: selectedExam.id,
-      examSnapshot: { ...selectedExam, questions: selectedExam.questions.map((question) => ({ ...question, options: [...question.options] })) },
+      examSnapshot: {
+        ...selectedExam,
+        subject: roomSubject.trim() || selectedExam.subject,
+        questions: selectedExam.questions.map((question) => ({ ...question, options: [...question.options] })),
+      },
       settings,
       sessions: previous?.sessions ?? [],
       createdAt: previous?.createdAt ?? new Date().toISOString(),
@@ -300,7 +362,7 @@ export function ExamRoomWizard({
                         <div className="mt-auto flex flex-wrap gap-2 pt-4">
                           <button type="button" onClick={() => setPreviewExam(exam)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4" /> Xem trước</button>
                           {!ready && <button type="button" onClick={() => onNavigate('exams')} className="rounded-lg border border-amber-200 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50">Hoàn thiện đề</button>}
-                          <button type="button" disabled={!ready} onClick={() => { setSelectedExamId(exam.id); setRoomTitle((current) => current || exam.title); setError(''); }} className={`ml-auto rounded-lg border px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${selectedExamId === exam.id ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{selectedExamId === exam.id ? 'Đã chọn' : 'Chọn đề'}</button>
+                          <button type="button" disabled={!ready} onClick={() => { setSelectedExamId(exam.id); setRoomSubject(''); setRoomTitle((current) => current || exam.title); setError(''); }} className={`ml-auto rounded-lg border px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${selectedExamId === exam.id ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{selectedExamId === exam.id ? 'Đã chọn' : 'Chọn đề'}</button>
                         </div>
                       </article>
                     );
@@ -313,6 +375,25 @@ export function ExamRoomWizard({
           {step === 1 && (
             <section className="mx-auto max-w-3xl space-y-5">
               <label className="block text-sm font-medium text-slate-700">Tên phòng<input value={roomTitle} onChange={(event) => setRoomTitle(event.target.value)} className="input-field mt-1.5" placeholder="Ví dụ: Kiểm tra chương 2 - 10A1" /></label>
+              <label className="block text-sm font-medium text-slate-700">Môn thi
+                {commonSubjects.length > 0 ? (
+                  <select value={roomSubject} onChange={(event) => setRoomSubject(event.target.value)} className="input-field mt-1.5">
+                    {commonSubjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+                  </select>
+                ) : (
+                  <input value={roomSubject} readOnly className="input-field mt-1.5" placeholder={classSubjectsLoading ? 'Đang lấy môn được phân công...' : 'Chưa có môn được phân công'} />
+                )}
+              </label>
+              <p className="-mt-3 text-xs text-slate-500">
+                {classSubjectsLoading
+                  ? 'Đang xác định môn giáo viên được phân công dạy ở các lớp đã chọn.'
+                  : commonSubjects.length > 1
+                    ? 'Môn được điền mặc định theo đề; có thể đổi giữa các môn được phân công.'
+                    : commonSubjects.length === 1
+                      ? 'Môn được tự động lấy theo phân công giảng dạy của giáo viên.'
+                      : 'Nếu đề chưa có môn, hệ thống sẽ tự lấy môn được phân công khi tạo phòng.'}
+              </p>
+              {classSubjectsError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{classSubjectsError}</p>}
               <label className="block text-sm font-medium text-slate-700">Hướng dẫn làm bài<textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} rows={3} className="input-field mt-1.5" placeholder="Nhập hướng dẫn hiển thị cho học sinh..." /></label>
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-semibold text-slate-800">Lớp tham gia</legend>
@@ -369,7 +450,8 @@ export function ExamRoomWizard({
                 <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <h4 className="font-semibold text-slate-900">Thông tin phòng</h4>
                   <p><span className="text-slate-500">Tên:</span> <strong>{roomTitle || 'Chưa đặt tên'}</strong></p>
-                  <p><span className="text-slate-500">Đề:</span> {selectedExam?.title ?? 'Chưa chọn'} - {selectedExam?.questions.length ?? 0} câu - {totalPoints} điểm</p>
+                  <p><span className="text-slate-500">Đề:</span> {selectedExam ? <>{showExamTitle && `${selectedExam.title} - `}{selectedExam.questions.length} câu - {totalPoints} điểm</> : 'Chưa chọn'}</p>
+                  <p><span className="text-slate-500">Môn:</span> {roomSubject || selectedExam?.subject || 'Sẽ tự lấy theo môn được phân công'}</p>
                   <p><span className="text-slate-500">Lớp:</span> {selectedClasses.map((item) => item.name).join(', ') || 'Chưa chọn'} - {studentCount} học sinh</p>
                   <p><span className="text-slate-500">Người tổ chức:</span> Giáo viên</p>
                   <p><span className="text-slate-500">Bắt đầu:</span> {formatDate(startsAt)}</p>
@@ -389,7 +471,6 @@ export function ExamRoomWizard({
               </div>
               <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">Mã phòng: <strong className="tracking-widest">{initialRoom?.code ?? 'Tạo xong sẽ hiển thị mã phòng'}</strong></p>
               <button type="button" onClick={() => setShowPhasePreview(true)} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 hover:bg-blue-100"><Eye className="h-4 w-4" /> Xem trước 3 giai đoạn của học sinh</button>
-              <p className="text-xs leading-5 text-slate-500">Cấu hình phòng và bản chụp đề sẽ được lưu vào cơ sở dữ liệu.</p>
             </section>
           )}
           {previewExam && (

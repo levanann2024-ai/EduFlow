@@ -1205,7 +1205,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   };
 
   return (
-    <section className="teacher-library flex min-h-0 flex-1 flex-col overflow-hidden bg-sky-50/60">
+    <section className="teacher-library flex min-h-0 flex-1 flex-col bg-sky-50/60 md:overflow-hidden">
       {feedback && (
         <div role="status" className="mb-2 flex max-h-20 shrink-0 items-start justify-between gap-3 overflow-auto whitespace-pre-wrap rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
           <span>{feedback}</span>
@@ -1235,8 +1235,8 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       </div>
 
       {activeTab === 'create' && (
-      <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_260px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
-        <div className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto lg:pr-1">
+      <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-visible md:overflow-y-auto lg:grid-cols-[minmax(0,1fr)_260px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+        <div className="order-last flex min-h-0 flex-col gap-3 lg:order-none lg:overflow-y-auto lg:pr-1">
           <section className="shrink-0 rounded-xl border border-blue-100 bg-white p-3 shadow-sm">
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-950">
               <CloudUpload className="h-5 w-5 text-blue-600" /> 1. Tạo nội dung
@@ -1476,7 +1476,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-col gap-3 lg:h-full lg:overflow-y-auto lg:pr-1">
+        <div className="order-first flex min-h-0 flex-col gap-3 lg:order-last lg:h-full lg:overflow-y-auto lg:pr-1">
           <section className="flex shrink-0 flex-col rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950">

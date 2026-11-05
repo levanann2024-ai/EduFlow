@@ -14,6 +14,7 @@ const {
   getAcademicYearWeekNumber,
   mergeClassTimetableEvents,
 } = require('./classTimetableEvents');
+const { getExamPeriodSlot } = require('./examRoomTimetable');
 
 const RESOURCE_FILE_TYPES = new Map([
   ['jpg', 'image/jpeg'],
@@ -1794,6 +1795,41 @@ async function saveTeacherExamRoom(auth, room) {
     const students = await listClassStudents(auth, classId);
     return { classroom, studentCount: students.length };
   }));
+  const classSubjectsResult = await getPool().query(
+    `SELECT class_id, trim(subject) AS subject
+       FROM teacher_class_assignments
+      WHERE teacher_user_id = $1 AND school_id = $2 AND class_id = ANY($3::uuid[])
+        AND revoked_at IS NULL
+      ORDER BY lower(trim(subject)), trim(subject)`,
+    [auth.userId, schoolId, room.classIds],
+  );
+  const isUsableSubject = (subject) => typeof subject === 'string'
+    && subject.trim() !== ''
+    && subject.trim().toLocaleLowerCase('vi') !== 'chưa phân loại';
+  const subjectsByClass = new Map(room.classIds.map((classId) => [classId, new Set()]));
+  for (const { class_id: classId, subject } of classSubjectsResult.rows) {
+    if (isUsableSubject(subject)) subjectsByClass.get(classId)?.add(subject.toLocaleLowerCase('vi'));
+  }
+  const commonSubjects = classSubjectsResult.rows.filter(({ class_id: classId, subject }) => (
+    classId === room.classIds[0]
+      && isUsableSubject(subject)
+      && room.classIds.every((selectedClassId) => (
+        subjectsByClass.get(selectedClassId)?.has(subject.toLocaleLowerCase('vi'))
+      ))
+  ));
+  const requestedSubject = room.examSnapshot?.subject;
+  const assignedSubject = commonSubjects.find(({ subject }) => (
+    isUsableSubject(requestedSubject)
+      && subject.toLocaleLowerCase('vi') === requestedSubject.trim().toLocaleLowerCase('vi')
+  )) ?? commonSubjects.find(({ subject }) => (
+    isUsableSubject(exam.subject)
+      && subject.toLocaleLowerCase('vi') === exam.subject.trim().toLocaleLowerCase('vi')
+  )) ?? commonSubjects[0];
+  exam = {
+    ...exam,
+    subject: assignedSubject?.subject
+      ?? (isUsableSubject(exam.subject) ? exam.subject.trim() : ''),
+  };
   const savedRoom = {
     ...room,
     id: validated.id,
@@ -1808,21 +1844,105 @@ async function saveTeacherExamRoom(auth, room) {
     sessions: [],
     isDemo: false,
   };
-  const result = await getPool().query(
-    `INSERT INTO teacher_exam_rooms
-       (id, teacher_user_id, school_id, code, title, status, starts_at, payload)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-     ON CONFLICT (teacher_user_id, id)
-     DO UPDATE SET code = EXCLUDED.code, title = EXCLUDED.title, status = EXCLUDED.status,
-                   starts_at = EXCLUDED.starts_at, payload = EXCLUDED.payload, updated_at = now()
-       WHERE teacher_exam_rooms.school_id = EXCLUDED.school_id
-     RETURNING payload`,
-    [validated.id, auth.userId, schoolId, savedRoom.code, validated.title, room.status, validated.startsAt, JSON.stringify(savedRoom)],
-  );
-  if (!result.rows[0]) {
-    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi của bạn.');
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `INSERT INTO teacher_exam_rooms
+         (id, teacher_user_id, school_id, code, title, status, starts_at, payload)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+       ON CONFLICT (teacher_user_id, id)
+       DO UPDATE SET code = EXCLUDED.code, title = EXCLUDED.title, status = EXCLUDED.status,
+                     starts_at = EXCLUDED.starts_at, payload = EXCLUDED.payload, updated_at = now()
+         WHERE teacher_exam_rooms.school_id = EXCLUDED.school_id
+       RETURNING payload`,
+      [validated.id, auth.userId, schoolId, savedRoom.code, validated.title, room.status, validated.startsAt, JSON.stringify(savedRoom)],
+    );
+    if (!result.rows[0]) {
+      throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi của bạn.');
+    }
+
+    await client.query(
+      `UPDATE class_timetable_events
+          SET has_exam = false, exam_title = '', exam_starts_at = NULL,
+              source_exam_room_id = NULL, source_exam_room_created_event = false, updated_at = now()
+        WHERE source_exam_room_id = $1 AND teacher_user_id = $2 AND school_id = $3
+          AND source_exam_room_created_event = false`,
+      [validated.id, auth.userId, schoolId],
+    );
+    await client.query(
+      `DELETE FROM class_timetable_events
+        WHERE source_exam_room_id = $1 AND teacher_user_id = $2 AND school_id = $3
+          AND source_exam_room_created_event = true`,
+      [validated.id, auth.userId, schoolId],
+    );
+
+    const slot = room.status !== 'draft'
+      ? getExamPeriodSlot(validated.startsAt)
+      : null;
+    if (slot) {
+      for (const { classroom } of classDetails) {
+        const semester = Number(slot.eventDate.slice(5, 7)) >= 8 ? 'Kỳ 1' : 'Kỳ 2';
+        const existingEvent = await client.query(
+          `SELECT operation, has_exam, source_exam_room_id, teacher_user_id
+             FROM class_timetable_events
+            WHERE class_id = $1 AND event_date = $2::date AND period_number = $3
+            FOR UPDATE`,
+          [classroom.id, slot.eventDate, slot.period],
+        );
+        const currentEvent = existingEvent.rows[0];
+        if (currentEvent?.source_exam_room_id || currentEvent?.operation === 'cancel'
+          || currentEvent?.has_exam || (currentEvent && currentEvent.teacher_user_id !== auth.userId)) {
+          throw serviceError(
+            409,
+            'SCHOOL_EXAM_TIMETABLE_CONFLICT',
+            'Lớp đã có bài kiểm tra hoặc lịch khác trong tiết này. Hãy chọn khung giờ khác.',
+          );
+        }
+
+        if (currentEvent) {
+          await client.query(
+            `UPDATE class_timetable_events
+                SET has_exam = true, exam_title = $4, exam_starts_at = $5::timestamptz,
+                    source_exam_room_id = $6, source_exam_room_created_event = false,
+                    updated_at = now()
+              WHERE class_id = $1 AND event_date = $2::date AND period_number = $3`,
+            [classroom.id, slot.eventDate, slot.period, validated.title, validated.startsAt, validated.id],
+          );
+        } else {
+          const subject = exam.subject || savedRoom.examSnapshot.subject;
+          if (typeof subject !== 'string' || !subject.trim()) {
+            throw serviceError(
+              400,
+              'SCHOOL_EXAM_SUBJECT_REQUIRED',
+              'Đề thi cần có môn học để ghi vào thời khóa biểu.',
+            );
+          }
+          await client.query(
+            `INSERT INTO class_timetable_events
+               (id, class_id, school_id, teacher_user_id, academic_year, semester, event_date,
+                period_number, operation, subject, title, has_exam, exam_title, exam_starts_at,
+                source_exam_room_id, source_exam_room_created_event)
+             VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, 'override', $9, $10, true, $10,
+                     $11::timestamptz, $12, true)`,
+            [
+              randomUUID(), classroom.id, schoolId, auth.userId, classroom.academic_year, semester,
+              slot.eventDate, slot.period, subject.trim(),
+              validated.title, validated.startsAt, validated.id,
+            ],
+          );
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+    return result.rows[0].payload;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-  return result.rows[0].payload;
 }
 
 async function deleteTeacherExamRoom(auth, roomId) {
@@ -1831,12 +1951,46 @@ async function deleteTeacherExamRoom(auth, roomId) {
     throw serviceError(400, 'SCHOOL_INVALID_EXAM_ROOM', 'Mã phòng thi không hợp lệ.');
   }
   const schoolId = await getSingleActiveSchool(auth.userId, 'lecturer');
-  const result = await getPool().query(
-    `DELETE FROM teacher_exam_rooms
-      WHERE id = $1 AND teacher_user_id = $2 AND school_id = $3`,
-    [roomId, auth.userId, schoolId],
-  );
-  return result.rowCount > 0;
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const roomResult = await client.query(
+      `SELECT id FROM teacher_exam_rooms
+        WHERE id = $1 AND teacher_user_id = $2 AND school_id = $3
+        FOR UPDATE`,
+      [roomId, auth.userId, schoolId],
+    );
+    if (!roomResult.rowCount) {
+      await client.query('COMMIT');
+      return false;
+    }
+    await client.query(
+      `UPDATE class_timetable_events
+          SET has_exam = false, exam_title = '', exam_starts_at = NULL,
+              source_exam_room_id = NULL, source_exam_room_created_event = false, updated_at = now()
+        WHERE source_exam_room_id = $1 AND teacher_user_id = $2 AND school_id = $3
+          AND source_exam_room_created_event = false`,
+      [roomId, auth.userId, schoolId],
+    );
+    await client.query(
+      `DELETE FROM class_timetable_events
+        WHERE source_exam_room_id = $1 AND teacher_user_id = $2 AND school_id = $3
+          AND source_exam_room_created_event = true`,
+      [roomId, auth.userId, schoolId],
+    );
+    await client.query(
+      `DELETE FROM teacher_exam_rooms
+        WHERE id = $1 AND teacher_user_id = $2 AND school_id = $3`,
+      [roomId, auth.userId, schoolId],
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function adminSchoolScope(auth, requestedSchoolId) {
@@ -3093,16 +3247,19 @@ async function getStudentTimetable(auth, semester, weekStart) {
       ),
       loadWeekEvents(),
     ]);
-    if (publishedSchedule.rowCount && eventsResult.rowCount) {
+    if (eventsResult.rowCount) {
       const timetable = publishedSchedule.rows[0];
       return {
         classroom: classroomResponse,
         weekNumber,
         timetable: {
           semester,
-          session: timetable.session,
+          session: timetable?.session ?? 'morning',
           effectiveFrom: weekStart,
-          periodCount: Number(timetable.period_count),
+          periodCount: Number(timetable?.period_count ?? Math.max(
+            5,
+            ...eventsResult.rows.map((event) => Number(event.period_number)),
+          )),
           entries: mergeClassTimetableEvents([], eventsResult.rows),
         },
       };

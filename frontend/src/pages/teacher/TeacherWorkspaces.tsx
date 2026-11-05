@@ -192,6 +192,13 @@ export function ProctoringWorkspace({
           : <ExamMonitor
             rooms={rooms}
             openRoomId={openRoomId}
+            onCreateRoom={() => {
+              setEditingRoom(null);
+              setWizardExam(null);
+              setWizardOpen(true);
+              setFeedback('');
+              setError('');
+            }}
             onEditDraft={(room) => { setEditingRoom(room); setWizardOpen(true); setFeedback(''); setError(''); }}
             onUpdateRoom={(updatedRoom) => {
               void saveTeacherExamRoom(updatedRoom, true)

@@ -483,13 +483,22 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
   const [historyError, setHistoryError] = useState('');
   const [historyLoading, setHistoryLoading] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(
+    () => window.matchMedia('(min-width: 768px)').matches,
+  );
   const [selectedImage, setSelectedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [savedAnswerIds, setSavedAnswerIds] = useState(
     () => new Set(getSavedItems().filter((item) => item.type === 'answer').map((item) => item.id)),
   );
   const endRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const desktopViewport = window.matchMedia('(min-width: 768px)');
+    const syncHistoryVisibility = () => setHistoryOpen(desktopViewport.matches);
+    desktopViewport.addEventListener('change', syncHistoryVisibility);
+    return () => desktopViewport.removeEventListener('change', syncHistoryVisibility);
+  }, []);
 
   const handleImageSelection = (file?: File) => {
     if (!file) return;
@@ -544,6 +553,7 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
     setMessages(initialMessages[role]);
     setInput('');
     setSelectedImage(null);
+    if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = '';
     setError('');
   };
@@ -564,6 +574,7 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
       setMessages(conversation.messages.map((message) => toChatMessage(message, conversation.id)));
       setInput('');
       removeSelectedImage();
+      if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể mở cuộc trò chuyện.');
     } finally {
@@ -747,9 +758,10 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
 
   if (role === 'student') {
     return (
-      <div className="flex h-[calc(100vh-140px)] min-h-[540px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="relative flex h-[calc(100vh-140px)] min-h-[540px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {historyOpen && <button type="button" aria-label="Đóng lịch sử chat" onClick={() => setHistoryOpen(false)} className="absolute inset-0 z-10 bg-slate-950/20 md:hidden" />}
         {historyOpen && (
-          <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50/80 sm:w-72">
+          <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(18rem,85vw)] flex-col border-r border-slate-200 bg-slate-50/95 shadow-xl md:relative md:w-64 md:shrink-0 md:bg-slate-50/80 md:shadow-none lg:w-72">
             <div className="p-3">
               <button type="button" disabled={thinking} onClick={startNewConversation} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                 <Plus className="h-4 w-4" /> Cuộc trò chuyện mới
@@ -839,9 +851,10 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
   }
 
   return (
-    <div className="flex h-[calc(100vh-140px)] min-h-[540px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fadeIn">
+    <div className="relative flex h-[calc(100vh-140px)] min-h-[540px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fadeIn">
+      {historyOpen && <button type="button" aria-label="Đóng lịch sử chat" onClick={() => setHistoryOpen(false)} className="absolute inset-0 z-10 bg-slate-950/20 md:hidden" />}
       {historyOpen && (
-        <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50/80 sm:w-72">
+        <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(18rem,85vw)] flex-col border-r border-slate-200 bg-slate-50/95 shadow-xl md:relative md:w-64 md:shrink-0 md:bg-slate-50/80 md:shadow-none lg:w-72">
           <div className="p-3">
             <button type="button" disabled={thinking} onClick={startNewConversation} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
               <Plus className="h-4 w-4" /> Cuộc trò chuyện mới

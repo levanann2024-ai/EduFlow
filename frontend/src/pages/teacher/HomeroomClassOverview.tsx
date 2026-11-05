@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpenCheck, Heart, RefreshCw, Star } from 'lucide-react';
 import { getHomeroomClassGradeSummary, type HomeroomGradeSummary } from '@/api/schoolApi';
+import { sortByVietnameseName } from './studentSorting';
 
 interface HomeroomClassOverviewProps {
   classId: string;
@@ -49,6 +50,10 @@ export function HomeroomClassOverview({
         .sort((first, second) => first.localeCompare(second, 'vi')),
     ];
   }, [homeroomSubject, summary]);
+  const sortedStudents = useMemo(
+    () => sortByVietnameseName(summary?.students ?? [], (student) => student.fullName),
+    [summary?.students],
+  );
 
   return (
     <section className="space-y-5">
@@ -133,7 +138,7 @@ export function HomeroomClassOverview({
                 </tr>
               </thead>
               <tbody>
-                {summary.students.map((student, index) => (
+                {sortedStudents.map((student, index) => (
                   <tr key={student.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                     <td className="sticky left-0 z-10 bg-white px-3 py-3 text-slate-500">{index + 1}</td>
                     <th scope="row" className="sticky left-14 z-10 bg-white px-3 py-3 font-semibold text-slate-800">

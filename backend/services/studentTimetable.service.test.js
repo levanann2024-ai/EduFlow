@@ -153,6 +153,41 @@ test('published teacher lessons are available to class members when no class tim
   weekEventRows = [];
 });
 
+test('exam-room events are visible when no class or published teacher timetable exists', async () => {
+  hasClass = true;
+  hasTimetable = false;
+  hasPublishedTeacherEntries = false;
+  weekEventRows = [{
+    weekday: 1,
+    period_number: 1,
+    operation: 'override',
+    subject: 'Toán học',
+    title: 'Kiểm tra chương 1',
+    lesson_topic: '',
+    has_homework: false,
+    homework_title: '',
+    homework_due_at: null,
+    has_exam: true,
+    exam_title: 'Kiểm tra chương 1',
+    exam_starts_at: new Date('2026-10-26T00:15:00.000Z'),
+    has_exam_return: false,
+    exam_return_note: '',
+    exam_return_at: null,
+  }];
+  const result = await getStudentTimetable(
+    { userId: 'authenticated-student', role: 'student' },
+    'Kỳ 1',
+    '2026-10-26',
+  );
+
+  assert.equal(result.timetable?.session, 'morning');
+  assert.equal(result.timetable?.periodCount, 5);
+  assert.equal(result.timetable?.entries[0].hasExam, true);
+  assert.equal(result.timetable?.entries[0].examTitle, 'Kiểm tra chương 1');
+  hasPublishedTeacherEntries = false;
+  weekEventRows = [];
+});
+
 test('student timetable merges date-specific events into the recurring class skeleton', async () => {
   hasClass = true;
   hasTimetable = true;

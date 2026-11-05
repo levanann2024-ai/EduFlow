@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
   BarChart3,
@@ -247,19 +247,41 @@ function isMenuItemActive(role: Role, item: MenuItem, current: Page) {
 
 export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onToggleCollapsed, language = 'vi' }: SidebarProps & { language?: AppLanguage }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [iconOnlyViewport, setIconOnlyViewport] = useState(
+    () => window.matchMedia('(min-width: 768px) and (max-width: 899px)').matches,
+  );
+  const [tightSpacingViewport, setTightSpacingViewport] = useState(
+    () => window.matchMedia('(min-width: 768px) and (max-width: 1439px)').matches,
+  );
+  useEffect(() => {
+    const iconOnlyQuery = window.matchMedia('(min-width: 768px) and (max-width: 899px)');
+    const tightSpacingQuery = window.matchMedia('(min-width: 768px) and (max-width: 1439px)');
+    const updateViewport = () => {
+      setIconOnlyViewport(iconOnlyQuery.matches);
+      setTightSpacingViewport(tightSpacingQuery.matches);
+    };
+    updateViewport();
+    iconOnlyQuery.addEventListener('change', updateViewport);
+    tightSpacingQuery.addEventListener('change', updateViewport);
+    return () => {
+      iconOnlyQuery.removeEventListener('change', updateViewport);
+      tightSpacingQuery.removeEventListener('change', updateViewport);
+    };
+  }, []);
+  const iconOnly = collapsed || iconOnlyViewport;
   const sections = menus[role];
   return (
-    <aside className={`fixed inset-y-0 left-0 z-40 hidden shrink-0 flex-col border-r border-slate-800 bg-slate-900 transition-[width] duration-200 lg:flex ${collapsed ? 'w-16' : 'w-56'}`}>
+    <aside data-icon-only={iconOnly} className={`app-sidebar fixed inset-y-0 left-0 z-40 hidden shrink-0 flex-col border-r border-slate-800 bg-slate-900 transition-[width] duration-200 md:flex ${collapsed ? 'w-16' : 'w-[clamp(80px,14vw,224px)]'}`}>
       {/* 1. Phần Logo cố định ở trên */}
-      <div className={`flex shrink-0 items-center border-b border-slate-800 py-4 ${collapsed ? 'justify-center px-2' : 'justify-between px-4'}`}>
-        <div className="flex min-w-0 items-center gap-2">
+      <div className={`flex shrink-0 items-center border-b border-slate-800 py-4 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'justify-between gap-1.5 px-2' : 'justify-between px-4'}`}>
+        <div className={`flex min-w-0 items-center ${tightSpacingViewport ? 'gap-1.5' : 'gap-2'}`}>
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
             <BookOpen className="w-[18px] h-[18px] text-white" />
           </div>
-          {!collapsed && <span className="truncate font-semibold text-slate-100 text-base tracking-tight">EduFlow</span>}
+          {!iconOnly && <span className="truncate font-semibold text-slate-100 text-base tracking-tight">EduFlow</span>}
         </div>
-        {!collapsed && (
-          <button type="button" onClick={onToggleCollapsed} aria-label={language === 'en' ? 'Collapse navigation' : 'Thu gọn thanh điều hướng'} title={language === 'en' ? 'Collapse navigation' : 'Thu gọn thanh điều hướng'} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white">
+        {!iconOnly && (
+          <button type="button" onClick={onToggleCollapsed} aria-label={language === 'en' ? 'Collapse navigation' : 'Thu gọn thanh điều hướng'} title={language === 'en' ? 'Collapse navigation' : 'Thu gọn thanh điều hướng'} className={`shrink-0 rounded-lg text-slate-400 transition hover:bg-slate-800 hover:text-white ${tightSpacingViewport ? 'p-1.5' : 'p-2'}`}>
             <PanelLeftClose className="h-4 w-4" />
           </button>
         )}
@@ -271,15 +293,15 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
       )}
 
       {/* 2. Danh sách menu ở giữa có đường gạch nhỏ (border-t) phía trên mỗi mục */}
-      <nav aria-label="Điều hướng chính" className={`flex-1 space-y-1 overflow-y-auto py-3 ${collapsed ? 'px-2' : 'px-3'}`}>
+      <nav aria-label="Điều hướng chính" className={`flex-1 space-y-1 overflow-y-auto py-3 ${iconOnly ? 'px-2' : tightSpacingViewport ? 'px-1.5' : 'px-3'}`}>
         {sections.map((section, sectionIndex) => {
           const sectionId = `sidebar-section-${sectionIndex}`;
-          const sectionExpanded = collapsed || (role !== 'lecturer' && role !== 'student')
+          const sectionExpanded = iconOnly || (role !== 'lecturer' && role !== 'student')
             || expandedSections[section.label] === true;
           const sectionActive = section.items.some((item) => isMenuItemActive(role, item, current));
           return (
           <section key={section.label} className="mb-4">
-            {!collapsed && (role === 'lecturer' || role === 'student' ? (
+            {!iconOnly && (role === 'lecturer' || role === 'student' ? (
               <button
                 type="button"
                 aria-expanded={sectionExpanded}
@@ -288,14 +310,14 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
                   ...expanded,
                   [section.label]: !sectionExpanded,
                 }))}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider transition hover:bg-slate-800/50 ${
+                className={`flex w-full items-center justify-between rounded-md py-2 text-left text-[11px] font-semibold uppercase tracking-wider transition hover:bg-slate-800/50 ${tightSpacingViewport ? 'gap-1 px-1.5' : 'gap-2 px-3'} ${
                   sectionActive ? 'text-slate-300' : 'text-slate-500'
                 }`}
               >
-                <span>{sectionLabel(language, section.label)}</span>
+                <span className="min-w-0 truncate">{sectionLabel(language, section.label)}</span>
                 {expandedSections[section.label]
-                  ? <ChevronUp className="h-3.5 w-3.5" />
-                  : <ChevronDown className="h-3.5 w-3.5" />}
+                  ? <ChevronUp className="h-3.5 w-3.5 shrink-0" />
+                  : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
               </button>
             ) : (
               <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{section.label}</h2>
@@ -310,9 +332,9 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
                     key={item.id}
                     onClick={() => onNavigate(item.id)}
                     title={menuLabel(language, item.id, item.label)}
-                    aria-label={collapsed ? menuLabel(language, item.id, item.label) : undefined}
+                    aria-label={iconOnly ? menuLabel(language, item.id, item.label) : undefined}
                     className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                      collapsed ? 'justify-center px-2' : 'gap-3 px-3 text-left'
+                      iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5 text-left' : 'gap-3 px-3 text-left'
                     } ${
                       highlight
                         ? active ? 'bg-violet-500/20 text-violet-200' : 'text-violet-300 hover:text-violet-100 hover:bg-violet-500/10'
@@ -320,7 +342,7 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
                     }`}
                   >
                     <Icon className={`w-[18px] h-[18px] shrink-0 ${highlight ? 'text-violet-400' : ''}`} />
-                    {!collapsed && <span className="min-w-0 flex-1 truncate whitespace-nowrap leading-5">{menuLabel(language, item.id, item.label)}</span>}
+                    {!iconOnly && <span className="min-w-0 flex-1 truncate whitespace-nowrap leading-5">{menuLabel(language, item.id, item.label)}</span>}
                   </button>
                 );
               })}
@@ -331,15 +353,15 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
       </nav>
 
       {/* 3. Phần Cài đặt & Đăng xuất ép dính chặt ở đáy sidebar */}
-      <div className={`shrink-0 space-y-1 border-t border-slate-800 bg-slate-900 py-3 ${collapsed ? 'px-2' : 'px-3'}`}>
-        <button onClick={() => onNavigate('settings')} title={collapsed ? 'Cài đặt' : undefined} aria-label={collapsed ? 'Cài đặt' : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'}`}>
+      <div className={`shrink-0 space-y-1 border-t border-slate-800 bg-slate-900 py-3 ${iconOnly ? 'px-2' : tightSpacingViewport ? 'px-1.5' : 'px-3'}`}>
+        <button onClick={() => onNavigate('settings')} title={iconOnly ? 'Cài đặt' : undefined} aria-label={iconOnly ? 'Cài đặt' : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
           <Settings className="w-[18px] h-[18px]" />
-          {!collapsed && <span>Cài đặt</span>}
+          {!iconOnly && <span className="min-w-0 truncate">Cài đặt</span>}
         </button>
-        {!collapsed && <div className="my-1 mx-3 border-t border-slate-800/80" />}
-        <button onClick={onLogout} title={collapsed ? (language === 'en' ? 'Sign out' : 'Đăng xuất') : undefined} aria-label={collapsed ? (language === 'en' ? 'Sign out' : 'Đăng xuất') : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-400 ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'}`}>
+        {!iconOnly && <div className="my-1 mx-3 border-t border-slate-800/80" />}
+        <button onClick={onLogout} title={iconOnly ? (language === 'en' ? 'Sign out' : 'Đăng xuất') : undefined} aria-label={iconOnly ? (language === 'en' ? 'Sign out' : 'Đăng xuất') : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-400 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
           <LogOut className="w-[18px] h-[18px]" />
-          {!collapsed &&           <span>{language === 'en' ? 'Sign out' : 'Đăng xuất'}</span>}
+          {!iconOnly && <span className="min-w-0 truncate">{language === 'en' ? 'Sign out' : 'Đăng xuất'}</span>}
         </button>
       </div>
     </aside>
@@ -358,11 +380,11 @@ export function MobileNav({ current, onNavigate, role, language = 'vi' }: Pick<S
   return (
     <>
       {menuOpen && (
-        <div className="lg:hidden fixed inset-0 z-[55]" onClick={() => setMenuOpen(false)}>
+        <div className="md:hidden fixed inset-0 z-[55]" onClick={() => setMenuOpen(false)}>
           <div className="absolute inset-0 bg-slate-950/30" />
           <nav
             aria-label="Tất cả trang"
-            className="absolute bottom-20 inset-x-3 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+            className="absolute bottom-[calc(5rem+env(safe-area-inset-bottom))] inset-x-3 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             {menus[role].map((section) => (
@@ -388,7 +410,7 @@ export function MobileNav({ current, onNavigate, role, language = 'vi' }: Pick<S
           </nav>
         </div>
       )}
-      <div className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-900 border-t border-slate-800 z-50 px-1 py-2 flex justify-around">
+      <div className="md:hidden fixed bottom-0 inset-x-0 bg-slate-900 border-t border-slate-800 z-50 px-1 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex justify-around">
         {items.map((item) => {
           const active = isMenuItemActive(role, item, current);
           const Icon = menuIcons[item.id];
@@ -647,7 +669,7 @@ export function NotificationDrawer({
               </span>
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-bold leading-5">{language === 'en' ? 'Notifications' : 'Thông báo'}</h2>
-                <p className="mt-0.5 truncate text-xs text-blue-100/80">{language === 'en' ? 'Relevant updates for you' : 'Cập nhật liên quan đến bạn'}</p>
+                <p className="mt-0.5 truncate text-xs text-blue-100/80">{language === 'en' ? 'Up to 10 latest updates' : 'Tối đa 10 cập nhật gần nhất'}</p>
               </div>
             </div>
             <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-blue-100 transition hover:bg-white/10 hover:text-white" aria-label={language === 'en' ? 'Close' : 'Đóng'}>

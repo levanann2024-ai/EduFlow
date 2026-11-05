@@ -18,8 +18,12 @@ import {
 import {
   getStudentProgress,
   getStudentTimetable,
+  listStudentExamAppeals,
+  listStudentExamRooms,
+  type ExamAppeal,
   type ProgressSemester,
   type StudentProgressData,
+  type StudentExamRoom,
   type StudentTimetableResponse,
 } from '@/api/schoolApi';
 import type { Page } from '@/types';
@@ -49,13 +53,6 @@ const subjects = [
   { code: 'GDTC10', name: 'Giáo dục thể chất', lessons: '0/1', resources: 1, tasks: 0, progress: 0 },
 ] as const;
 
-const assignments = [
-  { code: '#TOAN10-CH2', subjectCode: 'TOAN10', subject: 'Toán học 10', title: 'Bài tập chương 3 – Toán', due: '24/10/2026', status: 'Chưa làm' },
-  { code: '#VAN10-CH2', subjectCode: 'VAN10', subject: 'Ngữ văn 10', title: 'Đọc hiểu văn bản – Ngữ văn', due: '25/10/2026', status: 'Đang làm' },
-  { code: '#VL10-CH3', subjectCode: 'LY10', subject: 'Vật lý 10', title: 'Bài tập chương 4 – Vật lý', due: '26/10/2026', status: 'Chưa làm' },
-  { code: '#HH10-CH1', subjectCode: 'HOA10', subject: 'Hóa học 10', title: 'Chương 3 – Hóa học', due: '28/10/2026', status: 'Chưa làm' },
-];
-
 function parseVietnameseDate(value: string) {
   const [day, month, year] = value.split('/').map(Number);
   if (!day || !month || !year) return null;
@@ -74,13 +71,43 @@ function getWeekStart(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function getCurrentSemester(date: Date): ProgressSemester {
-  return date.getMonth() >= 7 ? 'Kỳ 1' : 'Kỳ 2';
+function getWeekDate(weekStart: string, weekday: number) {
+  const [year, month, day] = weekStart.split('-').map(Number);
+  if (!year || !month || !day || weekday < 1 || weekday > 7) return null;
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + weekday - 1);
+  return date;
 }
 
-function isPastDeadline(value: string, today: Date) {
-  const deadline = parseVietnameseDate(value);
-  return deadline !== null && deadline < today;
+function getCalendarDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  const parsed = new Date(timestamp);
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+function getDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function getCountdownLabel(date: Date, today: Date) {
+  const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return `Quá hạn ${Math.abs(days)} ngày`;
+  if (days === 0) return 'Hôm nay';
+  if (days === 1) return 'Ngày mai';
+  return `Còn ${days} ngày`;
+}
+
+function isWithinRecentDays(value: string | null, now: number, days: number) {
+  if (!value) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    && timestamp <= now
+    && timestamp >= now - days * 86_400_000;
+}
+
+function getCurrentSemester(date: Date): ProgressSemester {
+  return date.getMonth() >= 7 ? 'Kỳ 1' : 'Kỳ 2';
 }
 
 function SubjectCarousel({
@@ -190,9 +217,14 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
   const [activityFilter, setActivityFilter] = useState<'upcoming' | 'submitted' | 'graded'>('upcoming');
   const [liveProgress, setLiveProgress] = useState<StudentProgressData | null>(null);
   const [tomorrowTimetable, setTomorrowTimetable] = useState<StudentTimetableResponse | null>(null);
+  const [upcomingTimetables, setUpcomingTimetables] = useState<Array<{
+    weekStart: string;
+    timetable: StudentTimetableResponse;
+  }>>([]);
+  const [studentExamRooms, setStudentExamRooms] = useState<StudentExamRoom[]>([]);
+  const [studentAppeals, setStudentAppeals] = useState<ExamAppeal[]>([]);
   const [liveDataError, setLiveDataError] = useState('');
   const [loadingLiveData, setLoadingLiveData] = useState(true);
-  const pendingAssignments = assignments.filter((assignment) => assignment.status !== 'Đã nộp');
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const tomorrow = new Date(startOfToday);
@@ -205,6 +237,92 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
   const liveAssignments = (liveProgress?.assignments ?? [])
     .filter((assignment) => assignment.submittedAt === null)
     .sort((first, second) => new Date(first.dueAt).getTime() - new Date(second.dueAt).getTime());
+  const upcomingLearningItems = (() => {
+    type LearningItem = {
+      id: string;
+      kind: 'exam' | 'homework';
+      title: string;
+      subject: string;
+      date: Date;
+      destination: Page;
+    };
+    const items = new Map<string, LearningItem>();
+    const addItem = (item: LearningItem) => {
+      const key = `${item.kind}:${item.subject.trim().toLocaleLowerCase('vi')}:${item.title.trim().toLocaleLowerCase('vi')}:${getDateKey(item.date)}`;
+      items.set(key, item);
+    };
+
+    for (const { weekStart, timetable } of upcomingTimetables) {
+      for (const entry of timetable.timetable?.entries ?? []) {
+        const scheduledDate = getWeekDate(weekStart, entry.weekday);
+        if (!scheduledDate) continue;
+
+        if (entry.hasExam) {
+          const examDateTime = entry.examStartsAt || entry.dueAt;
+          const date = examDateTime ? getCalendarDate(examDateTime) : scheduledDate;
+          const hasNotStarted = !examDateTime || Date.parse(examDateTime) >= Date.now();
+          if (date && date >= startOfToday && hasNotStarted) {
+            addItem({
+              id: `timetable-exam-${getDateKey(date)}-${entry.period}-${entry.subject}`,
+              kind: 'exam',
+              title: entry.examTitle || entry.title || 'Bài kiểm tra',
+              subject: entry.subject,
+              date,
+              destination: 'schedule',
+            });
+          }
+        }
+
+        if (entry.hasHomework) {
+          const dueAt = entry.homeworkDueAt || entry.dueAt;
+          const date = dueAt ? getCalendarDate(dueAt) : scheduledDate;
+          if (date && (date >= startOfToday || dueAt)) {
+            addItem({
+              id: `timetable-homework-${getDateKey(date)}-${entry.period}-${entry.subject}`,
+              kind: 'homework',
+              title: entry.homeworkTitle || entry.title || 'Bài tập về nhà',
+              subject: entry.subject,
+              date,
+              destination: 'schedule',
+            });
+          }
+        }
+      }
+    }
+
+    for (const exam of liveProgress?.upcomingExams ?? []) {
+      const date = getCalendarDate(exam.startsAt);
+      if (date && date >= startOfToday) {
+        addItem({
+          id: exam.id,
+          kind: 'exam',
+          title: exam.title,
+          subject: exam.subject,
+          date,
+          destination: 'online-exams',
+        });
+      }
+    }
+
+    for (const assignment of liveAssignments) {
+      const date = getCalendarDate(assignment.dueAt);
+      if (date) {
+        addItem({
+          id: assignment.id,
+          kind: 'homework',
+          title: assignment.title,
+          subject: assignment.subject,
+          date,
+          destination: 'assignments',
+        });
+      }
+    }
+
+    return [...items.values()].sort((first, second) => (
+      Number(first.kind !== 'exam') - Number(second.kind !== 'exam')
+      || first.date.getTime() - second.date.getTime()
+    ));
+  })();
   const focusAssignment = liveAssignments[0] ?? null;
   const tomorrowEntries = tomorrowTimetable?.timetable?.entries
     .filter((entry) => entry.weekday === tomorrowWeekday) ?? [];
@@ -261,13 +379,72 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
       const previous = results[results.length - 2];
       return latest.score < previous.score ? [{ subject, latest, previous }] : [];
     });
-  const latestGrade = [...studentResults].sort((first, second) => (
-    (parseVietnameseDate(second.date)?.getTime() ?? 0)
-    - (parseVietnameseDate(first.date)?.getTime() ?? 0)
-  ))[0];
   const greetingName = userName.trim().split(/\s+/).pop() || userName;
+  const scheduleExamKeys = new Set<string>();
+  const scheduleAttentionItems = upcomingTimetables.flatMap(({ weekStart, timetable }) => (
+    (timetable.timetable?.entries ?? []).flatMap((entry) => {
+      const scheduledDate = getWeekDate(weekStart, entry.weekday);
+      if (!scheduledDate) return [];
+      const items = [];
+      if (entry.hasExam) {
+        const examDateTime = entry.examStartsAt || entry.dueAt;
+        const examDate = examDateTime ? getCalendarDate(examDateTime) : scheduledDate;
+        const hasNotStarted = !examDateTime || Date.parse(examDateTime) >= Date.now();
+        if (examDate && examDate >= startOfToday && hasNotStarted) {
+          const title = entry.examTitle || entry.title || 'Bài kiểm tra';
+          scheduleExamKeys.add(`${entry.subject.trim().toLocaleLowerCase('vi')}:${title.trim().toLocaleLowerCase('vi')}:${getDateKey(examDate)}`);
+          items.push({
+            id: `scheduled-exam-${getDateKey(examDate)}-${entry.period}-${entry.subject}`,
+            title: `Kiểm tra sắp tới: ${title}`,
+            detail: `${entry.subject} · ${examDate.toLocaleDateString('vi-VN')}`,
+            onClick: () => onNavigate('schedule'),
+            cardClass: 'border-rose-100 bg-rose-50/70 hover:bg-rose-50',
+            iconClass: 'text-rose-600',
+            Icon: CalendarClock,
+          });
+        }
+      }
+      if (entry.hasExamReturn) {
+        const returnDateTime = entry.examReturnAt || (entry.type === 'exam_return' ? entry.dueAt : null);
+        const returnDate = returnDateTime ? getCalendarDate(returnDateTime) : scheduledDate;
+        const returnIsUpcoming = !returnDateTime || Date.parse(returnDateTime) >= Date.now();
+        if (returnDate && returnDate >= startOfToday && returnIsUpcoming) {
+          items.push({
+            id: `scheduled-return-${getDateKey(returnDate)}-${entry.period}-${entry.subject}`,
+            title: `Lịch trả bài: ${entry.examReturnNote || entry.subject}`,
+            detail: `${entry.subject} · ${returnDate.toLocaleDateString('vi-VN')}`,
+            onClick: () => onNavigate('schedule'),
+            cardClass: 'border-violet-100 bg-violet-50/70 hover:bg-violet-50',
+            iconClass: 'text-violet-700',
+            Icon: CalendarDays,
+          });
+        }
+      }
+      return items;
+    })
+  ));
+  const pendingAssignmentGrades = (liveProgress?.assignments ?? [])
+    .filter((assignment) => assignment.submittedAt !== null && assignment.gradedAt === null);
+  const recentAssignmentGrades = (liveProgress?.assignments ?? [])
+    .filter((assignment) => isWithinRecentDays(assignment.gradedAt, Date.now(), 7));
+  const gradedExamRoomIds = new Set((liveProgress?.examResults ?? []).map((result) => result.roomId));
+  const pendingExamGrades = liveProgress
+    ? studentExamRooms.filter((room) => room.hasSubmitted && !gradedExamRoomIds.has(room.id))
+    : [];
+  const recentExamGrades = (liveProgress?.examResults ?? [])
+    .filter((result) => !result.grade.isRead && isWithinRecentDays(result.grade.gradedAt, Date.now(), 30));
+  const pendingAppeals = studentAppeals.filter((appeal) => appeal.status === 'pending');
+  const recentlyReviewedAppeals = studentAppeals.filter((appeal) => (
+    appeal.status !== 'pending' && isWithinRecentDays(appeal.reviewedAt, Date.now(), 7)
+  ));
   const attentionItems = [
-    ...upcomingExams.map((exam) => ({
+    ...scheduleAttentionItems,
+    ...upcomingExams.filter((exam) => {
+      const date = getCalendarDate(exam.startsAt);
+      return !date || !scheduleExamKeys.has(
+        `${exam.subject.trim().toLocaleLowerCase('vi')}:${exam.title.trim().toLocaleLowerCase('vi')}:${getDateKey(date)}`,
+      );
+    }).map((exam) => ({
       id: `exam-${exam.id}`,
       title: `Kiểm tra: ${exam.title}`,
       detail: `${exam.subject} - ${new Date(exam.startsAt).toLocaleString('vi-VN')}`,
@@ -276,15 +453,60 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
       iconClass: 'text-rose-600',
       Icon: CalendarClock,
     })),
-    ...(latestGrade ? [{
-      id: `grade-${latestGrade.id}`,
-      title: `Đã trả điểm: ${latestGrade.name}`,
-      detail: `${latestGrade.subject} - ${latestGrade.score}/10 - ${latestGrade.date}`,
-      onClick: () => onNavigate('my-results'),
-      cardClass: 'border-rose-100 bg-rose-50/70 hover:bg-rose-50',
-      iconClass: 'text-rose-600',
+    ...pendingExamGrades.map((room) => ({
+      id: `exam-pending-grade-${room.id}`,
+      title: `Bài kiểm tra đang chờ chấm: ${room.title}`,
+      detail: `${room.subject} · Đã nộp, đang chờ giáo viên`,
+      onClick: () => onNavigate('online-exams'),
+      cardClass: 'border-amber-100 bg-amber-50/70 hover:bg-amber-50',
+      iconClass: 'text-amber-700',
+      Icon: Clock3,
+    })),
+    ...pendingAssignmentGrades.map((assignment) => ({
+      id: `assignment-pending-grade-${assignment.id}`,
+      title: `Bài tập đang chờ chấm: ${assignment.title}`,
+      detail: `${assignment.subject} · Đã nộp ${assignment.submittedAt ? new Date(assignment.submittedAt).toLocaleDateString('vi-VN') : ''}`,
+      onClick: () => onNavigate('assignments'),
+      cardClass: 'border-amber-100 bg-amber-50/70 hover:bg-amber-50',
+      iconClass: 'text-amber-700',
+      Icon: Clock3,
+    })),
+    ...pendingAppeals.map((appeal) => ({
+      id: `appeal-pending-${appeal.id}`,
+      title: `Phúc khảo đang chờ phản hồi: ${appeal.examTitle}`,
+      detail: `${appeal.subject} · Đã gửi ${new Date(appeal.createdAt).toLocaleDateString('vi-VN')}`,
+      onClick: () => onNavigate('online-exams'),
+      cardClass: 'border-amber-100 bg-amber-50/70 hover:bg-amber-50',
+      iconClass: 'text-amber-700',
+      Icon: Clock3,
+    })),
+    ...recentExamGrades.map((result) => ({
+      id: `exam-result-${result.sessionId}`,
+      title: `Đã trả điểm kiểm tra: ${result.title}`,
+      detail: `${result.subject} · ${result.grade.totalScore} điểm`,
+      onClick: () => onNavigate('online-exams'),
+      cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
+      iconClass: 'text-emerald-700',
       Icon: Trophy,
-    }] : []),
+    })),
+    ...recentAssignmentGrades.map((assignment) => ({
+      id: `assignment-grade-${assignment.id}`,
+      title: `Đã trả bài tập: ${assignment.title}`,
+      detail: `${assignment.subject} · ${assignment.score === null ? 'Đã chấm' : `${assignment.score}/10`}`,
+      onClick: () => onNavigate('my-results'),
+      cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
+      iconClass: 'text-emerald-700',
+      Icon: Trophy,
+    })),
+    ...recentlyReviewedAppeals.map((appeal) => ({
+      id: `appeal-reviewed-${appeal.id}`,
+      title: `${appeal.status === 'rejected' ? 'Phúc khảo không được chấp nhận' : 'Phúc khảo đã có phản hồi'}: ${appeal.examTitle}`,
+      detail: `${appeal.subject}${appeal.teacherResponse ? ` · ${appeal.teacherResponse}` : ''}`,
+      onClick: () => onNavigate('online-exams'),
+      cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
+      iconClass: 'text-emerald-700',
+      Icon: Trophy,
+    })),
     ...decreasingSubjects.map(({ subject, latest, previous }) => ({
       id: `decrease-${subject}`,
       title: `Điểm ${subject} có dấu hiệu giảm`,
@@ -312,19 +534,41 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
     let active = true;
     const tomorrowDate = new Date();
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const firstWeekStart = getWeekStart(tomorrowDate);
+    const nextWeekDate = new Date(`${firstWeekStart}T00:00:00`);
+    nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+    const nextWeekStart = getWeekStart(nextWeekDate);
     const loadLiveData = async () => {
       setLoadingLiveData(true);
       setLiveDataError('');
-      const [progressResult, timetableResult] = await Promise.allSettled([
+      const [progressResult, timetableResult, nextTimetableResult, examRoomsResult, appealsResult] = await Promise.allSettled([
         getStudentProgress(),
-        getStudentTimetable(getCurrentSemester(tomorrowDate), getWeekStart(tomorrowDate)),
+        getStudentTimetable(getCurrentSemester(tomorrowDate), firstWeekStart),
+        getStudentTimetable(getCurrentSemester(nextWeekDate), nextWeekStart),
+        listStudentExamRooms(),
+        listStudentExamAppeals(),
       ]);
       if (!active) return;
       const errors: string[] = [];
       if (progressResult.status === 'fulfilled') setLiveProgress(progressResult.value);
       else errors.push(progressResult.reason instanceof Error ? progressResult.reason.message : 'Không thể tải bài tập và lịch kiểm tra.');
-      if (timetableResult.status === 'fulfilled') setTomorrowTimetable(timetableResult.value);
-      else errors.push(timetableResult.reason instanceof Error ? timetableResult.reason.message : 'Không thể tải thời khóa biểu ngày mai.');
+      if (examRoomsResult.status === 'fulfilled') setStudentExamRooms(examRoomsResult.value);
+      else errors.push(examRoomsResult.reason instanceof Error ? examRoomsResult.reason.message : 'Không thể tải trạng thái bài kiểm tra.');
+      if (appealsResult.status === 'fulfilled') setStudentAppeals(appealsResult.value);
+      else errors.push(appealsResult.reason instanceof Error ? appealsResult.reason.message : 'Không thể tải trạng thái phúc khảo.');
+      const timetableWeeks: Array<{ weekStart: string; timetable: StudentTimetableResponse }> = [];
+      if (timetableResult.status === 'fulfilled') {
+        setTomorrowTimetable(timetableResult.value);
+        timetableWeeks.push({ weekStart: firstWeekStart, timetable: timetableResult.value });
+      } else {
+        errors.push(timetableResult.reason instanceof Error ? timetableResult.reason.message : 'Không thể tải thời khóa biểu ngày mai.');
+      }
+      if (nextTimetableResult.status === 'fulfilled') {
+        timetableWeeks.push({ weekStart: nextWeekStart, timetable: nextTimetableResult.value });
+      } else {
+        errors.push(nextTimetableResult.reason instanceof Error ? nextTimetableResult.reason.message : 'Không thể tải thời khóa biểu tuần tới.');
+      }
+      setUpcomingTimetables(timetableWeeks);
       setLiveDataError(errors.join(' '));
       setLoadingLiveData(false);
     };
@@ -402,7 +646,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
           <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.85fr)]">
             <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-blue-600" />Bài tập &amp; kiểm tra gần đây</h2>
+                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-blue-600" />Bài tập &amp; kiểm tra sắp tới</h2>
                 <div role="group" aria-label="Lọc hoạt động học tập" className="flex rounded-lg bg-slate-100 p-0.5">
                   {([
                     { id: 'upcoming', label: 'Cần làm / sắp tới' },
@@ -424,38 +668,40 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
               <div className="divide-y divide-slate-100 px-4">
                 {activityFilter === 'upcoming' && (
                   <>
-                    {pendingAssignments.slice(0, 3).map((assignment) => (
-                      <button
-                        key={assignment.code}
-                        type="button"
-                        onClick={() => onOpenAssignments(assignment.subjectCode, assignment.title)}
-                        className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50"
-                      >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><BookOpen className="h-4 w-4" /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-semibold text-slate-800">{assignment.title}</span>
-                          <span className="mt-1 flex items-center gap-1 truncate text-[9px] text-slate-500">
-                            {assignment.subject} - <Clock3 className="h-2.5 w-2.5 shrink-0" /> Hạn nộp: {assignment.due}
-                            {isPastDeadline(assignment.due, startOfToday) && <span className="font-semibold text-rose-700">- Quá hạn</span>}
+                    {upcomingLearningItems.slice(0, 3).map((item) => {
+                      const isExam = item.kind === 'exam';
+                      const countdownLabel = getCountdownLabel(item.date, startOfToday);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => onNavigate(item.destination)}
+                          className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50"
+                        >
+                          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isExam ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'}`}>
+                            {isExam ? <CalendarClock className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
                           </span>
-                        </span>
-                        <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold ${isPastDeadline(assignment.due, startOfToday) ? 'bg-rose-50 text-rose-700' : assignment.status === 'Đang làm' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{isPastDeadline(assignment.due, startOfToday) ? 'Quá hạn' : assignment.status}</span>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      </button>
-                    ))}
-                    {upcomingExams.slice(0, 2).map((exam) => (
-                      <button key={exam.id} type="button" onClick={() => onNavigate('online-exams')} className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700"><CalendarClock className="h-4 w-4" /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-semibold text-slate-800">Kiểm tra {exam.subject}: {exam.title}</span>
-                          <span className="mt-1 block truncate text-[9px] text-slate-500">{new Date(exam.startsAt).toLocaleString('vi-VN')}</span>
-                        </span>
-                        <span className="shrink-0 rounded-full bg-violet-50 px-2 py-1 text-[9px] font-semibold text-violet-700">Sắp tới</span>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      </button>
-                    ))}
-                    {pendingAssignments.length === 0 && upcomingExams.length === 0 && (
-                      <p className="py-5 text-center text-xs text-slate-500">Chưa có bài tập hoặc lịch kiểm tra sắp tới.</p>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[11px] font-semibold text-slate-800">{isExam ? `Kiểm tra ${item.subject}: ${item.title}` : `BTVN ${item.subject}: ${item.title}`}</span>
+                            <span className="mt-1 flex items-center gap-1 truncate text-[9px] text-slate-500">
+                              <Clock3 className="h-2.5 w-2.5 shrink-0" />
+                              {isExam ? 'Ngày kiểm tra' : 'Hạn nộp'}: {item.date.toLocaleDateString('vi-VN')}
+                            </span>
+                          </span>
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold ${countdownLabel.startsWith('Quá hạn') ? 'bg-rose-50 text-rose-700' : isExam ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {countdownLabel}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        </button>
+                      );
+                    })}
+                    {loadingLiveData && upcomingLearningItems.length === 0 && (
+                      <p className="py-5 text-center text-xs text-slate-500">Đang tải bài tập và lịch kiểm tra…</p>
+                    )}
+                    {!loadingLiveData && upcomingLearningItems.length === 0 && (
+                      <p className="py-5 text-center text-xs text-slate-500">
+                        {liveDataError || 'Chưa có bài tập hoặc lịch kiểm tra sắp tới.'}
+                      </p>
                     )}
                     <button type="button" onClick={() => onNavigate('assignments')} className="w-full py-2 text-left text-[10px] font-semibold text-blue-700 hover:text-blue-900">
                       Xem tất cả bài tập <ArrowRight className="ml-1 inline h-3 w-3" />

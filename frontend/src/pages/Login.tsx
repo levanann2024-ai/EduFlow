@@ -1,26 +1,15 @@
 import { useState } from 'react';
-import { ArrowRight, BookOpen, Eye, EyeOff, GraduationCap, Shield, Users } from 'lucide-react';
-import type { Role } from '@/types';
+import { BookOpen, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   error?: string;
   busy?: boolean;
   onLogin: (email: string, password: string) => Promise<void>;
-  onDemoLogin?: (role: Role) => Promise<void>;
 }
 
-const roles: { value: Role; label: string; icon: typeof Users }[] = [
-  { value: 'lecturer', label: 'Giáo viên', icon: GraduationCap },
-  { value: 'student', label: 'Học sinh', icon: Users },
-  { value: 'admin', label: 'Quản trị viên', icon: Shield },
-];
-
-const demoEnabled = import.meta.env.DEV && import.meta.env.VITE_EDUFLOW_DEMO_MODE === 'true';
-
-export function Login({ error, busy = false, onLogin, onDemoLogin }: LoginProps) {
+export function Login({ error, busy = false, onLogin }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Role>('lecturer');
   const [showPass, setShowPass] = useState(false);
 
   const submitLogin = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -29,107 +18,86 @@ export function Login({ error, busy = false, onLogin, onDemoLogin }: LoginProps)
   };
 
   return (
-    <div className="min-h-screen flex">
-      <div className="flex-1 flex items-center justify-center p-6 bg-slate-50">
-        <form onSubmit={(event) => void submitLogin(event)} className="w-full max-w-sm bg-white border border-slate-300 rounded-xl p-6 shadow-sm">
-          <div className="lg:hidden flex items-center gap-2 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-white" />
+    <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6 sm:py-14">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-md flex-col justify-center sm:min-h-[calc(100vh-7rem)]">
+        <section className="rounded-2xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-9 sm:py-10">
+          <div className="mb-8 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-700 text-white">
+              <BookOpen className="h-5 w-5" aria-hidden="true" />
             </div>
-            <span className="font-semibold text-slate-800">EduFlow</span>
+            <span className="text-lg font-semibold tracking-tight text-slate-900">EduFlow</span>
           </div>
 
-          <h1 className="text-xl font-semibold text-slate-900">Đăng nhập</h1>
-          <p className="text-sm text-slate-500 mt-1">Nhập thông tin tài khoản do nhà trường cấp.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Chào mừng bạn đến với EduFlow
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Nền tảng hỗ trợ dạy và học thông minh
+          </p>
 
-          {demoEnabled && onDemoLogin && (
-            <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold text-amber-900">Chế độ demo dành cho phát triển</p>
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                {roles.map((item) => {
-                  const Icon = item.icon;
-                  const active = role === item.value;
-                  return (
-                    <button
-                      type="button"
-                      key={item.value}
-                      onClick={() => setRole(item.value)}
-                      aria-pressed={active}
-                      className={`flex flex-col items-center gap-1.5 p-2 rounded-lg text-center border ${
-                        active ? 'border-blue-600 bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
-                      <span className={`text-xs font-medium ${active ? 'text-blue-700' : 'text-slate-600'}`}>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onDemoLogin(role)}
-                className="mt-3 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 disabled:opacity-60"
-              >
-                Vào bản demo
-              </button>
-            </div>
-          )}
+          <form onSubmit={(event) => void submitLogin(event)} className="mt-8">
+            {error && (
+              <p role="alert" className="mb-5 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">
+                {error}
+              </p>
+            )}
 
-          {error && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-
-          <div className="mt-5 space-y-3">
-            <label className="block">
-              <span className="text-xs font-medium text-slate-700 mb-1 block">Email</span>
-              <input
-                required
-                type="email"
-                autoComplete="username"
-                maxLength={254}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="email@truong.edu.vn"
-                className="w-full bg-white border border-slate-400 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-slate-700 mb-1 block">Mật khẩu</span>
-              <div className="relative">
+            <div className="space-y-5">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Email</span>
                 <input
                   required
-                  type={showPass ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  maxLength={128}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="w-full bg-white border border-slate-400 rounded-lg pl-3 pr-9 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="email"
+                  autoComplete="username"
+                  maxLength={254}
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="name@school.edu.vn"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPass((shown) => !shown)}
-                  aria-label={showPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </label>
-          </div>
+              </label>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="login-primary w-full mt-5 py-2.5 font-medium text-sm transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy ? 'Đang xác thực…' : 'Đăng nhập'}
-            {!busy && <ArrowRight className="w-4 h-4" />}
-          </button>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">Mật khẩu</span>
+                <span className="relative block">
+                  <input
+                    required
+                    type={showPass ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    maxLength={128}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-3.5 pr-11 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((shown) => !shown)}
+                    aria-label={showPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    aria-pressed={showPass}
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-slate-500 transition hover:text-slate-800"
+                  >
+                    {showPass
+                      ? <EyeOff className="h-4 w-4" aria-hidden="true" />
+                      : <Eye className="h-4 w-4" aria-hidden="true" />}
+                  </button>
+                </span>
+              </label>
+            </div>
 
-          <p className="text-center text-xs text-slate-500 mt-5">
-            Chưa có tài khoản? Hãy liên hệ quản trị viên của trường để được cấp lời mời.
-          </p>
-        </form>
+            <button
+              type="submit"
+              disabled={busy}
+              className="login-primary mt-7 w-full rounded-lg px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? 'Đang đăng nhập…' : 'Đăng nhập'}
+            </button>
+
+            <p className="mt-6 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">
+              EduFlow đang trong giai đoạn thử nghiệm. Một số tính năng có thể chưa hoàn thiện. Mọi góp ý của bạn đều giúp chúng tôi cải thiện hệ thống.
+            </p>
+          </form>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

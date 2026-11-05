@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Calendar, Check, ClipboardList, Circle, Eye, X } from 'lucide-react';
 import { listClassAssignments, type ClassAssignment } from '@/api/schoolApi';
+import { sortByVietnameseName } from './studentSorting';
 
 interface TeacherClassAssignmentsProps {
   classId: string;
@@ -128,17 +129,10 @@ export function TeacherClassAssignments({
                           submitted: false,
                         },
                       ]).map(({ title, submitted }) => {
-                        const students = assignment.students
-                          .filter((student) => Boolean(student.submittedAt) === submitted)
-                          .sort((first, second) => {
-                            if (!submitted) return first.fullName.localeCompare(second.fullName, 'vi');
-                            if (first.score !== null && second.score === null) return -1;
-                            if (first.score === null && second.score !== null) return 1;
-                            if (first.score !== null && second.score !== null && first.score !== second.score) {
-                              return second.score - first.score;
-                            }
-                            return first.fullName.localeCompare(second.fullName, 'vi');
-                          });
+                        const students = sortByVietnameseName(
+                          assignment.students.filter((student) => Boolean(student.submittedAt) === submitted),
+                          (student) => student.fullName,
+                        );
                         return (
                           <section key={title}>
                             <h4 className={`mb-2 text-sm font-semibold ${submitted ? 'text-emerald-700' : 'text-amber-700'}`}>

@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const Module = require('node:module');
 const { after, before, beforeEach, test } = require('node:test');
 const express = require('express');
+const { getExamPeriodSlot } = require('../services/examRoomTimetable');
 
 process.env.AUTH_JWT_SECRET = crypto.randomBytes(32).toString('base64');
 process.env.NODE_ENV = 'test';
@@ -85,8 +86,8 @@ function makeFixture() {
     { class_id: ids.classA, student_user_id: ids.disabledStudent, status: 'active' },
   ];
   const teacherAssignments = [
-    { class_id: ids.classA, teacher_user_id: ids.teacherA, revoked_at: null },
-    { class_id: ids.classB, teacher_user_id: ids.teacherB, revoked_at: null },
+    { class_id: ids.classA, teacher_user_id: ids.teacherA, school_id: ids.schoolA, subject: 'Ngữ văn', revoked_at: null },
+    { class_id: ids.classB, teacher_user_id: ids.teacherB, school_id: ids.schoolB, subject: 'Toán học', revoked_at: null },
   ];
   const sessions = new Map([...users.keys()].map((userId) => [`session-${userId}`, userId]));
   return {
@@ -99,6 +100,7 @@ function makeFixture() {
     sessions,
     assessments: new Map(),
     examRooms: new Map(),
+    classTimetableEvents: new Map(),
     examSessions: new Map(),
     examSubmissionFiles: new Map(),
     mobileExamUploads: new Map(),
@@ -206,6 +208,7 @@ const fakePool = {
           submitted_at: session.submitted_at,
           answers: session.answers,
           payload: room.payload,
+          starts_at: new Date(room.starts_at),
           class_name: classroom.name,
           academic_year: classroom.academic_year,
           question_scores: grade.question_scores,
@@ -867,8 +870,8 @@ const fakePool = {
       const [roomId, teacherId, schoolId] = values;
       const room = fixture.examRooms.get(roomId);
       return room?.teacher_user_id === teacherId && room.school_id === schoolId
-        ? { rows: [{ id: roomId }] }
-        : { rows: [] };
+        ? { rowCount: 1, rows: [{ id: roomId }] }
+        : { rowCount: 0, rows: [] };
     }
     if (query.startsWith('WITH published AS ( UPDATE teacher_exam_session_grades g')) {
       const [roomId] = values;
@@ -950,6 +953,96 @@ const fakePool = {
       };
       fixture.examRooms.set(id, room);
       return { rows: [{ payload: room.payload }] };
+    }
+    if (query.startsWith('SELECT operation, has_exam, source_exam_room_id, teacher_user_id FROM class_timetable_events')) {
+      const [classId, eventDate, period] = values;
+      const event = fixture.classTimetableEvents.get(`${classId}:${eventDate}:${period}`);
+      return {
+        rowCount: event ? 1 : 0,
+        rows: event ? [{
+          operation: event.operation,
+          has_exam: event.has_exam,
+          source_exam_room_id: event.source_exam_room_id,
+          teacher_user_id: event.teacher_user_id,
+        }] : [],
+      };
+    }
+    if (query.startsWith('SELECT class_id, trim(subject) AS subject FROM teacher_class_assignments')) {
+      const [teacherId, schoolId, classIds] = values;
+      const rows = fixture.teacherAssignments
+        .filter((assignment) => assignment.teacher_user_id === teacherId
+          && assignment.school_id === schoolId
+          && assignment.revoked_at === null
+          && classIds.includes(assignment.class_id))
+        .map(({ class_id, subject }) => ({ class_id, subject: subject.trim() }))
+        .sort((first, second) => first.subject.localeCompare(second.subject, 'vi'));
+      return { rows };
+    }
+    if (query.startsWith('UPDATE class_timetable_events') && query.includes('source_exam_room_id = NULL')) {
+      const [roomId, teacherUserId, schoolId] = values;
+      for (const [key, event] of fixture.classTimetableEvents) {
+        if (event.source_exam_room_id === roomId && event.teacher_user_id === teacherUserId
+          && event.school_id === schoolId && !event.source_exam_room_created_event) {
+          Object.assign(event, {
+            has_exam: false,
+            exam_title: '',
+            exam_starts_at: null,
+            source_exam_room_id: null,
+            source_exam_room_created_event: false,
+          });
+          fixture.classTimetableEvents.set(key, event);
+        }
+      }
+      return { rows: [] };
+    }
+    if (query.startsWith('UPDATE class_timetable_events') && query.includes('SET has_exam = true')) {
+      const [classId, eventDate, period, title, startsAt, sourceRoomId] = values;
+      const event = fixture.classTimetableEvents.get(`${classId}:${eventDate}:${period}`);
+      if (event) {
+        Object.assign(event, {
+          has_exam: true,
+          exam_title: title,
+          exam_starts_at: startsAt,
+          source_exam_room_id: sourceRoomId,
+          source_exam_room_created_event: false,
+        });
+      }
+      return { rows: [] };
+    }
+    if (query.startsWith('DELETE FROM class_timetable_events')) {
+      const [roomId, teacherUserId, schoolId] = values;
+      for (const [key, event] of fixture.classTimetableEvents) {
+        if (event.source_exam_room_id === roomId && event.teacher_user_id === teacherUserId
+          && event.school_id === schoolId && event.source_exam_room_created_event) {
+          fixture.classTimetableEvents.delete(key);
+        }
+      }
+      return { rows: [] };
+    }
+    if (query.startsWith('INSERT INTO class_timetable_events')) {
+      const [
+        id, classId, schoolId, teacherUserId, academicYear, semester, eventDate,
+        period, subject, title, startsAt, sourceRoomId,
+      ] = values;
+      fixture.classTimetableEvents.set(`${classId}:${eventDate}:${period}`, {
+        id,
+        class_id: classId,
+        school_id: schoolId,
+        teacher_user_id: teacherUserId,
+        academic_year: academicYear,
+        semester,
+        event_date: eventDate,
+        period_number: period,
+        operation: 'override',
+        subject,
+        title,
+        has_exam: true,
+        exam_title: title,
+        exam_starts_at: startsAt,
+        source_exam_room_id: sourceRoomId,
+        source_exam_room_created_event: true,
+      });
+      return { rows: [] };
     }
     if (query.includes('DELETE FROM teacher_exam_rooms')) {
       const [roomId, teacherUserId, schoolId] = values;
@@ -1245,7 +1338,7 @@ test('teacher assessments are persisted and scoped to their owner and assessment
   const assessment = {
     id: 'assignment-local-1',
     title: 'Ôn tập chương 1',
-    subject: 'Toán học',
+    subject: '',
     grade: 'Khối 10',
     topic: 'Hàm số',
     questions: [{ id: 'question-1', question: 'Tính 1 + 1', options: ['2'] }],
@@ -1514,6 +1607,22 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
   });
   assert.equal(savedExam.status, 201);
 
+  const localDateParts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date()).map(({ type, value }) => [type, value]),
+  );
+  const localDateUtc = Date.UTC(
+    Number(localDateParts.year),
+    Number(localDateParts.month) - 1,
+    Number(localDateParts.day),
+  );
+  const localWeekday = new Date(localDateUtc).getUTCDay();
+  const daysUntilMonday = (8 - localWeekday) % 7 || 7;
+  const startsAt = new Date(localDateUtc + daysUntilMonday * 24 * 60 * 60_000 + 15 * 60_000).toISOString();
   const room = {
     id: '40000000-0000-4000-8000-000000000001',
     code: 'A1B2C3',
@@ -1522,11 +1631,11 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
     classIds: [ids.classB],
     classNames: ['Giá trị không tin cậy'],
     studentCount: 38,
-    startsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    startsAt,
     durationMinutes: 45,
     status: 'scheduled',
     examId: exam.id,
-    examSnapshot: exam,
+    examSnapshot: { ...exam, subject: 'Sinh học' },
     settings: {
       shuffleQuestions: false,
       allowBackNavigation: true,
@@ -1549,8 +1658,17 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
   assert.equal(savedRoom.status, 201, JSON.stringify(savedRoom.body));
   assert.equal(savedRoom.body.room.classNames[0], 'Lớp 10B1');
   assert.equal(savedRoom.body.room.examSnapshot.id, exam.id);
+  assert.equal(savedRoom.body.room.examSnapshot.subject, 'Toán học');
   assert.equal(savedRoom.body.room.isDemo, false);
   assert.match(savedRoom.body.room.code, /^[A-HJ-NP-Z2-9]{8}$/);
+  const roomEvent = [...fixture.classTimetableEvents.values()]
+    .find((event) => event.source_exam_room_id === room.id);
+  assert.ok(roomEvent);
+  assert.equal(roomEvent.class_id, ids.classB);
+  assert.equal(roomEvent.has_exam, true);
+  assert.equal(roomEvent.subject, 'Toán học');
+  assert.equal(roomEvent.exam_title, room.title);
+  assert.equal(getExamPeriodSlot(room.startsAt).period, 1);
 
   await request('/teacher/assessments/exam', ids.teacherB, {
     method: 'POST',
@@ -1565,6 +1683,28 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
   assert.equal(updatedRoom.status, 200);
   assert.equal(updatedRoom.body.room.examSnapshot.title, exam.title);
   assert.equal(updatedRoom.body.room.code, savedRoom.body.room.code);
+  assert.equal(
+    [...fixture.classTimetableEvents.values()].filter((event) => event.source_exam_room_id === room.id).length,
+    1,
+  );
+  const outsidePeriodRoom = await request(`/teacher/exam-rooms/${room.id}`, ids.teacherB, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...updatedRoom.body.room,
+      startsAt: new Date(Date.parse(startsAt) + 5 * 60 * 60_000).toISOString(),
+    }),
+  });
+  assert.equal(outsidePeriodRoom.status, 200);
+  assert.equal(
+    [...fixture.classTimetableEvents.values()].some((event) => event.source_exam_room_id === room.id),
+    false,
+  );
+  await request(`/teacher/exam-rooms/${room.id}`, ids.teacherB, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updatedRoom.body.room),
+  });
 
   const listed = await request('/teacher/exam-rooms', ids.teacherB);
   assert.equal(listed.status, 200);
@@ -2171,6 +2311,43 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
   assert.equal(forbiddenDelete.status, 404);
   const deleted = await request(`/teacher/exam-rooms/${room.id}`, ids.teacherB, { method: 'DELETE' });
   assert.equal(deleted.status, 200);
+  assert.equal([...fixture.classTimetableEvents.values()].some((event) => event.source_exam_room_id === room.id), false);
+
+  const secondRoomId = '40000000-0000-4000-8000-000000000002';
+  const secondStartsAt = new Date(Date.parse(startsAt) + 25 * 60 * 60_000).toISOString();
+  const secondSlot = getExamPeriodSlot(secondStartsAt);
+  const existingTimetableEvent = {
+    class_id: ids.classB,
+    school_id: ids.schoolB,
+    teacher_user_id: ids.teacherB,
+    operation: 'override',
+    has_exam: false,
+    source_exam_room_id: null,
+    source_exam_room_created_event: false,
+    has_homework: true,
+    homework_title: 'Bài tập đã có',
+  };
+  fixture.classTimetableEvents.set(
+    `${ids.classB}:${secondSlot.eventDate}:${secondSlot.period}`,
+    existingTimetableEvent,
+  );
+  const mergedRoom = await request('/teacher/exam-rooms', ids.teacherB, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...room, id: secondRoomId, startsAt: secondStartsAt }),
+  });
+  assert.equal(mergedRoom.status, 201);
+  const mergedEvent = fixture.classTimetableEvents.get(
+    `${ids.classB}:${secondSlot.eventDate}:${secondSlot.period}`,
+  );
+  assert.equal(mergedEvent.source_exam_room_id, secondRoomId);
+  assert.equal(mergedEvent.source_exam_room_created_event, false);
+  assert.equal(mergedEvent.homework_title, 'Bài tập đã có');
+  const deletedMergedRoom = await request(`/teacher/exam-rooms/${secondRoomId}`, ids.teacherB, { method: 'DELETE' });
+  assert.equal(deletedMergedRoom.status, 200);
+  assert.equal(mergedEvent.has_exam, false);
+  assert.equal(mergedEvent.source_exam_room_id, null);
+  assert.equal(mergedEvent.homework_title, 'Bài tập đã có');
 
   await request('/teacher/assessments/exam', ids.teacherB, {
     method: 'POST',

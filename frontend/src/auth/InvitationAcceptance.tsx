@@ -48,7 +48,7 @@ export function InvitationAcceptance({ token, onAccepted }: InvitationAcceptance
           <input required minLength={2} maxLength={120} autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800" />
         </label>
         <label className="block text-xs font-medium text-slate-700">
-          Mật khẩu (ít nhất 12 ký tự)
+          Mật khẩu (ít nhất 12 ký tự, kết hợp 3 nhóm ký tự)
           <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800" />
         </label>
         <label className="block text-xs font-medium text-slate-700">

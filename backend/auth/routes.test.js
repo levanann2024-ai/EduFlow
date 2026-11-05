@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const argon2 = require('argon2');
 const crypto = require('node:crypto');
 const Module = require('node:module');
 const { after, before, beforeEach, test } = require('node:test');
@@ -24,12 +25,14 @@ const { signAccessToken } = require('./tokens');
 const USER_ID = 'user-test';
 const SESSION_ID = 'session-test';
 const SCHOOL_ID = 'school-test';
+const TARGET_USER_ID = '00000000-0000-4000-8000-000000000002';
 const INITIAL_REFRESH_TOKEN = 'initial-test-refresh-token';
 const REFRESH_COOKIE_NAME = 'eduflow_refresh';
+const INITIAL_PASSWORD = 'Temporary-Password-2026';
 const futureDate = () => new Date(Date.now() + 60 * 60 * 1000);
 
 class FakeAuthPool {
-  constructor({ role = 'admin', status = 'active' } = {}) {
+  constructor({ role = 'admin', status = 'active', mustChangePassword = false, passwordHash } = {}) {
     this.user = {
       id: USER_ID,
       email: 'test@example.invalid',
@@ -37,12 +40,14 @@ class FakeAuthPool {
       role,
       admin_scope: role === 'admin' ? 'system' : null,
       status,
+      password_hash: passwordHash,
       avatar_url: null,
-      must_change_password: false,
+      must_change_password: mustChangePassword,
       profile_completed_at: new Date(),
       school_ids: role === 'admin' ? [] : [SCHOOL_ID],
     };
     this.profile = { grade: null, student_number: null, employee_number: null };
+    this.targetUsers = new Map();
     this.sessions = new Map([[
       SESSION_ID,
       {
@@ -67,6 +72,14 @@ class FakeAuthPool {
 
   async query(sql, values = []) {
     const normalized = sql.replace(/\s+/g, ' ').trim();
+    if (normalized.startsWith('SELECT id, email, password_hash, role, admin_scope, status FROM users')) {
+      if (this.user.email.toLowerCase() !== values[0] || this.user.status !== 'active') return { rows: [] };
+      return { rows: [this.user] };
+    }
+    if (normalized.startsWith('SELECT password_hash FROM users WHERE id = $1 AND status = $2')) {
+      if (this.user.id !== values[0] || this.user.status !== values[1]) return { rows: [] };
+      return { rows: [{ password_hash: this.user.password_hash }] };
+    }
     if (normalized.startsWith('UPDATE auth_sessions SET revoked_at = COALESCE')) {
       const token = this.refreshTokens.get(values[0]);
       const session = token && this.sessions.get(token.session_id);
@@ -118,6 +131,57 @@ class FakeAuthPool {
     const normalized = sql.replace(/\s+/g, ' ').trim();
     if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(normalized)) {
       return { rows: [] };
+    }
+    if (normalized.startsWith('INSERT INTO auth_sessions')) {
+      this.sessions.set(values[0], {
+        id: values[0],
+        user_id: values[1],
+        expires_at: values[2],
+        revoked_at: null,
+      });
+      return { rowCount: 1, rows: [] };
+    }
+    if (normalized.startsWith('UPDATE users SET password_hash = $2, must_change_password = false')) {
+      if (values[0] !== this.user.id) return { rowCount: 0, rows: [] };
+      this.user.password_hash = values[1];
+      this.user.must_change_password = false;
+      return { rowCount: 1, rows: [] };
+    }
+    if (normalized.startsWith('UPDATE auth_sessions SET revoked_at = COALESCE')
+      && normalized.includes('WHERE user_id = $1 AND id <> $2')) {
+      let rowCount = 0;
+      for (const session of this.sessions.values()) {
+        if (session.user_id === values[0] && session.id !== values[1] && !session.revoked_at) {
+          session.revoked_at = new Date();
+          rowCount += 1;
+        }
+      }
+      return { rowCount, rows: [] };
+    }
+    if (normalized.startsWith('SELECT u.id, u.role, u.admin_scope, u.status FROM users u')) {
+      const target = this.targetUsers.get(values[0]);
+      const inScope = values[1] || target?.school_ids?.some((schoolId) => values[2].includes(schoolId));
+      return {
+        rows: target && inScope
+          ? [{ id: target.id, role: target.role, admin_scope: target.admin_scope, status: target.status }]
+          : [],
+      };
+    }
+    if (normalized.startsWith('UPDATE users SET status = $2')) {
+      const target = this.targetUsers.get(values[0]);
+      if (target) target.status = values[1];
+      return { rowCount: target ? 1 : 0, rows: [] };
+    }
+    if (normalized.startsWith('UPDATE auth_sessions SET revoked_at = COALESCE')
+      && normalized.includes('WHERE user_id = $1')) {
+      let rowCount = 0;
+      for (const session of this.sessions.values()) {
+        if (session.user_id === values[0] && !session.revoked_at) {
+          session.revoked_at = new Date();
+          rowCount += 1;
+        }
+      }
+      return { rowCount, rows: [] };
     }
     if (normalized.startsWith('SELECT role FROM users')) {
       if (values[0] !== this.user.id || this.user.status !== 'active' || this.user.must_change_password) {
@@ -195,7 +259,8 @@ let server;
 let baseUrl;
 
 before(async () => {
-  const app = express();
+testPasswordHash = await argon2.hash(INITIAL_PASSWORD, { type: argon2.argon2id });
+const app = express();
   app.use(express.json());
   app.use(cookieParser());
   app.use('/api/auth', router);
@@ -214,8 +279,10 @@ after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
 });
 
+let testPasswordHash;
+
 beforeEach(() => {
-  activePool = new FakeAuthPool();
+  activePool = new FakeAuthPool({ passwordHash: testPasswordHash });
 });
 
 async function post(path, token) {
@@ -225,6 +292,17 @@ async function post(path, token) {
       Origin: 'http://localhost:5173',
       Cookie: `${REFRESH_COOKIE_NAME}=${token}`,
     },
+  });
+}
+
+function loginWithPassword(email, password) {
+  return fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      Origin: 'http://localhost:5173',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password }),
   });
 }
 
@@ -280,6 +358,18 @@ function getWithAccessToken(path, token) {
   });
 }
 
+function patchWithAccessToken(path, token, body) {
+  return fetch(`${baseUrl}/api/auth/${path}`, {
+    method: 'PATCH',
+    headers: {
+      Origin: 'http://localhost:5173',
+      Authorization: ['Bearer', token].join(' '),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 function refreshTokenFrom(response) {
   const cookie = response.headers.get('set-cookie') || '';
   const match = cookie.match(new RegExp(`${REFRESH_COOKIE_NAME}=([^;]+)`));
@@ -303,6 +393,45 @@ test('refresh rotation accepts the successor, rejects replay, and revokes the se
   const afterReplay = await post('refresh', latestToken);
   assert.equal(afterReplay.status, 401);
   assert.equal(activePool.sessions.size, 1);
+});
+
+test('temporary-password login requires a change, blocks protected APIs, and accepts the new password', async () => {
+  activePool = new FakeAuthPool({
+    role: 'student',
+    mustChangePassword: true,
+    passwordHash: testPasswordHash,
+  });
+
+  const firstLogin = await loginWithPassword(activePool.user.email, INITIAL_PASSWORD);
+  assert.equal(firstLogin.status, 200);
+  const firstSession = await firstLogin.json();
+  assert.equal(firstSession.user.mustChangePassword, true);
+
+  const blockedRequest = await getWithAccessToken('users', firstSession.accessToken);
+  assert.equal(blockedRequest.status, 403);
+  assert.equal((await blockedRequest.json()).code, 'ACCOUNT_SETUP_REQUIRED');
+
+  const weakPasswordResponse = await postWithAccessToken('change-password', firstSession.accessToken, {
+    currentPassword: INITIAL_PASSWORD,
+    newPassword: 'aaaaaaaaaaaa',
+  });
+  assert.equal(weakPasswordResponse.status, 400);
+  assert.equal(activePool.user.must_change_password, true);
+
+  const changeResponse = await postWithAccessToken('change-password', firstSession.accessToken, {
+    currentPassword: INITIAL_PASSWORD,
+    newPassword: 'My-New-Strong-Passphrase-2030',
+  });
+  assert.equal(changeResponse.status, 200);
+  assert.equal(activePool.user.must_change_password, false);
+
+  const oldPasswordLogin = await loginWithPassword(activePool.user.email, INITIAL_PASSWORD);
+  assert.equal(oldPasswordLogin.status, 401);
+  assert.equal((await oldPasswordLogin.json()).success, false);
+
+  const nextLogin = await loginWithPassword(activePool.user.email, 'My-New-Strong-Passphrase-2030');
+  assert.equal(nextLogin.status, 200);
+  assert.equal((await nextLogin.json()).user.mustChangePassword, false);
 });
 
 test('logout revokes the session and prevents refresh from creating another session', async () => {
@@ -360,13 +489,54 @@ test('expired and disabled accounts are rejected, and non-admins cannot access a
   const studentToken = signAccessToken(USER_ID, SESSION_ID);
   const usersResponse = await getWithAccessToken('users', studentToken);
   const schoolsResponse = await getWithAccessToken('schools', studentToken);
+  const statusResponse = await patchWithAccessToken(`users/${TARGET_USER_ID}/status`, studentToken, { status: 'disabled' });
   assert.equal(usersResponse.status, 403);
   assert.equal(schoolsResponse.status, 403);
+  assert.equal(statusResponse.status, 403);
 
   activePool.user.school_ids = ['school-one', 'school-two'];
   const inconsistentScopeResponse = await getWithAccessToken('me', studentToken);
   assert.equal(inconsistentScopeResponse.status, 409);
   assert.equal((await inconsistentScopeResponse.json()).code, 'SCHOOL_MEMBERSHIP_INVARIANT_VIOLATION');
+});
+
+test('admins can disable accounts, revoke sessions, and re-enable them without restoring old sessions', async () => {
+  activePool.targetUsers.set(TARGET_USER_ID, {
+    id: TARGET_USER_ID,
+    role: 'student',
+    admin_scope: null,
+    status: 'active',
+    school_ids: [SCHOOL_ID],
+  });
+  activePool.sessions.set('target-session', {
+    id: 'target-session',
+    user_id: TARGET_USER_ID,
+    expires_at: futureDate(),
+    revoked_at: null,
+  });
+  const adminToken = signAccessToken(USER_ID, SESSION_ID);
+
+  const disableResponse = await patchWithAccessToken(
+    `users/${TARGET_USER_ID}/status`,
+    adminToken,
+    { status: 'disabled' },
+  );
+  assert.equal(disableResponse.status, 200);
+  assert.deepEqual(await disableResponse.json(), {
+    success: true,
+    user: { id: TARGET_USER_ID, status: 'disabled' },
+  });
+  assert.equal(activePool.targetUsers.get(TARGET_USER_ID).status, 'disabled');
+  assert.ok(activePool.sessions.get('target-session').revoked_at);
+
+  const enableResponse = await patchWithAccessToken(
+    `users/${TARGET_USER_ID}/status`,
+    adminToken,
+    { status: 'active' },
+  );
+  assert.equal(enableResponse.status, 200);
+  assert.equal(activePool.targetUsers.get(TARGET_USER_ID).status, 'active');
+  assert.ok(activePool.sessions.get('target-session').revoked_at);
 });
 
 test('role-specific profile completion stores optional student and lecturer details', async () => {

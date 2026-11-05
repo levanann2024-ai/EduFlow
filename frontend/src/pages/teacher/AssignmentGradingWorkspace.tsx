@@ -14,6 +14,7 @@ import {
   type ClassAssignment,
   type SchoolClass,
 } from '@/api/schoolApi';
+import { sortByVietnameseName } from './studentSorting';
 import { AssignmentSubmissionFiles } from '@/components/AssignmentSubmissionFiles';
 import { MathText } from '@/components/MathText';
 import {
@@ -120,11 +121,10 @@ export function AssignmentGradingWorkspace() {
       : null,
     [parsedAssignment, selectedSubmission?.responseText],
   );
-  const sortedSubmissions = useMemo(() => [...submissions].sort((first, second) => {
-    const firstPriority = first.responseText === null ? 0 : first.gradedAt === null ? 1 : 2;
-    const secondPriority = second.responseText === null ? 0 : second.gradedAt === null ? 1 : 2;
-    return firstPriority - secondPriority || first.studentName.localeCompare(second.studentName, 'vi');
-  }), [submissions]);
+  const sortedSubmissions = useMemo(
+    () => sortByVietnameseName(submissions, (submission) => submission.studentName),
+    [submissions],
+  );
   const visibleAssignments = useMemo(() => [...assignments].sort((first, second) => {
     const firstGraded = first.students.filter((student) => student.gradedAt).length;
     const secondGraded = second.students.filter((student) => student.gradedAt).length;

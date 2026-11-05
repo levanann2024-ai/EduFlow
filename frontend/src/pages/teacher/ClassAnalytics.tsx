@@ -29,6 +29,7 @@ import {
   type TeacherProgressAnalysisResult,
 } from '@/api/schoolApi';
 import { useChartViewport } from '@/hooks/useChartViewport';
+import { sortByVietnameseName } from './studentSorting';
 
 interface ScorePoint {
   label: string;
@@ -177,7 +178,10 @@ export function ClassAnalytics() {
   const analysisRequestId = useRef(0);
 
   const selectedClass = classes.find((classroom) => classroom.id === classId) ?? null;
-  const selectedStudent = students.find((student) => student.id === selectedStudentId) ?? students[0] ?? null;
+  const sortedStudents = useMemo(() => sortByVietnameseName(students, (student) => student.fullName), [students]);
+  const selectedStudent = sortedStudents.find((student) => student.id === selectedStudentId)
+    ?? sortedStudents[0]
+    ?? null;
   const recentAssignments = useMemo(() => [...assignments]
     .sort((first, second) => Date.parse(first.dueAt) - Date.parse(second.dueAt))
     .slice(-8), [assignments]);
@@ -737,7 +741,7 @@ export function ClassAnalytics() {
                     <p className="mt-1 text-xs text-slate-500">{students.length} học sinh</p>
                   </div>
                   <div className="space-y-1 p-2">
-                    {students.map((student) => (
+                    {sortedStudents.map((student) => (
                       <button
                         type="button"
                         key={student.id}

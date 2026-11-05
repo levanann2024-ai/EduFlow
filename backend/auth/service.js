@@ -17,6 +17,11 @@ function normalizeEmail(email) {
   return email.trim().toLowerCase();
 }
 
+function hasStrongPasswordComposition(password) {
+  const groups = [/[a-z]/, /[A-Z]/, /\d/, /[^a-zA-Z0-9]/];
+  return groups.filter((pattern) => pattern.test(password)).length >= 3;
+}
+
 async function getDummyPasswordHash() {
   if (!dummyPasswordHash) {
     dummyPasswordHash = argon2.hash(randomBytes(32).toString('hex'), { type: argon2.argon2id });
@@ -127,13 +132,13 @@ async function login(email, password) {
   const passwordMatches = await argon2.verify(passwordHash, password);
 
   if (!user || user.status !== 'active' || !passwordMatches) {
-    const error = new Error('Email hoặc mật khẩu không đúng.');
+    const error = new Error('Email hoặc mật khẩu không chính xác.');
     error.status = 401;
     throw error;
   }
   const existingUser = await loadUser(user.id, pool);
   if (!existingUser || !hasValidSchoolScope(existingUser)) {
-    const error = new Error('Email hoặc mật khẩu không đúng.');
+    const error = new Error('Email hoặc mật khẩu không chính xác.');
     error.status = 401;
     throw error;
   }
@@ -143,7 +148,7 @@ async function login(email, password) {
     await client.query('BEGIN');
     const authUser = await loadUser(user.id, client);
     if (!authUser || !hasValidSchoolScope(authUser)) {
-      const error = new Error('Email hoặc mật khẩu không đúng.');
+      const error = new Error('Email hoặc mật khẩu không chính xác.');
       error.status = 401;
       throw error;
     }
@@ -249,8 +254,13 @@ async function rotateRefreshToken(refreshToken) {
 }
 
 async function changePassword(userId, currentPassword, newPassword, currentSessionId) {
-  if (typeof newPassword !== 'string' || newPassword.length < PASSWORD_MIN_LENGTH || newPassword.length > 128) {
-    const error = new Error(`Mật khẩu mới cần có từ ${PASSWORD_MIN_LENGTH} đến 128 ký tự.`);
+  if (
+    typeof newPassword !== 'string'
+    || newPassword.length < PASSWORD_MIN_LENGTH
+    || newPassword.length > 128
+    || !hasStrongPasswordComposition(newPassword)
+  ) {
+    const error = new Error(`Mật khẩu mới cần có từ ${PASSWORD_MIN_LENGTH} đến 128 ký tự và kết hợp ít nhất 3 nhóm: chữ thường, chữ hoa, số, ký tự đặc biệt.`);
     error.status = 400;
     throw error;
   }
@@ -451,8 +461,13 @@ async function acceptInvitation({ token, fullName, password }) {
     error.status = 400;
     throw error;
   }
-  if (typeof password !== 'string' || password.length < PASSWORD_MIN_LENGTH || password.length > 128) {
-    const error = new Error(`Mật khẩu cần có từ ${PASSWORD_MIN_LENGTH} đến 128 ký tự.`);
+  if (
+    typeof password !== 'string'
+    || password.length < PASSWORD_MIN_LENGTH
+    || password.length > 128
+    || !hasStrongPasswordComposition(password)
+  ) {
+    const error = new Error(`Mật khẩu cần có từ ${PASSWORD_MIN_LENGTH} đến 128 ký tự và kết hợp ít nhất 3 nhóm: chữ thường, chữ hoa, số, ký tự đặc biệt.`);
     error.status = 400;
     throw error;
   }
@@ -619,6 +634,70 @@ async function listUsers(allowedSchoolIds, systemAdmin) {
   return result.rows;
 }
 
+async function setUserStatus(userId, status, { actorUserId, allowedSchoolIds, systemAdmin }) {
+  if (!['active', 'disabled'].includes(status)) {
+    const error = new Error('Trạng thái tài khoản không hợp lệ.');
+    error.status = 400;
+    throw error;
+  }
+  if (userId === actorUserId) {
+    const error = new Error('Không thể thay đổi trạng thái tài khoản đang sử dụng.');
+    error.status = 400;
+    throw error;
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT u.id, u.role, u.admin_scope, u.status
+         FROM users u
+        WHERE u.id = $1
+          AND ($2::boolean OR EXISTS (
+            SELECT 1
+              FROM school_memberships sm
+             WHERE sm.user_id = u.id AND sm.status = 'active'
+               AND sm.school_id = ANY($3::uuid[])
+          ))
+        FOR UPDATE OF u`,
+      [userId, systemAdmin, allowedSchoolIds],
+    );
+    const target = result.rows[0];
+    if (!target) {
+      const error = new Error('Không tìm thấy tài khoản trong phạm vi quản lý.');
+      error.status = 404;
+      throw error;
+    }
+    if (target.role === 'admin' && (!systemAdmin || target.admin_scope === 'system')) {
+      const error = new Error('Không thể thay đổi trạng thái tài khoản quản trị viên này.');
+      error.status = 403;
+      throw error;
+    }
+
+    if (target.status !== status) {
+      await client.query(
+        'UPDATE users SET status = $2, updated_at = now() WHERE id = $1',
+        [userId, status],
+      );
+    }
+    if (status === 'disabled') {
+      await client.query(
+        `UPDATE auth_sessions
+            SET revoked_at = COALESCE(revoked_at, now())
+          WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+    }
+    await client.query('COMMIT');
+    return { id: userId, status };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   ACCESS_TOKEN_TTL_SECONDS,
   PASSWORD_MIN_LENGTH,
@@ -634,4 +713,5 @@ module.exports = {
   login,
   publicUser,
   rotateRefreshToken,
+  setUserStatus,
 };

@@ -26,6 +26,10 @@ export function FirstLoginSetup({ user, onComplete }: FirstLoginSetupProps) {
       if (!passwordChanged) {
         if (newPassword !== confirmPassword) throw new Error('Mật khẩu xác nhận không khớp.');
         await changePassword(currentPassword, newPassword);
+        if (user.profileComplete) {
+          onComplete({ ...user, mustChangePassword: false });
+          return;
+        }
         setPasswordChanged(true);
         setCurrentPassword('');
         setNewPassword('');
@@ -60,7 +64,7 @@ export function FirstLoginSetup({ user, onComplete }: FirstLoginSetupProps) {
               <input required type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
             </label>
             <label className="block text-sm font-medium text-slate-700">
-              Mật khẩu mới (ít nhất 12 ký tự)
+              Mật khẩu mới (ít nhất 12 ký tự, kết hợp 3 nhóm ký tự)
               <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
             </label>
             <label className="block text-sm font-medium text-slate-700">

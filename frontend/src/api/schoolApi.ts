@@ -300,6 +300,7 @@ export interface TeacherTimetableEntry {
   hasExamReturn: boolean;
   examReturnNote: string;
   examReturnAt: string | null;
+  roomExamTitle?: string;
 }
 
 export interface TeacherTimetableResponse {

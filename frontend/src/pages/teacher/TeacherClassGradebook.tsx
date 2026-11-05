@@ -6,6 +6,7 @@ import {
   type GradebookStudent,
   type TermGrades,
 } from '@/api/schoolApi';
+import { sortByVietnameseName } from './studentSorting';
 
 interface TeacherClassGradebookProps {
   classId: string;
@@ -51,6 +52,7 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+  const sortedStudents = useMemo(() => sortByVietnameseName(students, (student) => student.fullName), [students]);
 
   useEffect(() => {
     if (subjects.length > 0 && !subjects.includes(subject)) setSubject(subjects[0]);
@@ -218,7 +220,7 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-                {students.map((student, index) => {
+                {sortedStudents.map((student, index) => {
                   const inputs = drafts[student.id] ?? toInputs(student.grades);
                   const draftGrades: TermGrades = {
                     regular: inputs.slice(0, 4).map(toScore),

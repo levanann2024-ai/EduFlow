@@ -275,6 +275,11 @@ const MIGRATIONS = [
     file: path.join(__dirname, '..', 'db', 'migrations', '036_student_learning_activity.sql'),
     preflight: null,
   },
+  {
+    name: '037_exam_room_timetable_events',
+    file: path.join(__dirname, '..', 'db', 'migrations', '037_exam_room_timetable_events.sql'),
+    preflight: null,
+  },
 ];
 
 const CORE_TABLES = [

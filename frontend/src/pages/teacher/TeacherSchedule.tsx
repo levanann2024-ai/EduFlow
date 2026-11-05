@@ -254,6 +254,7 @@ function asGridEntry(entry: TeacherTimetableEntry): ScheduleGridEntry {
     hasExamReturn: entry.hasExamReturn,
     examReturnNote: entry.examReturnNote,
     examReturnAt: entry.examReturnAt,
+    roomExamTitle: entry.roomExamTitle,
   };
 }
 

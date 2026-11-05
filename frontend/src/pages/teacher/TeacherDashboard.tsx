@@ -116,6 +116,25 @@ function getWeekStart(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function getWeekDate(weekStart: string, weekday: number) {
+  const [year, month, day] = weekStart.split('-').map(Number);
+  if (!year || !month || !day || weekday < 1 || weekday > 7) return null;
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + weekday - 1);
+  return date;
+}
+
+function getCalendarDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  const parsed = new Date(timestamp);
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+function getDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function getCurrentSemester(date: Date): ProgressSemester {
   return date.getMonth() >= 7 ? 'Kỳ 1' : 'Kỳ 2';
 }
@@ -377,6 +396,65 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       .sort((first, second) => new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime())
   ), [dashboard, now]);
   const pendingAppeals = dashboard?.appeals.filter((appeal) => appeal.status === 'pending') ?? [];
+  const timetableWeek = dashboard?.timetable?.timetable;
+  const scheduleExamKeys = new Set<string>();
+  const timetableAttentionItems = timetableWeek && !timetableWeek.isTemplate
+    ? (dashboard?.timetable?.entries ?? []).flatMap((entry) => {
+      const scheduledDate = getWeekDate(timetableWeek.weekStart, entry.weekday);
+      if (!scheduledDate) return [];
+      const items = [];
+      if (entry.hasExam) {
+        const examDateTime = entry.examStartsAt || entry.dueAt;
+        const examDate = examDateTime ? getCalendarDate(examDateTime) : scheduledDate;
+        const examHasNotStarted = !examDateTime || Date.parse(examDateTime) >= now.getTime();
+        if (examDate && examDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate()) && examHasNotStarted) {
+          const title = entry.examTitle || entry.title || 'Bài kiểm tra';
+          scheduleExamKeys.add(`${title.trim().toLocaleLowerCase('vi')}:${getDateKey(examDate)}`);
+          items.push({
+            id: `scheduled-exam-${getDateKey(examDate)}-${entry.classId}-${entry.period}`,
+            title: `Sắp kiểm tra: ${title}`,
+            detail: `${entry.classCode} · ${entry.subject} · ${examDate.toLocaleDateString('vi-VN')}`,
+            tone: 'rose' as const,
+            icon: CalendarClock,
+            onClick: () => onNavigate('schedule'),
+          });
+        }
+      }
+      if (entry.hasExamReturn) {
+        const returnDateTime = entry.examReturnAt || (entry.type === 'exam_return' ? entry.dueAt : null);
+        const returnDate = returnDateTime ? getCalendarDate(returnDateTime) : scheduledDate;
+        const returnIsUpcoming = !returnDateTime || Date.parse(returnDateTime) >= now.getTime();
+        if (returnDate && returnDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate()) && returnIsUpcoming) {
+          items.push({
+            id: `scheduled-return-${getDateKey(returnDate)}-${entry.classId}-${entry.period}`,
+            title: `Lịch trả bài: ${entry.examReturnNote || entry.classCode}`,
+            detail: `${entry.classCode} · ${entry.subject} · ${returnDate.toLocaleDateString('vi-VN')}`,
+            tone: 'blue' as const,
+            icon: CalendarDays,
+            onClick: () => onNavigate('schedule'),
+          });
+        }
+      }
+      if (entry.hasHomework) {
+        const homeworkDueAt = entry.homeworkDueAt || entry.dueAt;
+        const homeworkDate = homeworkDueAt ? getCalendarDate(homeworkDueAt) : scheduledDate;
+        const dueTimestamp = homeworkDueAt ? Date.parse(homeworkDueAt) : scheduledDate.getTime();
+        if (homeworkDate
+          && dueTimestamp >= now.getTime()
+          && dueTimestamp - now.getTime() <= 3 * 24 * 60 * 60 * 1000) {
+          items.push({
+            id: `scheduled-homework-${getDateKey(homeworkDate)}-${entry.classId}-${entry.period}`,
+            title: `BTVN sắp đến hạn: ${entry.homeworkTitle || entry.title || entry.subject}`,
+            detail: `${entry.classCode} · ${entry.subject} · ${homeworkDate.toLocaleDateString('vi-VN')}`,
+            tone: 'amber' as const,
+            icon: CalendarDays,
+            onClick: () => onNavigate('schedule'),
+          });
+        }
+      }
+      return items;
+    })
+    : [];
   const studentConcerns = (dashboard?.progress ?? []).flatMap((classProgress) => (
     classProgress.concerns.map((concern) => ({
       ...concern,
@@ -455,6 +533,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       icon: ClipboardCheck,
       onClick: () => onNavigate('ai-grading'),
     })),
+    ...timetableAttentionItems,
     ...studentConcerns.slice(0, 4).map((student) => ({
       id: `student-${student.studentId}-${student.subject}`,
       title: student.kind === 'low' ? `${student.studentName} có điểm thấp` : `Điểm ${student.studentName} đang giảm`,
@@ -465,6 +544,12 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
     })),
     ...upcomingExams
       .filter((room) => new Date(room.startsAt).getTime() - now.getTime() <= 48 * 60 * 60 * 1000)
+      .filter((room) => {
+        const examDate = getCalendarDate(room.startsAt);
+        return !examDate || !scheduleExamKeys.has(
+          `${room.title.trim().toLocaleLowerCase('vi')}:${getDateKey(examDate)}`,
+        );
+      })
       .slice(0, 3)
       .map((room) => ({
         id: `exam-${room.id}`,

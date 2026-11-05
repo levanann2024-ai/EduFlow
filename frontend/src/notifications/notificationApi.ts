@@ -20,6 +20,7 @@ import type { AppLanguage } from '@/settings/userSettings';
 import type { ExamRoomRecord } from '@/pages/teacher/examRoomDemoData';
 
 export type NotificationKind = 'assignment' | 'grade' | 'appeal' | 'grading' | 'exam';
+const MAX_NOTIFICATION_ITEMS = 10;
 
 export interface UserNotification {
   id: string;
@@ -242,7 +243,9 @@ export async function loadNotificationFeed(role: Role, language: AppLanguage = '
   if (role === 'admin') return { items: [], error: '' };
   const now = Date.now();
   const sortByDate = (items: UserNotification[]) => (
-    items.sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    items
+      .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+      .slice(0, MAX_NOTIFICATION_ITEMS)
   );
   if (role === 'student') {
     const [assignmentsResult, gradesResult, appealsResult, examsResult] = await Promise.allSettled([

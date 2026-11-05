@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const {
   getTeacherTimetable,
   generateStudentTimetableSuggestion,
+  mergeTeacherExamRoomNotes,
   mapTeacherTimetableEntries,
   validateStudentSchedulePlan,
   validateTeacherSchedulePlan,
@@ -138,6 +139,72 @@ test('teacher timetable template keeps recurring cells but clears week-specific 
   assert.equal(entry.hasExam, false);
   assert.equal(entry.hasExamReturn, false);
   assert.equal(entry.dueAt, null);
+});
+
+test('teacher exam-room notes merge with existing entries and do not replace another class', () => {
+  const entries = [{
+    weekday: 1,
+    period: 1,
+    classId: 'class-id',
+    classCode: '11A2',
+    className: 'Lớp 11A2',
+    isHomeroom: false,
+    subject: 'Toán học',
+    type: 'lesson',
+    title: '',
+    topic: 'Hàm số',
+    dueAt: null,
+    hasHomework: true,
+    homeworkTitle: 'Bài tập',
+    homeworkDueAt: null,
+    hasExam: false,
+    examTitle: '',
+    examStartsAt: null,
+    hasExamReturn: false,
+    examReturnNote: '',
+    examReturnAt: null,
+  }];
+  const events = [
+    {
+      weekday: 1,
+      period_number: 1,
+      class_id: 'class-id',
+      class_code: '11A2',
+      class_name: 'Lớp 11A2',
+      is_homeroom: false,
+      subject: 'Toán học',
+      exam_title: 'Kiểm tra chương 1',
+    },
+    {
+      weekday: 1,
+      period_number: 2,
+      class_id: 'other-class',
+      class_code: '11A3',
+      class_name: 'Lớp 11A3',
+      is_homeroom: false,
+      subject: 'Hóa học',
+      exam_title: 'Kiểm tra hóa',
+    },
+    {
+      weekday: 1,
+      period_number: 1,
+      class_id: 'another-class',
+      class_code: '11A4',
+      class_name: 'Lớp 11A4',
+      is_homeroom: false,
+      subject: 'Ngữ văn',
+      exam_title: 'Kiểm tra văn',
+    },
+  ];
+
+  const merged = mergeTeacherExamRoomNotes(entries, events);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].roomExamTitle, 'Kiểm tra chương 1');
+  assert.equal(merged[0].topic, 'Hàm số');
+  assert.equal(merged[0].homeworkTitle, 'Bài tập');
+  assert.equal(merged[0].hasExam, false);
+  assert.equal(merged[1].roomExamTitle, 'Kiểm tra hóa');
+  assert.equal(merged[1].classId, 'other-class');
 });
 
 test('teacher and student timetable operations reject cross-role access before database access', async () => {

@@ -22,6 +22,7 @@ interface UserRecord {
 interface ApiResult<T> {
   success: boolean;
   message?: string;
+  user?: T;
   users?: T;
   schools?: T;
   school?: T;
@@ -63,6 +64,7 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusBusyId, setStatusBusyId] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -133,6 +135,34 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
     }
   };
 
+  const changeUserStatus = async (user: UserRecord) => {
+    const status = user.status === 'active' ? 'disabled' : 'active';
+    const action = status === 'disabled' ? 'khóa' : 'mở khóa';
+    if (!window.confirm(`Bạn có chắc muốn ${action} tài khoản ${user.full_name}?`)) return;
+
+    setStatusBusyId(user.id);
+    setError('');
+    setNotice('');
+    try {
+      const result = await requestJson<{ id: string; status: 'active' | 'disabled' }>(
+        `/api/auth/users/${encodeURIComponent(user.id)}/status`,
+        'PATCH',
+        { status },
+      );
+      if (!result.user) throw new Error('Phản hồi cập nhật thiếu trạng thái tài khoản.');
+      setUsers((existing) => existing.map((item) => (
+        item.id === result.user?.id ? { ...item, status: result.user.status } : item
+      )));
+      setNotice(status === 'disabled'
+        ? `Đã khóa tài khoản ${user.full_name} và thu hồi các phiên đăng nhập.`
+        : `Đã mở khóa tài khoản ${user.full_name}.`);
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : 'Không thể cập nhật trạng thái tài khoản.');
+    } finally {
+      setStatusBusyId('');
+    }
+  };
+
   if (currentUser.isDemo) {
     const visibleDemoUsers = demoUsers.filter((user) => `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase()));
     return (
@@ -177,9 +207,9 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
 
       <section className="card overflow-hidden">
         <div className="border-b border-slate-100 p-4"><div className="relative max-w-sm"><Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" /><input className="input-field pl-9" placeholder="Tìm người dùng..." value={query} onChange={(event) => setQuery(event.target.value)} /></div></div>
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Mã trường</th></tr></thead><tbody className="divide-y divide-slate-100">
-          {loading ? <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Đang tải…</td></tr> : filteredUsers.map((user) => <tr key={user.id}><td className="px-4 py-3"><p className="font-medium">{user.full_name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role === 'lecturer' ? 'Giáo viên' : user.role === 'student' ? 'Học sinh' : user.admin_scope === 'system' ? 'Quản trị viên hệ thống' : 'Quản trị viên trường'}</td><td className="px-4 py-3">{user.status === 'active' ? 'Đang hoạt động' : 'Tạm khóa'}</td><td className="px-4 py-3 font-mono text-xs text-slate-500">{user.school_ids?.join(', ') || 'Toàn hệ thống'}</td></tr>)}
-          {!loading && filteredUsers.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Không tìm thấy người dùng.</td></tr>}
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Mã trường</th><th className="px-4 py-3">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-100">
+          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Đang tải…</td></tr> : filteredUsers.map((user) => <tr key={user.id}><td className="px-4 py-3"><p className="font-medium">{user.full_name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role === 'lecturer' ? 'Giáo viên' : user.role === 'student' ? 'Học sinh' : user.admin_scope === 'system' ? 'Quản trị viên hệ thống' : 'Quản trị viên trường'}</td><td className="px-4 py-3">{user.status === 'active' ? 'Đang hoạt động' : 'Tạm khóa'}</td><td className="px-4 py-3 font-mono text-xs text-slate-500">{user.school_ids?.join(', ') || 'Toàn hệ thống'}</td><td className="px-4 py-3">{user.role === 'admin' ? <span className="text-xs text-slate-400">—</span> : <button type="button" disabled={statusBusyId === user.id || user.id === currentUser.id} onClick={() => void changeUserStatus(user)} className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50">{statusBusyId === user.id ? 'Đang cập nhật…' : user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa'}</button>}</td></tr>)}
+          {!loading && filteredUsers.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Không tìm thấy người dùng.</td></tr>}
         </tbody></table></div>
       </section>
     </div>

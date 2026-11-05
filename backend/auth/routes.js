@@ -21,6 +21,7 @@ const {
   listUsers,
   login,
   rotateRefreshToken,
+  setUserStatus,
   updateAvatar,
 } = require('./service');
 const { hashRefreshToken, signDemoToken } = require('./tokens');
@@ -213,6 +214,18 @@ router.post('/schools', requireTrustedOrigin, requireAuth, requireAccountReady, 
 router.get('/users', requireAuth, requireAccountReady, requireRole('admin'), asyncRoute(async (req, res) => {
   const users = await listUsers(req.auth.schoolIds, req.auth.adminScope === 'system');
   return res.json({ success: true, users });
+}));
+
+router.patch('/users/:userId/status', requireTrustedOrigin, requireAuth, requireAccountReady, requireRole('admin'), asyncRoute(async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.userId)) {
+    return res.status(400).json({ success: false, message: 'Mã tài khoản không hợp lệ.' });
+  }
+  const user = await setUserStatus(req.params.userId, req.body?.status, {
+    actorUserId: req.auth.userId,
+    allowedSchoolIds: req.auth.schoolIds,
+    systemAdmin: req.auth.adminScope === 'system',
+  });
+  return res.json({ success: true, user });
 }));
 
 router.post('/change-password', requireTrustedOrigin, loginLimiter, requireAuth, requirePersistentAccount, asyncRoute(async (req, res) => {
