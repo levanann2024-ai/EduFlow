@@ -464,7 +464,7 @@ export function ExamWorkspace({
         setMobileQrError('');
         setImageStatus((current) => ({
           ...current,
-          [activeUpload.questionNumber]: 'Ảnh đã đồng bộ. Em có thể xem lại hoặc xóa trước khi nộp bài.',
+          [activeUpload.questionNumber]: 'Ảnh đã đồng bộ. Bạn có thể xem lại hoặc xóa trước khi nộp bài.',
         }));
       } catch (error: unknown) {
         active = false;
@@ -554,12 +554,12 @@ export function ExamWorkspace({
     };
     const handleVisibility = () => {
       if (document.hidden && !filePickerOpen.current) {
-        recordOffscreenEvent('Em đã chuyển sang tab hoặc ứng dụng khác', 'tab-hidden');
+        recordOffscreenEvent('Chuyển sang tab hoặc ứng dụng khác', 'tab-hidden');
       }
     };
     const handleBlur = () => {
       if (!filePickerOpen.current) {
-        recordOffscreenEvent('Em đã rời khỏi cửa sổ bài thi', 'window-blur');
+        recordOffscreenEvent('Rời khỏi cửa sổ bài thi', 'window-blur');
       }
     };
     const handleFocus = () => {
@@ -584,7 +584,7 @@ export function ExamWorkspace({
       if (!wasFullscreen.current) return;
       wasFullscreen.current = false;
       setIsFullscreen(false);
-      recordOffscreenEvent('Em đã thoát chế độ toàn màn hình', 'fullscreen-exit');
+      recordOffscreenEvent('Thoát chế độ toàn màn hình', 'fullscreen-exit');
     };
     const handleShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
@@ -1245,7 +1245,7 @@ export function ExamWorkspace({
           <section role="dialog" aria-modal="true" aria-labelledby="submit-exam-title" className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><AlertTriangle className="h-5 w-5" /></span>
             <h2 id="submit-exam-title" className="mt-3 text-lg font-bold text-slate-900">Nộp bài thi?</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">Em đã trả lời {answeredCount}/{questions.length} câu. Sau khi nộp, em không thể chỉnh sửa bài làm.</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Bạn đã trả lời {answeredCount}/{questions.length} câu. Sau khi nộp, bạn không thể chỉnh sửa bài làm.</p>
             {isSubmitting && <p role="status" className="mt-2 text-sm text-blue-700">Đang lưu bài lên hệ thống...</p>}
             {!settings.allowEarlySubmit && secondsLeft > 0 && <p className="mt-2 text-sm text-amber-800">Giáo viên cài đặt chỉ nộp khi hết thời gian.</p>}
             <div className="mt-5 flex justify-end gap-2">

@@ -419,13 +419,13 @@ export function StudentProfile({
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><Activity className="h-5 w-5" /></span>
             <div>
               <h2 id="learning-journey-title" className="text-lg font-bold text-slate-900">Hành trình học tập</h2>
-              <p className="mt-1 text-sm text-slate-500">Ghi nhận những lần em thực sự học và luyện tập.</p>
+              <p className="mt-1 text-sm text-slate-500">Ghi nhận những lần bạn thực sự học và luyện tập.</p>
             </div>
           </div>
         </div>
         {user.isDemo ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-center text-sm text-slate-500">
-            Hoạt động học tập thật sẽ được ghi nhận khi em sử dụng tài khoản cá nhân.
+            Hoạt động học tập thật sẽ được ghi nhận khi bạn sử dụng tài khoản cá nhân.
           </p>
         ) : activityLoading ? (
           <p role="status" className="mt-6 py-5 text-center text-sm text-slate-500">Đang tải hành trình học tập...</p>
@@ -537,7 +537,7 @@ export function StudentProfile({
                     <span className="shrink-0 text-xs text-slate-400">{activityDateLabel(item.searchedAt)}</span>
                   </li>
                 ))}</ul>
-              ) : <p className="text-sm text-slate-500">Các nội dung em tìm kiếm sẽ hiển thị ở đây.</p>}
+              ) : <p className="text-sm text-slate-500">Các nội dung bạn tìm kiếm sẽ hiển thị ở đây.</p>}
             </div>
             <div>
               <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><History className="h-4 w-4 text-blue-600" />Lịch sử thi đã có điểm</h3>

@@ -389,7 +389,7 @@ export function StudentExamResults({
               }}
               className="exam-score-intro text-3xl font-extrabold leading-tight text-blue-700 sm:text-5xl"
             >
-              Điểm kiểm tra {selectedResult.title} của em là...
+              Điểm kiểm tra {selectedResult.title} của bạn là...
             </p>
           ) : (
             <>
@@ -599,14 +599,14 @@ export function StudentExamResults({
               </div>
               <button type="button" disabled={appealSubmitting} onClick={() => setAppealOpen(false)} aria-label="Đóng" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button>
             </div>
-            <label htmlFor="student-appeal-reason" className="mt-5 block text-sm font-semibold text-slate-800">Em muốn giáo viên xem lại phần nào?</label>
+            <label htmlFor="student-appeal-reason" className="mt-5 block text-sm font-semibold text-slate-800">Bạn muốn giáo viên xem lại phần nào?</label>
             <textarea
               id="student-appeal-reason"
               value={appealReason}
               onChange={(event) => setAppealReason(event.target.value)}
               maxLength={2000}
               rows={5}
-              placeholder="Nêu câu hỏi hoặc điểm số em muốn được xem lại và lý do..."
+              placeholder="Nêu câu hỏi hoặc điểm số bạn muốn được xem lại và lý do..."
               className="mt-2 w-full resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-6 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             />
             <p className="mt-1 text-right text-xs text-slate-400">{appealReason.length}/2000</p>

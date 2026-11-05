@@ -67,7 +67,7 @@ export function PreExamCheckModal({
       setMicrophoneReady(!needsMicrophone || mediaStream.getAudioTracks().some((track) => track.readyState === 'live'));
     } catch (deviceError) {
       const reason = deviceError instanceof Error && deviceError.name === 'NotAllowedError'
-        ? 'Em cần cấp quyền thiết bị mà giáo viên yêu cầu trong trình duyệt để tiếp tục.'
+        ? 'Bạn cần cấp quyền thiết bị mà giáo viên yêu cầu trong trình duyệt để tiếp tục.'
         : deviceError instanceof Error && deviceError.name === 'NotFoundError'
           ? 'Không tìm thấy thiết bị được yêu cầu. Hãy kết nối thiết bị rồi thử lại.'
           : deviceError instanceof Error
@@ -122,7 +122,7 @@ export function PreExamCheckModal({
 
         <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
           <section aria-label="Quy định thi">
-            <h3 className="font-semibold text-slate-900">Trước khi bắt đầu, em hãy lưu ý</h3>
+            <h3 className="font-semibold text-slate-900">Trước khi bắt đầu, bạn hãy lưu ý</h3>
             <div className="mt-3 space-y-2">
               {[
                 {
@@ -211,7 +211,7 @@ export function PreExamCheckModal({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs text-slate-500">Khi tiếp tục, em xác nhận đã đọc các quy định của phòng thi.</p>
+          <p className="text-xs text-slate-500">Khi tiếp tục, bạn xác nhận đã đọc các quy định của phòng thi.</p>
           <button type="button" onClick={() => void startExam()} disabled={!permissionGranted || starting} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
             <Check className="h-4 w-4" /> Xác nhận &amp; Bắt đầu làm bài thi
           </button>

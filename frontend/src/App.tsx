@@ -538,7 +538,7 @@ function App() {
                 : <Dashboard onNavigate={navigateToPage} role={role} />)}
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
-              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} studentId={role === 'student' ? authUser.id : undefined} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} />}
+              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} />}
               {role === 'lecturer' && lessonsWorkspaceVisited && (
                 <div className={activePage === 'lessons' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
                   <LessonRepository initialDraft={lessonRepositoryDraft} />

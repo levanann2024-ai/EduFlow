@@ -97,7 +97,7 @@ export const examQuestions: ExamQuestion[] = [
     id: 10,
     kind: 'essay',
     points: 0.5,
-    prompt: 'Trình bày cách giải một bài toán em còn băn khoăn. Em có thể nhập công thức LaTeX hoặc tải/chụp ảnh bài làm.',
+    prompt: 'Trình bày cách giải một bài toán bạn còn băn khoăn. Bạn có thể nhập công thức LaTeX hoặc tải/chụp ảnh bài làm.',
     correctAnswer: '',
   },
 ];

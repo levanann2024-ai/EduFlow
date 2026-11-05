@@ -87,6 +87,7 @@ async function chatAI(req, res) {
     ].join('\n') : contextPrompt;
     const generatedReply = await generateText({
       type: isStudent ? 'student-chat' : isTeacher ? 'teacher-chat' : 'chat',
+      teacherGender: isTeacher ? req.auth?.gender : null,
       prompt: imageAttachment
         ? [
           { text: prompt },

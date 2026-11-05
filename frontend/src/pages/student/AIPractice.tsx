@@ -123,7 +123,7 @@ export function AIPractice({
       });
       const result: { success: boolean; data?: QuizQuestion[]; message?: string } = await response.json();
       if (!response.ok || !result.success || !Array.isArray(result.data) || result.data.length === 0) {
-        throw new Error(result.message || 'Chưa tạo được câu hỏi. Em thử lại nhé.');
+        throw new Error(result.message || 'Chưa tạo được câu hỏi. Bạn thử lại nhé.');
       }
       setSubject(requestSubject || 'Tổng hợp');
       setTopic(requestTopic.trim());
@@ -158,15 +158,15 @@ export function AIPractice({
     const sampleQuestions: QuizQuestion[] = [
       {
         id: 'sample-1',
-        question: `Khi học chủ đề “${topic.trim() || 'kiến thức mới'}” trong môn ${subject}, cách nào giúp em bắt đầu giải bài hiệu quả?`,
+        question: `Khi học chủ đề “${topic.trim() || 'kiến thức mới'}” trong môn ${subject}, cách nào giúp bạn bắt đầu giải bài hiệu quả?`,
         options: ['Đọc kỹ yêu cầu và xác định dữ kiện đã cho', 'Chọn đáp án bất kỳ trước khi đọc đề', 'Bỏ qua các khái niệm liên quan', 'Ghi lại mọi công thức mà không xem đề'],
         correctIndex: 0,
-        explanation: 'Đọc kỹ đề giúp em xác định cần tìm gì và chọn kiến thức phù hợp.',
+        explanation: 'Đọc kỹ đề giúp bạn xác định cần tìm gì và chọn kiến thức phù hợp.',
         difficulty: 'easy',
       },
       {
         id: 'sample-2',
-        question: 'Sau khi chọn được cách giải, em nên làm gì để hạn chế sai sót?',
+        question: 'Sau khi chọn được cách giải, bạn nên làm gì để hạn chế sai sót?',
         options: ['Kiểm tra lại từng bước và đối chiếu với yêu cầu', 'Bỏ qua đơn vị và điều kiện', 'Chỉ xem đáp án cuối', 'Dừng ngay khi có kết quả đầu tiên'],
         correctIndex: 0,
         explanation: 'Kiểm tra lại từng bước giúp phát hiện lỗi tính toán hoặc bỏ sót điều kiện.',
@@ -240,12 +240,12 @@ export function AIPractice({
               </span>
               <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-blue-800 sm:text-4xl">AI Ôn luyện</h1>
               <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-                Mô tả bài em muốn luyện, EduBot sẽ chuẩn bị câu hỏi phù hợp.
+                Mô tả nội dung bạn muốn luyện, EduBot sẽ chuẩn bị câu hỏi phù hợp.
               </p>
             </div>
           </header>
           <form onSubmit={submitNaturalPrompt} className="card space-y-4 p-5 sm:p-6">
-            <label htmlFor="practice-natural-prompt" className="block text-sm font-semibold text-slate-800">Em muốn luyện nội dung gì?</label>
+            <label htmlFor="practice-natural-prompt" className="block text-sm font-semibold text-slate-800">Bạn muốn luyện nội dung gì?</label>
             <textarea
               id="practice-natural-prompt"
               value={naturalPrompt}
@@ -324,7 +324,7 @@ export function AIPractice({
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">Em muốn</p>
+                <p className="mb-2 text-sm font-medium text-slate-700">Bạn muốn</p>
                 <div className="grid grid-cols-2 gap-2">
                   <ModeButton selected={mode === 'practice'} onClick={() => changeMode('practice')}>
                     <Target className="h-4 w-4" /> Luyện tập
@@ -421,8 +421,8 @@ export function AIPractice({
                 <h3 className="mt-4 text-lg font-bold text-slate-900">{mode === 'practice' ? 'Bắt đầu luyện tập' : 'Chuẩn bị làm đề'}</h3>
                 <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
                   {mode === 'practice'
-                    ? 'Chọn chủ đề và mức độ. Bài luyện sẽ hiện từng câu để em làm, xem đáp án và đọc lời giải ngay.'
-                    : 'Chọn chủ đề, số câu và thời gian. Khi bắt đầu, phần cài đặt sẽ ẩn để em tập trung làm bài.'}
+                    ? 'Chọn chủ đề và mức độ. Bài luyện sẽ hiện từng câu để bạn làm, xem đáp án và đọc lời giải ngay.'
+                    : 'Chọn chủ đề, số câu và thời gian. Khi bắt đầu, phần cài đặt sẽ ẩn để bạn tập trung làm bài.'}
                 </p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                   {(topicSuggestions[subject] ?? []).map((suggestion) => (
@@ -446,8 +446,8 @@ export function AIPractice({
                 </div>
                 <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">
                   {mode === 'practice'
-                    ? 'Em sẽ làm lần lượt từng câu. Sau mỗi lựa chọn, đáp án đúng và lời giải sẽ hiện ra để em tự kiểm tra.'
-                    : `Bài làm có ${testMinutes} phút. Đáp án và điểm số chỉ hiển thị sau khi em nộp bài.`}
+                    ? 'Bạn sẽ làm lần lượt từng câu. Sau mỗi lựa chọn, đáp án đúng và lời giải sẽ hiện ra để bạn tự kiểm tra.'
+                    : `Bài làm có ${testMinutes} phút. Đáp án và điểm số chỉ hiển thị sau khi bạn nộp bài.`}
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Câu 1 - Xem trước</p>

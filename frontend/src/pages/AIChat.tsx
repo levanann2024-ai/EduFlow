@@ -4,29 +4,19 @@ import type { ChatMessage, Role } from '@/types';
 import { getSavedItems, removeSavedItem, saveItem } from '@/pages/student/savedItems';
 import { MathText } from '@/components/MathText';
 import { authenticatedFetch } from '@/auth/authApi';
+import type { AuthUser } from '@/auth/authApi';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { readExplanationStyle } from '@/settings/userSettings';
 import 'katex/dist/katex.min.css';
-const initialMessages: Record<Role, ChatMessage[]> = {
-  student: [{
-    id: 'm1',
-    role: 'assistant',
-    content: 'Chào em! Em cứ gửi câu hỏi, mình sẽ cùng em tìm hiểu và tự nhận diện môn học phù hợp.',
-    time: 'Bây giờ',
-  }],
-  lecturer: [{
-    id: 'm1',
-    role: 'assistant',
-    content: 'Xin chào! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ thầy/cô chuẩn bị bài giảng, tạo câu hỏi và giải đáp các nội dung học tập.',
-    time: 'Bây giờ',
-  }],
-  admin: [{
-    id: 'm1',
-    role: 'assistant',
-    content: 'Xin chào! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ các câu hỏi về học tập và sử dụng nền tảng.',
-    time: 'Bây giờ',
-  }],
-};
+
+function getInitialMessages(role: Role, gender?: AuthUser['gender']): ChatMessage[] {
+  const content = role === 'student'
+    ? 'Chào bạn! Bạn cứ gửi câu hỏi, tôi sẽ cùng bạn tìm hiểu và tự nhận diện môn học phù hợp.'
+    : role === 'lecturer'
+      ? `Xin chào ${gender === 'male' ? 'thầy' : gender === 'female' ? 'cô' : 'thầy/cô'}! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ chuẩn bị bài giảng, tạo câu hỏi và giải đáp các nội dung học tập.`
+      : 'Xin chào! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ các câu hỏi về học tập và sử dụng nền tảng.';
+  return [{ id: 'm1', role: 'assistant', content, time: 'Bây giờ' }];
+}
 
 interface LegacyStudentConversation {
   id: string;
@@ -472,9 +462,9 @@ function ChatMessageList({
   );
 }
 
-export function AIChat({ role, userName, userId, studentId, initialSubject, initialPrompt, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; studentId?: string; initialSubject?: string; initialPrompt?: string; onExit?: () => void; isDemo?: boolean }) {
+export function AIChat({ role, userName, userId, studentId, gender, initialSubject, initialPrompt, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; onExit?: () => void; isDemo?: boolean }) {
   const userInitials = userName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase('vi');
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages[role]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages(role, gender));
   const [input, setInput] = useState(initialPrompt ?? '');
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState('');
@@ -550,7 +540,7 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
   const startNewConversation = () => {
     setSubject(role === 'student' ? (initialSubject ?? '') : '');
     setActiveConversationId(null);
-    setMessages(initialMessages[role]);
+    setMessages(getInitialMessages(role, gender));
     setInput('');
     setSelectedImage(null);
     if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
@@ -786,7 +776,7 @@ export function AIChat({ role, userName, userId, studentId, initialSubject, init
                   ))}
                 </div>
               ) : !historyLoading && (
-                <p className="px-3 py-2 text-sm text-slate-400">Các cuộc trò chuyện của em sẽ hiện ở đây.</p>
+                <p className="px-3 py-2 text-sm text-slate-400">Các cuộc trò chuyện của bạn sẽ hiện ở đây.</p>
               )}
             </div>
           </aside>

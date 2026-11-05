@@ -293,7 +293,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
             {appealSubmitted ? (
               <div className="mt-5 space-y-3">
                 <p role="status" className={`rounded-lg px-3 py-2 text-sm leading-5 ${appealDecision === 'Đã duyệt' ? 'bg-emerald-50 text-emerald-800' : appealDecision === 'Đã từ chối' ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-900'}`}>
-                  {appealDecision === 'Đã duyệt' ? 'Giáo viên đã duyệt yêu cầu. Em có thể liên hệ giáo viên để nhận lượt thi lại.' : appealDecision === 'Đã từ chối' ? 'Giáo viên đã từ chối yêu cầu phúc khảo.' : 'Yêu cầu và nhật ký đã lưu trên thiết bị này, đang chờ giáo viên xem xét trong cùng môi trường demo.'}
+                  {appealDecision === 'Đã duyệt' ? 'Giáo viên đã duyệt yêu cầu. Bạn có thể liên hệ giáo viên để nhận lượt thi lại.' : appealDecision === 'Đã từ chối' ? 'Giáo viên đã từ chối yêu cầu phúc khảo.' : 'Yêu cầu và nhật ký đã lưu trên thiết bị này, đang chờ giáo viên xem xét trong cùng môi trường demo.'}
                 </p>
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Bản ghi giám sát AI/video 5 giây chưa khả dụng vì chức năng ghi hình AI chưa được kết nối.</p>
                 <button type="button" onClick={downloadAppealEvidence} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"><Download className="h-4 w-4" /> Tải nhật ký thiết bị để gửi giáo viên</button>

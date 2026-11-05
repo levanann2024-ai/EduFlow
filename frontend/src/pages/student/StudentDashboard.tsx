@@ -155,7 +155,7 @@ function SubjectCarousel({
   };
 
   return (
-    <section aria-label="Môn học của em" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+    <section aria-label="Môn học của bạn" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
           <BookOpen className="h-4 w-4 text-blue-600" />
@@ -600,7 +600,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
               <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight sm:text-3xl">
                 Học đúng trọng tâm.<br className="hidden sm:block" /> Tiến bộ <span className="text-amber-300">từng ngày.</span>
               </h1>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-blue-50 sm:text-sm">Hỏi bài, lên kế hoạch học phù hợp với em.</p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-blue-50 sm:text-sm">Hỏi bài, lên kế hoạch học phù hợp với bạn.</p>
 
               <form onSubmit={submitChatPrompt} className="mt-4 flex w-full items-center gap-2 rounded-full border border-white/70 bg-white p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.2)] ring-4 ring-white/15 focus-within:ring-cyan-200/50">
                 <Sparkles aria-hidden="true" className="ml-2 h-5 w-5 shrink-0 text-blue-500" />

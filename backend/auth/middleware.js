@@ -23,6 +23,7 @@ async function requireAuth(req, res, next, { allowMissingSchool = false } = {}) 
         userId: claims.sub,
         sessionId: null,
         role: claims.role,
+        gender: null,
         adminScope: claims.role === 'admin' ? 'system' : null,
         schoolIds: [],
         mustChangePassword: false,
@@ -37,17 +38,19 @@ async function requireAuth(req, res, next, { allowMissingSchool = false } = {}) 
     }
     const result = await getPool().query(
       `SELECT u.id, u.role, u.admin_scope, u.must_change_password, u.profile_completed_at,
+              teacher_profile.gender AS teacher_gender,
               COALESCE(array_agg(sm.school_id) FILTER (
                 WHERE sm.status = 'active' AND sc.status = 'active'
               ), '{}') AS school_ids
          FROM auth_sessions s
          JOIN users u ON u.id = s.user_id
+         LEFT JOIN teacher_profiles teacher_profile ON teacher_profile.user_id = u.id
          LEFT JOIN school_memberships sm ON sm.user_id = u.id
          LEFT JOIN schools sc ON sc.id = sm.school_id
         WHERE s.id = $1 AND s.user_id = $2
           AND s.revoked_at IS NULL AND s.expires_at > now()
           AND u.status = 'active'
-        GROUP BY u.id`,
+        GROUP BY u.id, teacher_profile.gender`,
       [claims.sid, claims.sub],
     );
     const user = result.rows[0];
@@ -56,6 +59,7 @@ async function requireAuth(req, res, next, { allowMissingSchool = false } = {}) 
     }
     const authUser = {
       role: user.role,
+      gender: user.teacher_gender ?? null,
       adminScope: user.admin_scope,
       schoolIds: user.school_ids,
     };

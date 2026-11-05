@@ -311,7 +311,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
         availability,
       });
       if (!parseStudentSchedulePlan(result)) {
-        throw new Error('AI chưa tạo được kế hoạch đúng định dạng. Em thử tạo lại nhé.');
+        throw new Error('AI chưa tạo được kế hoạch đúng định dạng. Bạn thử tạo lại nhé.');
       }
       setSuggestion(result);
       setCompletedPriorities([]);
@@ -404,7 +404,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               <div>
                 <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900">Kế hoạch tuần này</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-                  Chia sẻ lúc em rảnh và bận trong tuần. Mình sẽ cùng em sắp xếp việc học, bài tập và thời gian nghỉ.
+                  Chia sẻ lúc bạn rảnh và bận trong tuần. Tôi sẽ cùng bạn sắp xếp việc học, bài tập và thời gian nghỉ.
                 </p>
               </div>
             </div>
@@ -466,13 +466,13 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                       <BookOpen className="h-5 w-5" />
                     </span>
                     <div>
-                      <h3 className="text-lg font-bold tracking-tight text-slate-900">Lộ trình tuần của em</h3>
+                      <h3 className="text-lg font-bold tracking-tight text-slate-900">Lộ trình tuần của bạn</h3>
                       <p className="mt-0.5 text-xs text-slate-500">Chia nhỏ việc cần làm để mỗi ngày đều vừa sức</p>
                     </div>
                   </div>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-50 to-fuchsia-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
                     <Sparkles className="h-3.5 w-3.5 text-fuchsia-500" />
-                    Gợi ý dành riêng cho em
+                    Gợi ý dành riêng cho bạn
                   </span>
                 </div>
                 {plan ? (
@@ -611,7 +611,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                         </div>
                       ) : (
                         <p className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/70 px-4 py-3 text-sm leading-6 text-slate-600">
-                          Chưa có khung giờ rảnh cụ thể để xếp timeline. Em thêm giờ rảnh vào ghi chú phía trên nhé.
+                          Chưa có khung giờ rảnh cụ thể để xếp timeline. Bạn thêm giờ rảnh vào ghi chú phía trên nhé.
                         </p>
                       )}
                     </section>
@@ -639,7 +639,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                 )}
                 <div className="mt-5 flex items-start gap-2 rounded-2xl bg-gradient-to-r from-cyan-50 to-violet-50 px-4 py-3 text-sm text-indigo-800 ring-1 ring-indigo-100/80">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-teal-600" />
-                  <p>Mỗi bước nhỏ hoàn thành là một bước gần hơn tới mục tiêu của em. Cố lên nhé!</p>
+                  <p>Mỗi bước nhỏ hoàn thành là một bước gần hơn tới mục tiêu của bạn. Cố lên nhé!</p>
                 </div>
               </div>
             </article>
