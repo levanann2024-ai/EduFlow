@@ -344,24 +344,24 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Thông báo</span>
-                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold">Mới</span>
+                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[0.625rem] font-bold">Mới</span>
                 </div>
                 <p className="text-xs font-semibold text-slate-800 line-clamp-2">Lịch kiểm tra 1 tiết môn Toán sắp diễn ra vào tuần tới</p>
               </div>
-              <span className="text-[11px] text-slate-400 mt-2">21/09/2026</span>
+              <span className="text-[0.6875rem] text-slate-400 mt-2">21/09/2026</span>
             </div>
             
             <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Hoạt động</span>
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-bold">Sắp tới</span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[0.625rem] font-bold">Sắp tới</span>
                 </div>
                 <p className="text-xs font-semibold text-slate-800 line-clamp-2">Đại hội Đoàn trường và thi đấu thể thao khối 10</p>
               </div>
               <div className="flex items-center justify-between mt-2">
-                <span className="text-[11px] text-slate-400">26/09/2026</span>
-                <span className="text-[11px] text-blue-600 font-semibold cursor-pointer hover:underline">Chi tiết</span>
+                <span className="text-[0.6875rem] text-slate-400">26/09/2026</span>
+                <span className="text-[0.6875rem] text-blue-600 font-semibold cursor-pointer hover:underline">Chi tiết</span>
               </div>
             </div>
           </div>
@@ -388,12 +388,12 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
                   <h3 className="font-bold text-slate-900 text-sm line-clamp-1">Toán học 10</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-1 py-2 bg-slate-50 rounded-xl text-center text-xs">
-                  <div><span className="block text-[10px] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">18/35</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">12</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">3</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">18/35</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">12</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">3</span></div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-[11px] text-slate-500 mb-1">
+                  <div className="flex justify-between text-[0.6875rem] text-slate-500 mb-1">
                     <span>Tiến độ chương trình</span><span className="font-semibold text-blue-600">51%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
@@ -412,12 +412,12 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
                   <h3 className="font-bold text-slate-900 text-sm line-clamp-1">Vật lý 10</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-1 py-2 bg-slate-50 rounded-xl text-center text-xs">
-                  <div><span className="block text-[10px] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">14/28</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">8</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">2</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">14/28</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">8</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">2</span></div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-[11px] text-slate-500 mb-1">
+                  <div className="flex justify-between text-[0.6875rem] text-slate-500 mb-1">
                     <span>Tiến độ chương trình</span><span className="font-semibold text-indigo-600">50%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
@@ -436,12 +436,12 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
                   <h3 className="font-bold text-slate-900 text-sm line-clamp-1">Hóa học 10</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-1 py-2 bg-slate-50 rounded-xl text-center text-xs">
-                  <div><span className="block text-[10px] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">12/28</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">6</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">1</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">12/28</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">6</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">1</span></div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-[11px] text-slate-500 mb-1">
+                  <div className="flex justify-between text-[0.6875rem] text-slate-500 mb-1">
                     <span>Tiến độ chương trình</span><span className="font-semibold text-amber-600">42%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
@@ -460,12 +460,12 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
                   <h3 className="font-bold text-slate-900 text-sm line-clamp-1">Ngữ văn 10</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-1 py-2 bg-slate-50 rounded-xl text-center text-xs">
-                  <div><span className="block text-[10px] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">20/35</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">10</span></div>
-                  <div><span className="block text-[10px] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">0</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tiết học</span><span className="font-bold text-slate-700">20/35</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Tài liệu</span><span className="font-bold text-slate-700">10</span></div>
+                  <div><span className="block text-[0.625rem] text-slate-400">Bài tập</span><span className="font-bold text-slate-700">0</span></div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-[11px] text-slate-500 mb-1">
+                  <div className="flex justify-between text-[0.6875rem] text-slate-500 mb-1">
                     <span>Tiến độ chương trình</span><span className="font-semibold text-rose-600">57%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
@@ -532,7 +532,7 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
                     <ChevronRight className="w-4 h-4 cursor-pointer hover:text-slate-600" />
                   </div>
                 </div>
-                <div className="grid grid-cols-7 text-center text-[11px] font-semibold text-slate-400 mb-2">
+                <div className="grid grid-cols-7 text-center text-[0.6875rem] font-semibold text-slate-400 mb-2">
                   <span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1 text-center text-xs">
@@ -562,7 +562,7 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
               <div className="flex items-center justify-center py-4">
                 <div className="relative w-28 h-28 rounded-full border-8 border-slate-100 border-t-emerald-500 flex flex-col items-center justify-center">
                   <span className="text-2xl font-black text-slate-900">8.8</span>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase">Xếp hạng: Top 3</span>
+                  <span className="text-[0.625rem] text-slate-400 font-semibold uppercase">Xếp hạng: Top 3</span>
                 </div>
               </div>
               <div className="flex items-center justify-between text-xs text-blue-600 font-semibold cursor-pointer pt-2 border-t border-slate-100">
@@ -578,7 +578,7 @@ export function Dashboard({ onNavigate, role }: DashboardProps) {
               <div className="flex items-center justify-center py-4">
                 <div className="relative w-28 h-28 rounded-full border-8 border-slate-100 border-t-blue-500 flex flex-col items-center justify-center">
                   <span className="text-xl font-black text-slate-900">98/100</span>
-                  <span className="text-[9px] text-slate-400 font-semibold uppercase">Điểm thi đua</span>
+                  <span className="text-[0.5625rem] text-slate-400 font-semibold uppercase">Điểm thi đua</span>
                 </div>
               </div>
               <div className="flex items-center justify-between text-xs text-blue-600 font-semibold cursor-pointer pt-2 border-t border-slate-100">

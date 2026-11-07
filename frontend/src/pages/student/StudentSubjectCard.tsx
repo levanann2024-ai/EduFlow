@@ -61,20 +61,20 @@ export function StudentSubjectCard({
         </span>
         <h3 className="min-w-0 truncate text-xs font-bold text-slate-900">{name.replace(' 10', '')}</h3>
       </div>
-      <p className="mt-2 truncate text-[9px] text-slate-500">{lessons} tiết - {resources} tài liệu</p>
+      <p className="mt-2 truncate text-[0.5625rem] text-slate-500">{lessons} tiết - {resources} tài liệu</p>
       <div className="mt-2 flex items-center gap-1.5">
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onLessonsClick} aria-label={`Mở thời khóa biểu, ${lessons} tiết đã học môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[8px] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onLessonsClick} aria-label={`Mở thời khóa biểu, ${lessons} tiết đã học môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
           <BookOpen className="h-2.5 w-2.5" />{lessons}
         </button>
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onResourcesClick} aria-label={`Mở tài liệu môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[8px] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onResourcesClick} aria-label={`Mở tài liệu môn ${name}`} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
           <FileText className="h-2.5 w-2.5" />{resources}
         </button>
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onAssignmentsClick} aria-label={`Mở ${assignments} bài tập môn ${name}`} className={`flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[8px] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${assignments > 0 ? 'text-rose-700' : 'text-slate-600'}`}>
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onAssignmentsClick} aria-label={`Mở ${assignments} bài tập môn ${name}`} className={`flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${assignments > 0 ? 'text-rose-700' : 'text-slate-600'}`}>
           <FileText className="h-2.5 w-2.5" />{assignments}
         </button>
       </div>
       <div className="mt-2">
-        <div className="mb-1 flex justify-between text-[9px]">
+        <div className="mb-1 flex justify-between text-[0.5625rem]">
           <span className="text-slate-500">Tiến độ</span>
           <span className="font-semibold text-slate-700">{progress}%</span>
         </div>

@@ -86,7 +86,7 @@ export function QuestionBank() {
   };
 
   const deleteQuestion = (entry: QuestionEntry) => {
-    if (!window.confirm('Bạn có chắc muốn xóa câu hỏi này khỏi ngân hàng?')) return;
+    if (!window.confirm('Xác nhận xóa câu hỏi này khỏi ngân hàng?')) return;
     const next = sets
       .map((set) => set.id === entry.set.id
         ? { ...set, questions: set.questions.filter((question) => question.id !== entry.question.id) }

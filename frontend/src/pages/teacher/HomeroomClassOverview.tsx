@@ -65,7 +65,7 @@ export function HomeroomClassOverview({
             </span>
             <div>
               <p className="flex items-center gap-2 text-sm font-bold text-amber-800">
-                <Star className="h-4 w-4 fill-current" /> Lớp chủ nhiệm của bạn
+                <Star className="h-4 w-4 fill-current" /> Lớp chủ nhiệm
               </p>
               <h2 className="mt-1 text-xl font-extrabold text-slate-900">{className}</h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-600">
@@ -131,7 +131,7 @@ export function HomeroomClassOverview({
                         }`}
                       >
                         <span className="block">{subject}</span>
-                        {isHomeroomSubject && <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide">Môn chủ nhiệm</span>}
+                        {isHomeroomSubject && <span className="mt-1 block text-[0.625rem] font-bold uppercase tracking-wide">Môn chủ nhiệm</span>}
                       </th>
                     );
                   })}

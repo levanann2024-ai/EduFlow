@@ -95,28 +95,29 @@ function ClassDetailView({ classId, onBack }: { classId: string; onBack: () => v
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
-      <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-blue-600">
-          <ArrowLeft className="h-4 w-4" /> Quay lại danh sách lớp
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-700">
+          <ArrowLeft className="h-4 w-4" /> Quay lại lớp
         </button>
-        <div className="flex gap-2 overflow-x-auto border-b border-slate-100 pt-2">
+        <nav aria-label="Điều hướng lớp học" className="flex flex-wrap items-center gap-2">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
+              aria-current={activeTab === id ? 'page' : undefined}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
                 activeTab === id
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                  ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-700'
+                  : 'border border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100'
               }`}
             >
               <Icon className="h-4 w-4" />
               {label}
             </button>
           ))}
-        </div>
-      </section>
+        </nav>
+      </div>
 
       {activeTab === 'overview' && classData.is_homeroom && classData.homeroom_subject && (
         <section className="space-y-4">
@@ -235,9 +236,9 @@ export function ClassManagement() {
             <Star className="h-4 w-4 fill-current" />
           </span>
           <p>
-            <strong>Lớp chủ nhiệm cần bạn để mắt:</strong>{' '}
+            <strong>Lớp chủ nhiệm cần lưu ý:</strong>{' '}
             {homeroomClasses.map((classData) => classData.name).join(', ')}.
-            Bấm vào lớp để nhập điểm môn mình dạy hoặc xem điểm trung bình tất cả môn nhé!
+            Chọn lớp để nhập điểm môn được phân công hoặc xem điểm trung bình các môn.
           </p>
         </section>
       )}
@@ -291,7 +292,7 @@ export function ClassManagement() {
               <div className="flex items-start justify-between gap-3">
                 <h2 className="min-w-0 truncate text-3xl font-extrabold tracking-tight text-slate-950">{classData.name}</h2>
                 {classData.is_homeroom && (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[0.625rem] font-bold text-amber-800">
                     <Star className="h-3 w-3 fill-current" /> Chủ nhiệm
                   </span>
                 )}

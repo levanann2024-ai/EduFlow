@@ -314,7 +314,7 @@ export function ExamRoomWizard({
                   <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors group-hover:bg-blue-100 group-hover:text-blue-800 ${step === index ? 'bg-blue-700 text-white group-hover:bg-blue-700 group-hover:text-white' : step > index ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-400'}`}>
                     {step > index ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                   </span>
-                  <span className={`hidden text-center text-[10px] leading-4 sm:block ${step === index ? 'font-semibold text-blue-700' : step > index ? 'text-slate-600 group-hover:text-blue-700' : 'text-slate-400'}`}>{label}</span>
+                  <span className={`hidden text-center text-[0.625rem] leading-4 sm:block ${step === index ? 'font-semibold text-blue-700' : step > index ? 'text-slate-600 group-hover:text-blue-700' : 'text-slate-400'}`}>{label}</span>
                 </button>
               </li>
             ))}
@@ -438,7 +438,7 @@ export function ExamRoomWizard({
                 {checkbox(monitorFace, setMonitorFace, 'Phát hiện thiếu mặt hoặc nhiều khuôn mặt')}
                 {checkbox(monitorSpeech, setMonitorSpeech, 'Phát hiện hoạt động giọng nói')}
                 <label className="block text-sm font-medium text-slate-700">Ngưỡng cảnh báo<select value={warningThreshold} onChange={(event) => setWarningThreshold(Number(event.target.value))} className="input-field mt-1.5"><option value={1}>1 sự kiện</option><option value={2}>2 sự kiện</option><option value={3}>3 sự kiện</option><option value={5}>5 sự kiện</option></select></label>
-                <p className="text-xs leading-5 text-violet-900">Phát hiện webcam và micro được bật sẵn cho phòng mới nhưng thầy cô có thể tắt. Chỉ gửi loại sự kiện, thời điểm và thời lượng; không chụp ảnh, ghi âm, lưu video hay tự động tính điểm tin cậy. Phát hiện được xử lý ngay trên thiết bị. Chỉ yêu cầu quyền mở webcam/micro mà không bật mục phát hiện thì hệ thống sẽ không giám sát.</p>
+                <p className="text-xs leading-5 text-violet-900">Phát hiện webcam và micro được bật sẵn cho phòng mới; có thể tắt. Chỉ gửi loại sự kiện, thời điểm và thời lượng; không chụp ảnh, ghi âm, lưu video hay tự động tính điểm tin cậy. Phát hiện được xử lý ngay trên thiết bị. Chỉ yêu cầu quyền mở webcam/micro mà không bật mục phát hiện thì hệ thống sẽ không giám sát.</p>
               </div>
             </section>
           )}

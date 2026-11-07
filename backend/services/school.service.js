@@ -751,7 +751,7 @@ async function markStudentExamResultRead(auth, sessionId) {
     [sessionId, auth.userId, schoolId],
   );
   if (!result.rows[0]) {
-    throw serviceError(404, 'SCHOOL_EXAM_RESULT_NOT_FOUND', 'Không tìm thấy bài kiểm tra đã công bố trong tài khoản của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_RESULT_NOT_FOUND', 'Không tìm thấy bài kiểm tra đã công bố trong tài khoản hiện tại.');
   }
   return { readAt: result.rows[0].viewed_graded_at.toISOString() };
 }
@@ -779,7 +779,7 @@ async function getStudentExamResultFile(auth, sessionId, fileId, gradeEvidence =
     [sessionId, fileId, auth.userId, schoolId],
   );
   if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_EXAM_FILE_NOT_FOUND', 'Không tìm thấy tệp trong bài kiểm tra đã chấm của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_FILE_NOT_FOUND', 'Không tìm thấy tệp trong bài kiểm tra đã chấm của tài khoản hiện tại.');
   }
   const row = result.rows[0];
   return {
@@ -802,7 +802,7 @@ async function publishTeacherExamRoomGrades(auth, roomId) {
     [roomId, auth.userId, schoolId],
   );
   if (!roomResult.rows[0]) {
-    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi hiện tại.');
   }
   const result = await getPool().query(
     `WITH published AS (
@@ -1410,7 +1410,7 @@ async function getTeacherExamRoomGrading(auth, roomId) {
   );
   const room = roomResult.rows[0]?.payload;
   if (!room) {
-    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi hiện tại.');
   }
   const questions = teacherExamQuestions(room);
   if (!Array.isArray(room.classIds) || room.classIds.length === 0) {
@@ -1519,7 +1519,7 @@ async function getTeacherExamSubmissionFile(auth, roomId, sessionId, fileId) {
     [auth.userId, roomId, sessionId, fileId, schoolId],
   );
   if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_EXAM_FILE_NOT_FOUND', 'Không tìm thấy ảnh trong bài thi thuộc phòng của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_FILE_NOT_FOUND', 'Không tìm thấy ảnh trong bài thi thuộc phòng hiện tại.');
   }
   const row = result.rows[0];
   return {
@@ -1546,7 +1546,7 @@ async function getTeacherExamGradeEvidenceFile(auth, roomId, sessionId, fileId) 
     [auth.userId, roomId, sessionId, fileId, schoolId],
   );
   if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_EXAM_GRADE_FILE_NOT_FOUND', 'Không tìm thấy ảnh minh chứng trong phạm vi phòng thi của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_GRADE_FILE_NOT_FOUND', 'Không tìm thấy ảnh minh chứng trong phạm vi phòng thi hiện tại.');
   }
   const row = result.rows[0];
   return {
@@ -1567,7 +1567,7 @@ async function saveTeacherExamSessionGrade(auth, roomId, sessionId, input) {
   );
   const room = roomResult.rows[0]?.payload;
   if (!room) {
-    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi của bạn.');
+    throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi hiện tại.');
   }
   const questions = teacherExamQuestions(room);
   if (!input || !input.questionScores || typeof input.questionScores !== 'object'
@@ -1610,7 +1610,7 @@ async function saveTeacherExamSessionGrade(auth, roomId, sessionId, input) {
   );
   const answers = answersResult.rows[0]?.answers;
   if (!answers) {
-    throw serviceError(409, 'SCHOOL_EXAM_SUBMISSION_NOT_GRADEABLE', 'Chỉ có thể chấm bài thi đã nộp thuộc phòng của bạn.');
+    throw serviceError(409, 'SCHOOL_EXAM_SUBMISSION_NOT_GRADEABLE', 'Chỉ có thể chấm bài thi đã nộp thuộc phòng hiện tại.');
   }
   let automaticScores;
   try {
@@ -1655,7 +1655,7 @@ async function saveTeacherExamSessionGrade(auth, roomId, sessionId, input) {
       [roomId, sessionId, schoolId, auth.userId],
     );
     if (!sessionResult.rows[0]) {
-      throw serviceError(409, 'SCHOOL_EXAM_SUBMISSION_NOT_GRADEABLE', 'Chỉ có thể chấm bài thi đã nộp thuộc phòng của bạn.');
+      throw serviceError(409, 'SCHOOL_EXAM_SUBMISSION_NOT_GRADEABLE', 'Chỉ có thể chấm bài thi đã nộp thuộc phòng hiện tại.');
     }
     const existingEvidenceResult = await client.query(
       `SELECT id
@@ -1694,7 +1694,7 @@ async function saveTeacherExamSessionGrade(auth, roomId, sessionId, input) {
       ],
     );
     if (!result.rows[0]) {
-      throw serviceError(409, 'SCHOOL_EXAM_SUBMISSION_NOT_GRADEABLE', 'Chỉ có thể chấm bài thi đã nộp thuộc phòng của bạn.');
+      throw serviceError(409, 'SCHOOL_EXAM_SUBMISSION_NOT_GRADEABLE', 'Chỉ có thể chấm bài thi đã nộp thuộc phòng hiện tại.');
     }
     if (deletedEvidenceIds.length > 0) {
       await client.query(
@@ -1859,7 +1859,7 @@ async function saveTeacherExamRoom(auth, room) {
       [validated.id, auth.userId, schoolId, savedRoom.code, validated.title, room.status, validated.startsAt, JSON.stringify(savedRoom)],
     );
     if (!result.rows[0]) {
-      throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi của bạn.');
+      throw serviceError(404, 'SCHOOL_EXAM_ROOM_NOT_FOUND', 'Không tìm thấy phòng thi trong phạm vi hiện tại.');
     }
 
     await client.query(
@@ -3533,7 +3533,7 @@ async function updateClassLearningResource(auth, classId, resourceId, input, fil
       [resourceId, classroom.id, classroom.school_id, auth.userId],
     );
     if (current.rowCount === 0) {
-      throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp của bạn.');
+      throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp hiện tại.');
     }
     if (!content.trim() && !current.rows[0].has_file && !uploadedFile) {
       throw serviceError(400, 'SCHOOL_INVALID_RESOURCE', 'Bài giảng cần có nội dung hoặc tệp đính kèm.');
@@ -3557,7 +3557,7 @@ async function updateClassLearningResource(auth, classId, resourceId, input, fil
       ],
     );
     if (updated.rowCount === 0) {
-      throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp của bạn.');
+      throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp hiện tại.');
     }
     if (uploadedFile && current.rows[0].has_file) {
       await client.query(
@@ -3760,7 +3760,7 @@ async function deleteClassLearningResource(auth, classId, resourceId, input) {
     ],
   );
   if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp của bạn.');
+    throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp hiện tại.');
   }
   return { deleted: true };
 }
@@ -3989,7 +3989,7 @@ async function getClassLearningResourceFile(auth, resourceId, fileId) {
     [resourceId, fileId, schoolId, auth.role, auth.userId],
   );
   if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_RESOURCE_FILE_NOT_FOUND', 'Không tìm thấy tệp trong phạm vi lớp học của bạn.');
+    throw serviceError(404, 'SCHOOL_RESOURCE_FILE_NOT_FOUND', 'Không tìm thấy tệp trong phạm vi lớp học hiện tại.');
   }
   const row = result.rows[0];
   return {

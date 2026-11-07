@@ -3,7 +3,14 @@ import { BookOpen, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  buildCalendarFile,
+  createDeadlineCalendarEvent,
+  createPeriodCalendarEvent,
+  downloadCalendarFile,
+} from '@/calendarExport';
+import {
   generateStudentTimetableSuggestion,
+  getStudentProgress,
   getStudentTimetable,
   type ProgressSemester,
   type StudentTimetableResponse,
@@ -197,7 +204,9 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
   const [completedPriorities, setCompletedPriorities] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [planning, setPlanning] = useState(false);
+  const [exportingCalendar, setExportingCalendar] = useState(false);
   const [error, setError] = useState('');
+  const [calendarExportError, setCalendarExportError] = useState('');
   const [storageError, setStorageError] = useState('');
   const [retryToken, setRetryToken] = useState(0);
 
@@ -332,6 +341,89 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
   };
 
   const classroom = scheduleData?.classroom;
+  const exportCalendar = async () => {
+    if (!timetable || !classroom) return;
+    setExportingCalendar(true);
+    setCalendarExportError('');
+    try {
+      const progress = await getStudentProgress();
+      const rangeStart = new Date(`${weekStartKey}T00:00:00+07:00`).getTime();
+      const rangeEnd = rangeStart + 14 * 24 * 60 * 60 * 1000;
+      const upcomingAssignments = progress.assignments.filter((assignment) => {
+        const dueTime = Date.parse(assignment.dueAt);
+        return assignment.classId === classroom.id
+          && assignment.academicYear === classroom.academicYear
+          && assignment.semester === semester
+          && !assignment.submittedAt
+          && Number.isFinite(dueTime)
+          && dueTime >= rangeStart
+          && dueTime < rangeEnd;
+      });
+      const calendarEvents = entries
+        .filter((entry) => entry.type !== 'cancelled')
+        .map((entry) => createPeriodCalendarEvent({
+          id: `student-class-${classroom.code}-${weekStartKey}-${entry.weekday}-${entry.period}`,
+          date: dateKey(addDays(weekStart, entry.weekday - 1)),
+          session: timetable.session,
+          period: entry.period,
+          title: `${entry.subject}${entry.hasExam && entry.examTitle ? ` - ${entry.examTitle}` : ''}`,
+          description: [
+            `Lớp: ${classroom.code}`,
+            entry.topic ? `Tài liệu: ${entry.topic}` : '',
+            entry.hasHomework ? `Bài tập: ${entry.homeworkTitle || 'Có bài tập'}` : '',
+            entry.hasExam ? `Kiểm tra: ${entry.examTitle || 'Bài kiểm tra'}` : '',
+            entry.roomExamTitle ? `Phòng thi: ${entry.roomExamTitle}` : '',
+          ].filter(Boolean).join('\n'),
+          reminders: Boolean(entry.hasExam && entry.examStartsAt),
+        }));
+      for (const assignment of upcomingAssignments) {
+        const deadline = createDeadlineCalendarEvent({
+          id: `student-assignment-${assignment.id}`,
+          startsAt: assignment.dueAt,
+          title: `Hạn nộp: ${assignment.title}`,
+          description: `Môn: ${assignment.subject}\nLớp: ${assignment.classCode}`,
+        });
+        if (deadline) calendarEvents.push(deadline);
+      }
+      for (const entry of entries) {
+        if (entry.hasHomework && entry.homeworkDueAt) {
+          const matchesAssignment = progress.assignments.some((assignment) => (
+            assignment.classId === classroom.id
+            && assignment.subject === entry.subject
+            && Date.parse(assignment.dueAt) === Date.parse(entry.homeworkDueAt ?? '')
+          ));
+          if (!matchesAssignment) {
+            const deadline = createDeadlineCalendarEvent({
+              id: `student-homework-${classroom.code}-${entry.weekday}-${entry.period}-${entry.homeworkDueAt}`,
+              startsAt: entry.homeworkDueAt,
+              title: `Hạn nộp: ${entry.homeworkTitle || `Bài tập ${entry.subject}`}`,
+              description: `Môn: ${entry.subject}\nLớp: ${classroom.code}`,
+            });
+            if (deadline) calendarEvents.push(deadline);
+          }
+        }
+        if (entry.hasExamReturn && entry.examReturnAt) {
+          const returnEvent = createDeadlineCalendarEvent({
+            id: `student-exam-return-${classroom.code}-${entry.weekday}-${entry.period}-${entry.examReturnAt}`,
+            startsAt: entry.examReturnAt,
+            title: `Trả bài: ${entry.examReturnNote || entry.subject}`,
+            description: `Môn: ${entry.subject}\nLớp: ${classroom.code}`,
+          });
+          if (returnEvent) calendarEvents.push(returnEvent);
+        }
+      }
+      downloadCalendarFile(
+        buildCalendarFile(calendarEvents, `${classroom.name} - Thời khóa biểu EduFlow`),
+        `eduflow-hoc-sinh-${weekStartKey}.ics`,
+      );
+    } catch (exportError: unknown) {
+      setCalendarExportError(exportError instanceof Error
+        ? exportError.message
+        : 'Không thể chuẩn bị tệp lịch. Vui lòng thử lại.');
+    } finally {
+      setExportingCalendar(false);
+    }
+  };
 
   return (
     <div className="space-y-5 pb-8">
@@ -347,6 +439,25 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
             <option value="Kỳ 2">Kỳ 2</option>
           </select>
         </label>
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <button
+            type="button"
+            onClick={() => void exportCalendar()}
+            disabled={loading || exportingCalendar || !timetable || !classroom}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exportingCalendar
+              ? <LoaderCircle className="h-4 w-4 animate-spin" />
+              : <CalendarDays className="h-4 w-4" />}
+            {exportingCalendar ? 'Đang chuẩn bị...' : 'Xuất .ics'}
+          </button>
+          <p className="max-w-xs text-right text-xs text-slate-500">
+            Bản chụp tuần đang xem; xuất lại khi lịch đổi. Deadline nhắc trước 1 ngày và 1 giờ.
+          </p>
+          {calendarExportError && (
+            <p className="max-w-xs text-right text-xs text-rose-700" role="alert">{calendarExportError}</p>
+          )}
+        </div>
       </header>
 
       <div className="flex items-center justify-between gap-3">
@@ -546,7 +657,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                                   <span>{isComplete ? 'Đã xong' : 'Hoàn thành'}</span>
                                 </label>
                               </div>
-                              <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${category.badgeStyle}`}>
+                              <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[0.6875rem] font-bold ${category.badgeStyle}`}>
                                 {category.badge}
                               </span>
                               <h5 className={`mt-2 font-bold leading-6 text-slate-900 ${isComplete ? 'line-through decoration-slate-400' : ''}`}>
@@ -589,14 +700,14 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                                 >
                                   <div className="flex items-center justify-between gap-2 border-b border-white/80 pb-2">
                                     <h5 className="font-bold text-slate-800">{planWeekdays[weekday]}</h5>
-                                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[0.6875rem] font-semibold text-slate-600">
                                       {dayDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                                     </span>
                                   </div>
                                   <div className="mt-3 space-y-3">
                                     {dayItems.map((item, index) => (
                                       <div key={`${weekday}-${item.startTime}-${index}`} className="flex gap-3">
-                                        <span className="shrink-0 rounded-lg bg-white/80 px-2 py-1 text-[11px] font-bold tabular-nums text-indigo-700">
+                                        <span className="shrink-0 rounded-lg bg-white/80 px-2 py-1 text-[0.6875rem] font-bold tabular-nums text-indigo-700">
                                           {item.startTime}<br />{item.endTime}
                                         </span>
                                         <div className="min-w-0">

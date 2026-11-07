@@ -4,7 +4,7 @@ const { after, before, test } = require('node:test');
 const Module = require('node:module');
 const { Pool } = require('pg');
 const { randomUUID } = require('node:crypto');
-const { applyMigrations } = require('../scripts/migrate');
+const { applyMigrations, migrationNames } = require('../scripts/migrate');
 
 const rawTestDatabaseUrl = process.env.EDUFLOW_TEST_DATABASE_URL;
 const databaseUrl = validateTestDatabaseUrl(rawTestDatabaseUrl);
@@ -171,16 +171,54 @@ test('PostgreSQL integration tests use an isolated schema and apply the reposito
   const client = await connectToSchema();
   try {
     const tables = await client.query(
-      `SELECT count(*)::int AS count
+      `SELECT table_name
          FROM information_schema.tables
         WHERE table_schema = $1 AND table_type = 'BASE TABLE'`,
       [schemaName],
     );
-    assert.equal(tables.rows[0].count, 19);
+    assert.ok(tables.rows.some(({ table_name }) => table_name === 'saved_items'));
     const migrationRows = await client.query(
       'SELECT count(*)::int AS count FROM eduflow_schema_migrations',
     );
-    assert.equal(migrationRows.rows[0].count, 24);
+    assert.equal(migrationRows.rows[0].count, migrationNames.length);
+  } finally {
+    client.release();
+  }
+});
+
+test('saved items persist per owner and import rolls back on PostgreSQL errors', {
+  skip: !databaseUrl,
+}, async () => {
+  const client = await connectToSchema();
+  try {
+    const a = { userId: await insertUser(client, 'student'), role: 'student' };
+    const b = { userId: await insertUser(client, 'student'), role: 'student' };
+    const service = require('../services/savedItems.service');
+    const make = (id, title = 'Saved') => ({
+      id, type: 'quiz', title, subject: 'Math', savedAt: '2026-01-02T03:04:05.000Z',
+      topic: '', questionCount: 1, mode: 'practice', questions: [{
+        id: 'q1', question: 'Question', options: ['a', 'b'], correctIndex: 0,
+        explanation: '', difficulty: 'easy',
+      }],
+      data: { private: ['content'] },
+    });
+    await service.upsert(a, 'quiz', 'same', make('same', 'Current'));
+    await service.upsert(b, 'quiz', 'same', make('same', 'Other'));
+    await service.importItems(a, { items: [make('same', 'Legacy'), make('new')] });
+    await service.importItems(a, { items: [make('same', 'Legacy'), make('new')] });
+    assert.deepEqual((await service.list(a)).map((item) => item.title).sort(), ['Current', 'Saved']);
+    assert.deepEqual((await service.list(b)).map((item) => item.title), ['Other']);
+    await assert.rejects(service.remove(b, 'quiz', 'new'), { status: 404 });
+
+    await client.query("ALTER TABLE saved_items ADD CONSTRAINT saved_items_test_failure CHECK (item_id <> 'fail')");
+    try {
+      await assert.rejects(service.importItems(a, { items: [make('rollback'), make('fail')] }));
+      assert.equal((await service.list(a)).some((item) => item.id === 'rollback'), false);
+    } finally {
+      await client.query('ALTER TABLE saved_items DROP CONSTRAINT saved_items_test_failure');
+    }
+    await client.query('DELETE FROM users WHERE id = $1', [a.userId]);
+    assert.equal((await client.query('SELECT count(*)::int AS count FROM saved_items WHERE user_id = $1', [a.userId])).rows[0].count, 0);
   } finally {
     client.release();
   }

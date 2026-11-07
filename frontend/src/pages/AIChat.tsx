@@ -1,19 +1,53 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Bookmark, PanelLeftClose, PanelLeftOpen, Paperclip, Plus, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Camera, Star, Mic, MicOff, PanelLeftClose, PanelLeftOpen, Paperclip, Plus, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-react';
 import type { ChatMessage, Role } from '@/types';
-import { getSavedItems, removeSavedItem, saveItem } from '@/pages/student/savedItems';
+import { useSavedItems } from '@/pages/student/savedItems';
 import { MathText } from '@/components/MathText';
 import { authenticatedFetch } from '@/auth/authApi';
 import type { AuthUser } from '@/auth/authApi';
+import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { readExplanationStyle } from '@/settings/userSettings';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import 'katex/dist/katex.min.css';
 
+function SpeechButton({ speech, disabled }: { speech: ReturnType<typeof useSpeechInput>; disabled: boolean }) {
+  const label = speech.listening ? 'Dừng nhập giọng nói' : 'Nhập bằng giọng nói';
+  return (
+    <button
+      type="button"
+      onClick={speech.toggle}
+      disabled={disabled || speech.stopping}
+      aria-label={label}
+      aria-pressed={speech.listening}
+      title={label}
+      className={`shrink-0 rounded-xl p-2.5 transition-colors disabled:opacity-50 ${speech.listening ? 'bg-blue-100 text-blue-700' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+    >
+      {speech.listening ? <MicOff className="h-5 w-5" aria-hidden="true" /> : <Mic className="h-5 w-5" aria-hidden="true" />}
+    </button>
+  );
+}
+
+function SpeechStatus({ speech }: { speech: ReturnType<typeof useSpeechInput> }) {
+  return (
+    <>
+      {speech.error && <p role="alert" className="mb-2 text-sm text-rose-700">{speech.error}</p>}
+      {speech.listening && (
+        <div role="status" className="mb-2 text-sm leading-5 text-blue-700">
+          <p>{speech.stopping ? 'Đang kết thúc nhận diện…' : 'Đang nghe… Nhấn micro để dừng trước khi gửi.'}</p>
+          {speech.interim && <p className="mt-1 text-slate-600">{speech.interim}</p>}
+        </div>
+      )}
+    </>
+  );
+}
+
 function getInitialMessages(role: Role, gender?: AuthUser['gender']): ChatMessage[] {
+  const honorific = getTeacherHonorific(gender);
   const content = role === 'student'
     ? 'Chào bạn! Bạn cứ gửi câu hỏi, tôi sẽ cùng bạn tìm hiểu và tự nhận diện môn học phù hợp.'
     : role === 'lecturer'
-      ? `Xin chào ${gender === 'male' ? 'thầy' : gender === 'female' ? 'cô' : 'thầy/cô'}! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ chuẩn bị bài giảng, tạo câu hỏi và giải đáp các nội dung học tập.`
+      ? `Xin chào${honorific ? ` ${honorific}` : ''}! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ chuẩn bị bài giảng, tạo câu hỏi và giải đáp các nội dung học tập.`
       : 'Xin chào! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ các câu hỏi về học tập và sử dụng nền tảng.';
   return [{ id: 'm1', role: 'assistant', content, time: 'Bây giờ' }];
 }
@@ -375,6 +409,7 @@ function ChatMessageList({
   userInitials,
   thinking,
   savedAnswerIds,
+  bookmarkDisabled,
   onBookmark,
   endRef,
 }: {
@@ -383,6 +418,7 @@ function ChatMessageList({
   userInitials: string;
   thinking: boolean;
   savedAnswerIds: Set<string>;
+  bookmarkDisabled: boolean;
   onBookmark: (message: ChatMessage, messageIndex: number) => void;
   endRef: React.RefObject<HTMLDivElement>;
 }) {
@@ -404,8 +440,16 @@ function ChatMessageList({
           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${message.role === 'user' ? 'bg-slate-700' : 'bg-blue-600'}`}>
             {message.role === 'user' ? <span className="text-xs font-semibold text-white">{userInitials}</span> : <Sparkles className="h-4 w-4 text-white" />}
           </div>
-          <div className={`max-w-[85%] sm:max-w-[75%] ${message.role === 'user' ? 'text-right' : ''}`}>
+          <div className={`relative max-w-[85%] sm:max-w-[75%] ${message.role === 'user' ? 'text-right' : ''}`}>
             <div className={`inline-block rounded-2xl px-4 py-3 text-left text-sm leading-relaxed ${message.role === 'user' ? 'bg-blue-600 text-white chat-user-markdown' : 'border border-slate-200 bg-slate-50 text-slate-700 markdown-body'}`}>
+              {role === 'student' && message.role === 'assistant' && messageIndex > 0 && (
+                <button type="button" disabled={bookmarkDisabled} onClick={() => onBookmark(message, messageIndex)}
+                  aria-label={savedAnswerIds.has(`answer-${message.id}`) ? 'Bỏ lưu câu trả lời' : 'Lưu câu trả lời'}
+                  aria-pressed={savedAnswerIds.has(`answer-${message.id}`)}
+                  className="float-right ml-3 rounded-md p-1 text-slate-400 hover:bg-white hover:text-amber-500">
+                  <Star className={`h-4 w-4 ${savedAnswerIds.has(`answer-${message.id}`) ? 'fill-amber-400 text-amber-500' : ''}`} />
+                </button>
+              )}
               {message.imagePath || message.imagePreviewUrl ? (
                 <ChatImageAttachment
                   imagePath={message.imagePath}
@@ -427,17 +471,6 @@ function ChatMessageList({
                 <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                   {message.subject}
                 </span>
-              )}
-              {role === 'student' && message.role === 'assistant' && messageIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onBookmark(message, messageIndex)}
-                  aria-label={savedAnswerIds.has(`answer-${message.id}`) ? 'Bỏ lưu câu trả lời' : 'Lưu câu trả lời'}
-                  className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${savedAnswerIds.has(`answer-${message.id}`) ? 'text-violet-700 hover:bg-violet-50' : 'text-slate-400 hover:bg-slate-100 hover:text-violet-700'}`}
-                >
-                  <Bookmark className="h-3.5 w-3.5" fill={savedAnswerIds.has(`answer-${message.id}`) ? 'currentColor' : 'none'} />
-                  {savedAnswerIds.has(`answer-${message.id}`) ? 'Đã lưu' : 'Lưu'}
-                </button>
               )}
             </div>
           </div>
@@ -462,10 +495,14 @@ function ChatMessageList({
   );
 }
 
-export function AIChat({ role, userName, userId, studentId, gender, initialSubject, initialPrompt, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; onExit?: () => void; isDemo?: boolean }) {
+export function AIChat({ role, userName, userId, studentId, gender, initialSubject, initialPrompt, initialConversationId, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; initialConversationId?: string; onExit?: () => void; isDemo?: boolean }) {
   const userInitials = userName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase('vi');
   const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages(role, gender));
   const [input, setInput] = useState(initialPrompt ?? '');
+  const speech = useSpeechInput((text) => {
+    setInput((current) => current && !/\s$/.test(current) ? `${current} ${text}` : `${current}${text}`);
+  });
+  const cancelSpeech = speech.cancel;
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState('');
   const [subject, setSubject] = useState(initialSubject ?? '');
@@ -477,11 +514,16 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
     () => window.matchMedia('(min-width: 768px)').matches,
   );
   const [selectedImage, setSelectedImage] = useState<{ file: File; previewUrl: string } | null>(null);
-  const [savedAnswerIds, setSavedAnswerIds] = useState(
-    () => new Set(getSavedItems().filter((item) => item.type === 'answer').map((item) => item.id)),
-  );
+  const saved = useSavedItems();
+  const [bookmarkBusy, setBookmarkBusy] = useState(false);
+  const savedAnswerIds = new Set(saved.items.filter((item) => item.type === 'answer').map((item) => item.id));
   const endRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    cancelSpeech();
+  }, [role, cancelSpeech]);
 
   useEffect(() => {
     const desktopViewport = window.matchMedia('(min-width: 768px)');
@@ -535,9 +577,11 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
   const removeSelectedImage = () => {
     setSelectedImage(null);
     if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const startNewConversation = () => {
+    speech.cancel();
     setSubject(role === 'student' ? (initialSubject ?? '') : '');
     setActiveConversationId(null);
     setMessages(getInitialMessages(role, gender));
@@ -545,6 +589,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
     setSelectedImage(null);
     if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
     setError('');
   };
 
@@ -555,10 +600,12 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
 
   const openConversation = async (conversationId: string) => {
     if (thinking) return;
+    speech.cancel();
     setHistoryLoading(true);
     setError('');
     try {
       const conversation = await requestConversation(conversationId);
+      speech.cancel();
       setActiveConversationId(conversation.id);
       setSubject(conversation.subject === 'Tổng hợp' ? '' : conversation.subject);
       setMessages(conversation.messages.map((message) => toChatMessage(message, conversation.id)));
@@ -571,6 +618,12 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
       setHistoryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (initialConversationId) void openConversation(initialConversationId);
+    // The initial ID is only consumed when this chat instance mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConversationId]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -608,6 +661,10 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
   }, [role]);
 
   const handleSend = async (text?: string) => {
+    if (speech.listening) {
+      setError('Hãy dừng nhập giọng nói trước khi gửi.');
+      return;
+    }
     const content = (text || input).trim() || (selectedImage ? 'Hãy mô tả và phân tích ảnh đính kèm.' : '');
     if (!content || thinking) return;
     const imageToSend = selectedImage;
@@ -664,12 +721,14 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
       const data = isRecord(result) && isRecord(result.data) ? result.data : null;
       const reply = data && typeof data.reply === 'string' ? data.reply : '';
       if (!response.ok || !isRecord(result) || result.success !== true || !reply
-        || !data || typeof data.conversationId !== 'string' || typeof data.userMessageId !== 'string') {
+        || !data || typeof data.conversationId !== 'string' || typeof data.userMessageId !== 'string'
+        || typeof data.assistantMessageId !== 'string') {
         throw new Error(isRecord(result) && typeof result.message === 'string'
           ? result.message
           : 'Không thể kết nối tới AI server.');
       }
       const detectedSubject = role === 'student' && typeof data.subject === 'string' ? data.subject : undefined;
+      const assistantMessageId = data.assistantMessageId;
       setActiveConversationId(data.conversationId);
       if (detectedSubject) setSubject(detectedSubject === 'Chưa phân loại' ? '' : detectedSubject);
       const imagePath = imageToSend
@@ -680,7 +739,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
           ? { ...messageItem, imagePath, imagePreviewUrl: undefined }
           : messageItem
       )), {
-        id: `a${Date.now()}`,
+        id: assistantMessageId,
         role: 'assistant',
         content: reply,
         time: 'Bây giờ',
@@ -702,36 +761,35 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
     }
   };
 
-  const handleToggleBookmark = (message: ChatMessage, messageIndex: number) => {
+  const handleToggleBookmark = async (message: ChatMessage, messageIndex: number) => {
     const id = `answer-${message.id}`;
+    setBookmarkBusy(true);
     try {
       if (savedAnswerIds.has(id)) {
-        removeSavedItem(id);
-        setSavedAnswerIds((current) => {
-          const updated = new Set(current);
-          updated.delete(id);
-          return updated;
-        });
+        await saved.removeSavedItem('answer', id);
         setError('');
         return;
       }
 
       const question = messages.slice(0, messageIndex).reverse().find((item) => item.role === 'user')?.content
         ?? 'Lời giải EduBot';
-      const title = question.length > 72 ? `${question.slice(0, 69)}...` : question;
-      saveItem({
+      const cleanTitle = question.replace(/\s+/g, ' ').trim() || 'Lời giải EduBot';
+      const title = cleanTitle.length > 72 ? `${cleanTitle.slice(0, 69)}...` : cleanTitle;
+      await saved.saveItem({
         id,
         type: 'answer',
         title,
         subject: message.subject ?? (subject || 'Tổng hợp'),
         question,
         answer: message.content,
+        ...(activeConversationId ? { conversationId: activeConversationId } : {}),
         savedAt: new Date().toISOString(),
       });
-      setSavedAnswerIds((current) => new Set(current).add(id));
       setError('');
     } catch (storageError) {
       setError(storageError instanceof Error ? storageError.message : 'Không thể cập nhật kho lưu trữ.');
+    } finally {
+      setBookmarkBusy(false);
     }
   };
 
@@ -776,7 +834,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
                   ))}
                 </div>
               ) : !historyLoading && (
-                <p className="px-3 py-2 text-sm text-slate-400">Các cuộc trò chuyện của bạn sẽ hiện ở đây.</p>
+                <p className="px-3 py-2 text-sm text-slate-400">Lịch sử cuộc trò chuyện sẽ hiển thị tại đây.</p>
               )}
             </div>
           </aside>
@@ -803,10 +861,12 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
             </button>
           </header>
 
-          <ChatMessageList messages={messages} role={role} userInitials={userInitials} thinking={thinking} savedAnswerIds={savedAnswerIds} onBookmark={handleToggleBookmark} endRef={endRef} />
+          <ChatMessageList messages={messages} role={role} userInitials={userInitials} thinking={thinking} savedAnswerIds={savedAnswerIds} bookmarkDisabled={bookmarkBusy || saved.loading || Boolean(saved.error)} onBookmark={handleToggleBookmark} endRef={endRef} />
 
           {error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{error}</p>}
+          {saved.error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{saved.error}</p>}
           <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="border-t border-slate-100 p-3 sm:px-5 sm:py-4">
+            <SpeechStatus speech={speech} />
             {selectedImage && (
               <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-2">
                 <img src={selectedImage.previewUrl} alt="Ảnh sẽ gửi" className="h-16 w-16 rounded-lg object-cover" />
@@ -818,8 +878,12 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
             )}
             <div className="flex items-end gap-2">
               <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
+              <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
               <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label="Đính kèm ảnh" title="Chọn ảnh hoặc dán ảnh" className="shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                 <Paperclip className="h-5 w-5" />
+              </button>
+              <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+                <Camera className="h-5 w-5" />
               </button>
               <textarea
                 value={input}
@@ -830,7 +894,8 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
                 rows={1}
                 className="max-h-32 min-w-0 flex-1 resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               />
-              <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking} className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <SpeechButton speech={speech} disabled={thinking} />
+              <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                 Gửi <Send className="h-4 w-4" />
               </button>
             </div>
@@ -945,6 +1010,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
         </div>
         {error && <p role="alert" className="mt-2 text-sm text-rose-600">{error}</p>}
         <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} className="card mt-3 p-3">
+          {role === 'lecturer' && <SpeechStatus speech={speech} />}
           {selectedImage && (
             <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-2">
               <img src={selectedImage.previewUrl} alt="Ảnh sẽ gửi" className="h-16 w-16 rounded-lg object-cover" />
@@ -956,8 +1022,12 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
           )}
           <div className="flex items-end gap-2">
             <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
+            <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
             <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label="Đính kèm ảnh" title="Chọn ảnh hoặc dán ảnh" className="shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
               <Paperclip className="h-4 w-4" />
+            </button>
+            <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+              <Camera className="h-4 w-4" />
             </button>
             <textarea
               value={input}
@@ -968,7 +1038,8 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
               rows={1}
               className="max-h-32 min-w-0 flex-1 resize-y rounded-xl border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking} className="btn-primary h-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
+            {role === 'lecturer' && <SpeechButton speech={speech} disabled={thinking} />}
+            <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="btn-primary h-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
               <Send className="h-3.5 w-3.5" />
             </button>
           </div>

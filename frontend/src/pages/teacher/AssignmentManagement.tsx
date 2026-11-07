@@ -4,6 +4,7 @@ import { deleteTeacherAssessment, saveTeacherAssessment } from '@/api/schoolApi'
 import { showToast } from '@/components/toast';
 import { defaultAssessmentSections, loadTeacherAssessments, type SavedAssignment } from '@/pages/teacher/assessmentStorage';
 import { ExamEditor } from '@/pages/teacher/ExamEditor';
+import { BookmarkButton, useTeacherBookmarks, type SavedTeacherAssignment } from '@/pages/teacher/teacherSavedItems';
 
 function assignmentContent(assignment: SavedAssignment) {
   const sections = assignment.sections ?? defaultAssessmentSections(assignment.questions);
@@ -52,6 +53,7 @@ export function AssignmentManagement({
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const bookmarks = useTeacherBookmarks();
 
   useEffect(() => {
     let active = true;
@@ -115,7 +117,7 @@ export function AssignmentManagement({
   };
 
   const deleteAssignment = async (assignment: SavedAssignment) => {
-    if (!window.confirm(`Bạn có chắc muốn xóa bài tập "${assignment.title}"?`)) return;
+    if (!window.confirm(`Xác nhận xóa bài tập "${assignment.title}"?`)) return;
     try {
       await deleteTeacherAssessment('assignment', assignment.id);
       setAssignments((current) => current.filter((item) => item.id !== assignment.id));
@@ -136,7 +138,7 @@ export function AssignmentManagement({
         </button>
       </div>
 
-      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
+      {(error || bookmarks.error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error || bookmarks.error}</p>}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_repeat(3,minmax(135px,190px))]">
@@ -187,6 +189,19 @@ export function AssignmentManagement({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                  <BookmarkButton
+                    saved={bookmarks.isSaved('assignment', assignment.id)}
+                    busy={bookmarks.loading || bookmarks.isPending('assignment', assignment.id)}
+                    label={`bài tập ${assignment.title || 'chưa đặt tên'}`}
+                    onToggle={() => void bookmarks.toggle({
+                      id: assignment.id,
+                      type: 'assignment',
+                      title: assignment.title || 'Bài tập chưa đặt tên',
+                      subject: assignment.subject,
+                      savedAt: new Date().toISOString(),
+                      assessmentId: assignment.id,
+                    } satisfies SavedTeacherAssignment)}
+                  />
                   <button onClick={() => setSelectedAssignment(assignment)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4" /> Mở bài tập</button>
                   <button onClick={() => deleteAssignment(assignment)} aria-label={`Xóa bài tập ${assignment.title}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
                   <button

@@ -115,7 +115,7 @@ export function ExamEditor({
   }, [sections.length, workingExam.questions.length]);
 
   const closeEditor = () => {
-    if (hasUnsavedChanges && !window.confirm('Bạn có thay đổi chưa lưu. Đóng và bỏ các thay đổi này?')) return;
+    if (hasUnsavedChanges && !window.confirm('Có thay đổi chưa lưu. Đóng và bỏ các thay đổi này?')) return;
     onClose();
   };
 
@@ -498,7 +498,7 @@ export function ExamEditor({
                           type="button"
                           onClick={() => addQuestionOfType(section.id)}
                           aria-label={`Thêm câu vào ${section.title}`}
-                          className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800 hover:bg-blue-100"
+                          className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[0.6875rem] font-semibold text-blue-800 hover:bg-blue-100"
                         >
                           <Plus className="h-3 w-3" /> Thêm câu
                         </button>
@@ -516,7 +516,7 @@ export function ExamEditor({
                     </button>
                   </div>
                 ))}
-                    {section.questions.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 p-2 text-center text-[11px] text-slate-500">Chưa có câu hỏi</p>}
+                    {section.questions.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 p-2 text-center text-[0.6875rem] text-slate-500">Chưa có câu hỏi</p>}
                     </div>
                   </section>
                 ))}
@@ -699,7 +699,7 @@ function MathPreview({ value, compact = false }: { value: string; compact?: bool
     <div className={compact
       ? 'mt-1 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600'
       : 'rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2'}>
-      {!compact && <p className="mb-1 text-[11px] font-semibold text-blue-800">Xem trước công thức</p>}
+      {!compact && <p className="mb-1 text-[0.6875rem] font-semibold text-blue-800">Xem trước công thức</p>}
       <MathText text={normalized} className="min-w-0 overflow-x-auto text-sm leading-6 text-slate-800" />
     </div>
   );

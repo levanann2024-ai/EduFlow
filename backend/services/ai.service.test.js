@@ -14,8 +14,8 @@ test('student AI instructions consistently use toi-ban address', () => {
 test('teacher honorific follows the authenticated account gender', () => {
   assert.equal(getTeacherHonorific('male'), 'thầy');
   assert.equal(getTeacherHonorific('female'), 'cô');
-  assert.equal(getTeacherHonorific('other'), 'thầy/cô');
-  assert.equal(getTeacherHonorific('unspecified'), 'thầy/cô');
+  assert.equal(getTeacherHonorific('other'), null);
+  assert.equal(getTeacherHonorific('unspecified'), null);
 
   for (const [gender, honorific] of [['male', 'thầy'], ['female', 'cô']]) {
     for (const type of ['teacher-chat', 'teacher-progress-analysis', 'teacher-schedule']) {
@@ -23,5 +23,10 @@ test('teacher honorific follows the authenticated account gender', () => {
       assert.match(instruction, new RegExp(`gọi (?:người dùng|giáo viên) là "${honorific}"`));
       assert.match(instruction, /xưng "tôi"/);
     }
+  }
+  for (const type of ['teacher-chat', 'teacher-progress-analysis', 'teacher-schedule']) {
+    const instruction = getSystemInstruction(type, 'unspecified');
+    assert.doesNotMatch(instruction, /thầy\/cô/);
+    assert.match(instruction, /không dùng đại từ hoặc danh xưng/);
   }
 });

@@ -12,9 +12,9 @@ const vietnamTime = new Intl.DateTimeFormat('en-GB', {
 const periods = [
   { number: 1, start: 7 * 60 + 15, end: 8 * 60 },
   { number: 2, start: 8 * 60 + 15, end: 9 * 60 },
-  { number: 3, start: 9 * 60 + 10, end: 9 * 60 + 50 },
-  { number: 4, start: 10 * 60, end: 10 * 60 + 40 },
-  { number: 5, start: 11 * 60, end: 11 * 60 + 45 },
+  { number: 3, start: 9 * 60 + 10, end: 9 * 60 + 55 },
+  { number: 4, start: 10 * 60, end: 10 * 60 + 45 },
+  { number: 5, start: 11 * 60, end: 11 * 60 + 40 },
 ];
 
 function getExamPeriodSlot(startsAt) {

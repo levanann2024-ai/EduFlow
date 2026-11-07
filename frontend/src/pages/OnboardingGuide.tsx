@@ -67,7 +67,7 @@ export function OnboardingGuide({
         </button>
       </header>
       <div className="overflow-y-auto px-4 py-3.5">
-        <ul className="list-disc space-y-2.5 pl-5 text-[15px] leading-6 text-slate-600 marker:text-slate-500">
+        <ul className="list-disc space-y-2.5 pl-5 text-[0.9375rem] leading-6 text-slate-600 marker:text-slate-500">
           {guidanceByRole[role].map(({ page, description }) => (
             <li key={page}>
               Vào <strong className="font-semibold text-slate-700">{page}</strong> để {description.charAt(0).toLocaleLowerCase('vi') + description.slice(1)}

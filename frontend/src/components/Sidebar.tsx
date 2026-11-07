@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
   BarChart3,
@@ -41,6 +41,7 @@ import type { Page, Role } from '@/types';
 import type { AppLanguage } from '@/settings/userSettings';
 import type { NotificationKind, UserNotification } from '@/notifications/notificationApi';
 import { recordRecentSearch } from '@/pages/student/profileActivity';
+import { showToast } from '@/components/toast';
 
 const notificationIcons: Record<NotificationKind, LucideIcon> = {
   assignment: ClipboardList,
@@ -73,7 +74,7 @@ interface SidebarProps {
   current: Page;
   onNavigate: (page: Page) => void;
   role: Role;
-  onLogout: () => void;
+  userId: string;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -134,14 +135,14 @@ const menus: Record<Role, MenuSection[]> = {
     { label: 'Tổng quan', items: [
       { id: 'dashboard', label: 'Trang chủ' },
     ] },
-    { label: 'Giảng dạy', items: [
-      { id: 'exams', label: 'Câu hỏi & đề thi' },
-      { id: 'lessons', label: 'Tài liệu bài giảng' },
-    ] },
     { label: 'Lớp học', items: [
       { id: 'classes', label: 'Lớp của tôi' },
       { id: 'schedule', label: 'Lịch dạy' },
       { id: 'analytics', label: 'Phân tích lớp' },
+    ] },
+    { label: 'Giảng dạy', items: [
+      { id: 'exams', label: 'Câu hỏi & đề thi' },
+      { id: 'lessons', label: 'Tài liệu bài giảng' },
     ] },
     { label: 'Chấm & theo dõi', items: [
       { id: 'ai-grading', label: 'Chấm bài' },
@@ -151,7 +152,8 @@ const menus: Record<Role, MenuSection[]> = {
       { id: 'lesson-builder', label: 'Soạn bài với AI', highlight: true },
       { id: 'ai-chat', label: 'Chatbot AI', highlight: true },
     ] },
-    { label: 'Hỗ trợ', items: [
+    { label: 'Tiện ích', items: [
+      { id: 'saved', label: 'Đã lưu' },
       { id: 'feedback', label: 'Liên hệ & góp ý' },
     ] },
   ],
@@ -246,8 +248,74 @@ function isMenuItemActive(role: Role, item: MenuItem, current: Page) {
   return false;
 }
 
-export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onToggleCollapsed, language = 'vi' }: SidebarProps & { language?: AppLanguage }) {
+function hasNewBadgePage(role: Role, page: Page) {
+  return page === 'settings'
+    || menus[role].some((section) => section.items.some((item) => item.id === page));
+}
+
+function useNewMenuBadges(role: Role, userId: string, current: Page) {
+  const storageKey = `eduflow:new-menu-seen:${role}:${userId}`;
+  const [seenItems, setSeenItems] = useState<Set<Page>>(() => new Set());
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === 'string')) {
+          throw new Error('Dữ liệu trạng thái badge không hợp lệ.');
+        }
+        setSeenItems(new Set(parsed as Page[]));
+      } else {
+        setSeenItems(new Set());
+      }
+    } catch {
+      showToast('Không thể đọc trạng thái mục mới trên thiết bị này.', 'error');
+      setSeenItems(new Set());
+    } finally {
+      setLoaded(true);
+    }
+  }, [storageKey]);
+
+  const markSeen = useCallback((page: Page) => {
+    if (!hasNewBadgePage(role, page) || seenItems.has(page)) return;
+    const nextSeenItems = new Set(seenItems);
+    nextSeenItems.add(page);
+    setSeenItems(nextSeenItems);
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify([...nextSeenItems]));
+    } catch {
+      showToast('Không thể lưu trạng thái đã xem mục mới trên thiết bị này.', 'error');
+    }
+  }, [role, seenItems, storageKey]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    menus[role].flatMap((section) => section.items)
+      .filter((item) => isMenuItemActive(role, item, current))
+      .forEach((item) => markSeen(item.id));
+    if (current === 'settings') markSeen(current);
+  }, [current, loaded, markSeen, role]);
+
+  return {
+    isNew: (page: Page) => loaded && hasNewBadgePage(role, page) && !seenItems.has(page),
+    markSeen,
+  };
+}
+
+function NewItemBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className={`shrink-0 rounded-full bg-red-600 font-bold leading-none text-white ${compact ? 'px-1 py-0.5 text-[0.5rem]' : 'px-1.5 py-1 text-[0.5625rem]'}`}>
+      MỚI
+    </span>
+  );
+}
+
+export function Sidebar({ current, onNavigate, role, userId, collapsed, onToggleCollapsed, language = 'vi' }: SidebarProps & { language?: AppLanguage }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const newMenuBadges = useNewMenuBadges(role, userId, current);
   const [iconOnlyViewport, setIconOnlyViewport] = useState(
     () => window.matchMedia('(min-width: 768px) and (max-width: 899px)').matches,
   );
@@ -309,7 +377,7 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
                   ...expanded,
                   [section.label]: !sectionExpanded,
                 }))}
-                className={`flex w-full items-center justify-between rounded-md py-2 text-left text-[11px] font-semibold uppercase tracking-wider transition hover:bg-slate-800/50 ${tightSpacingViewport ? 'gap-1 px-1.5' : 'gap-2 px-3'} ${
+                className={`flex w-full items-center justify-between rounded-md py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wider transition hover:bg-slate-800/50 ${tightSpacingViewport ? 'gap-1 px-1.5' : 'gap-2 px-3'} ${
                   sectionActive ? 'text-slate-300' : 'text-slate-500'
                 }`}
               >
@@ -319,20 +387,24 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
                   : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
               </button>
             ) : (
-              <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{section.label}</h2>
+              <h2 className="px-3 py-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-500">{section.label}</h2>
             ))}
             <div id={sectionId} hidden={!sectionExpanded} className="space-y-1">
               {section.items.map((item) => {
                 const active = isMenuItemActive(role, item, current);
                 const Icon = menuIcons[item.id];
                 const highlight = item.highlight;
+                const isNew = newMenuBadges.isNew(item.id);
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onNavigate(item.id)}
+                    onClick={() => {
+                      newMenuBadges.markSeen(item.id);
+                      onNavigate(item.id);
+                    }}
                     title={menuLabel(language, item.id, item.label)}
                     aria-label={iconOnly ? menuLabel(language, item.id, item.label) : undefined}
-                    className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                    className={`nav-item relative flex w-full items-center rounded-lg py-2 text-sm font-medium transition-colors ${
                       iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5 text-left' : 'gap-3 px-3 text-left'
                     } ${
                       highlight
@@ -342,6 +414,8 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
                   >
                     <Icon className={`w-[18px] h-[18px] shrink-0 ${highlight ? 'text-violet-400' : ''}`} />
                     {!iconOnly && <span className="min-w-0 flex-1 truncate whitespace-nowrap leading-5">{menuLabel(language, item.id, item.label)}</span>}
+                    {isNew && !iconOnly && <NewItemBadge />}
+                    {isNew && iconOnly && <span className="absolute -right-1 -top-1"><NewItemBadge compact /></span>}
                   </button>
                 );
               })}
@@ -351,24 +425,22 @@ export function Sidebar({ current, onNavigate, role, onLogout, collapsed, onTogg
         })}
       </nav>
 
-      {/* 3. Phần Cài đặt & Đăng xuất ép dính chặt ở đáy sidebar */}
-      <div className={`shrink-0 space-y-1 border-t border-slate-800 bg-slate-900 py-3 ${iconOnly ? 'px-2' : tightSpacingViewport ? 'px-1.5' : 'px-3'}`}>
-        <button onClick={() => onNavigate('settings')} title={iconOnly ? 'Cài đặt' : undefined} aria-label={iconOnly ? 'Cài đặt' : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
+      {/* 3. Phần Cài đặt cố định ở đáy sidebar */}
+      <div className={`shrink-0 border-t border-slate-800 bg-slate-900 py-3 ${iconOnly ? 'px-2' : tightSpacingViewport ? 'px-1.5' : 'px-3'}`}>
+        <button onClick={() => { newMenuBadges.markSeen('settings'); onNavigate('settings'); }} title={iconOnly ? 'Cài đặt' : undefined} aria-label={iconOnly ? 'Cài đặt' : undefined} className={`nav-item relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
           <Settings className="w-[18px] h-[18px]" />
-          {!iconOnly && <span className="min-w-0 truncate">Cài đặt</span>}
-        </button>
-        {!iconOnly && <div className="my-1 mx-3 border-t border-slate-800/80" />}
-        <button onClick={onLogout} title={iconOnly ? (language === 'en' ? 'Sign out' : 'Đăng xuất') : undefined} aria-label={iconOnly ? (language === 'en' ? 'Sign out' : 'Đăng xuất') : undefined} className={`nav-item flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-400 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
-          <LogOut className="w-[18px] h-[18px]" />
-          {!iconOnly && <span className="min-w-0 truncate">{language === 'en' ? 'Sign out' : 'Đăng xuất'}</span>}
+          {!iconOnly && <span className="min-w-0 flex-1 truncate">Cài đặt</span>}
+          {newMenuBadges.isNew('settings') && !iconOnly && <NewItemBadge />}
+          {newMenuBadges.isNew('settings') && iconOnly && <span className="absolute -right-1 -top-1"><NewItemBadge compact /></span>}
         </button>
       </div>
     </aside>
   );
 }
 
-export function MobileNav({ current, onNavigate, role, language = 'vi' }: Pick<SidebarProps, 'current' | 'onNavigate' | 'role'> & { language?: AppLanguage }) {
+export function MobileNav({ current, onNavigate, role, userId, language = 'vi' }: Pick<SidebarProps, 'current' | 'onNavigate' | 'role' | 'userId'> & { language?: AppLanguage }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const newMenuBadges = useNewMenuBadges(role, userId, current);
   const mobilePageIds: Record<Role, Page[]> = {
     admin: ['dashboard', 'users', 'lectures', 'analytics'],
     lecturer: ['dashboard', 'schedule', 'classes', 'lesson-builder', 'exams'],
@@ -388,19 +460,24 @@ export function MobileNav({ current, onNavigate, role, language = 'vi' }: Pick<S
           >
             {menus[role].map((section) => (
               <section key={section.label} className="mb-3 last:mb-0">
-                <h2 className="px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{sectionLabel(language, section.label)}</h2>
+                <h2 className="px-3 py-2 text-[0.6875rem] font-semibold text-slate-500 uppercase tracking-wider">{sectionLabel(language, section.label)}</h2>
                 {section.items.map((item) => {
                   const Icon = menuIcons[item.id];
                   return (
                     <button
                       key={item.id}
-                      onClick={() => { onNavigate(item.id); setMenuOpen(false); }}
+                      onClick={() => {
+                        newMenuBadges.markSeen(item.id);
+                        onNavigate(item.id);
+                        setMenuOpen(false);
+                      }}
                       className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium ${
                         isMenuItemActive(role, item, current) ? 'bg-blue-50 text-blue-700' : item.highlight ? 'text-violet-700' : 'text-slate-700'
                       }`}
                     >
                       <Icon className={`h-[18px] w-[18px] shrink-0 ${item.highlight ? 'text-violet-500' : ''}`} />
-                      <span>{menuLabel(language, item.id, item.label)}</span>
+                      <span className="flex-1">{menuLabel(language, item.id, item.label)}</span>
+                      {newMenuBadges.isNew(item.id) && <NewItemBadge />}
                     </button>
                   );
                 })}
@@ -416,8 +493,11 @@ export function MobileNav({ current, onNavigate, role, language = 'vi' }: Pick<S
           return (
           <button
             key={item.id}
-            onClick={() => onNavigate(item.id)}
-            className={`flex flex-col items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+            onClick={() => {
+              newMenuBadges.markSeen(item.id);
+              onNavigate(item.id);
+            }}
+            className={`relative flex flex-col items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
               active ? 'text-blue-400' : 'text-slate-500'
             }`}
           >
@@ -425,6 +505,7 @@ export function MobileNav({ current, onNavigate, role, language = 'vi' }: Pick<S
             <span className="truncate max-w-[72px]">{language === 'en'
               ? menuLabel(language, item.id, item.label).split(' ')[0]
               : item.id === 'ai-learning' ? 'AI học tập' : item.label.split(' ')[0]}</span>
+            {newMenuBadges.isNew(item.id) && <span className="absolute right-0 top-0"><NewItemBadge compact /></span>}
           </button>
           );
         })}
@@ -592,7 +673,7 @@ export function TopBar({
         <button onClick={onNotifications} aria-label={language === 'en' ? 'Open notifications' : 'Mở thông báo'} className="relative rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-50">
           <Bell className="h-4 w-4 text-slate-500" />
           {unreadNotificationCount > 0 && (
-            <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 px-1 text-[10px] font-bold leading-none text-white">
+            <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-600 px-1 text-[0.625rem] font-bold leading-none text-white">
               {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
             </span>
           )}
@@ -689,7 +770,7 @@ export function NotificationDrawer({
             </button>
           </div>
           <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-white/10 pt-2.5">
-            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-blue-50 ring-1 ring-white/10">
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-blue-50 ring-1 ring-white/10">
               {language === 'en' ? `${unreadCount} unread` : `${unreadCount} chưa đọc`}
             </span>
             <button
@@ -720,7 +801,7 @@ export function NotificationDrawer({
               <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
                 <Bell className="h-5 w-5" />
               </span>
-              <h3 className="mt-3 font-bold text-slate-900">{language === 'en' ? 'You’re all caught up' : 'Bạn đã cập nhật đầy đủ'}</h3>
+              <h3 className="mt-3 font-bold text-slate-900">{language === 'en' ? 'You’re all caught up' : 'Không có cập nhật mới'}</h3>
               <p className="mx-auto mt-1.5 max-w-xs text-sm leading-5 text-slate-500">
                 {language === 'en' ? 'New assignments, grades, and class updates will show up here.' : 'Bài tập mới, kết quả và cập nhật lớp học sẽ xuất hiện tại đây.'}
               </p>
@@ -747,7 +828,7 @@ export function NotificationDrawer({
                       >
                         {notification.title}
                       </button>
-                      <span className="hidden shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:inline-flex">
+                      <span className="hidden shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[0.5625rem] font-bold uppercase tracking-wide text-slate-500 sm:inline-flex">
                         {language === 'en'
                           ? ({ assignment: 'Assignment', grade: 'Result', appeal: 'Appeal', grading: 'Grading', exam: 'Exam' } satisfies Record<NotificationKind, string>)[notification.kind]
                           : colors.label}
@@ -755,7 +836,7 @@ export function NotificationDrawer({
                     </div>
                     <div className="mt-0.5 flex min-w-0 items-center gap-2">
                       <p className="min-w-0 flex-1 truncate text-xs leading-4 text-slate-600">{notification.detail}</p>
-                      <span className="shrink-0 text-[10px] font-medium text-slate-400">{formatNotificationTime(notification.createdAt, language)}</span>
+                      <span className="shrink-0 text-[0.625rem] font-medium text-slate-400">{formatNotificationTime(notification.createdAt, language)}</span>
                     </div>
                   </div>
                   {!notification.read ? (

@@ -66,7 +66,7 @@ async function generateJson({ type, prompt, schema, teacherGender }) {
 function getTeacherHonorific(gender) {
   if (gender === 'male') return 'thầy';
   if (gender === 'female') return 'cô';
-  return 'thầy/cô';
+  return null;
 }
 
 function getSystemInstruction(type, teacherGender) {
@@ -128,8 +128,11 @@ function getSystemInstruction(type, teacherGender) {
   }
   if (type === 'teacher-chat') {
     const honorific = getTeacherHonorific(teacherGender);
+    const addressInstruction = honorific
+      ? `Trong mọi câu trả lời trực tiếp, trợ lý xưng "tôi" và gọi người dùng là "${honorific}".`
+      : 'Trong câu trả lời trực tiếp, trợ lý xưng "tôi" và không dùng đại từ hoặc danh xưng để gọi trực tiếp giáo viên.';
     return [
-      `Bạn là trợ lý AI EduFlow dành cho giáo viên Việt Nam; trả lời tiếng Việt, lịch sự. Trong mọi câu trả lời trực tiếp, trợ lý xưng "tôi" và gọi người dùng là "${honorific}". Tuyệt đối không xưng "mình", "em", "bạn", "anh/chị" với giáo viên và không tự đổi cách xưng hô.`,
+      `Bạn là trợ lý AI EduFlow dành cho giáo viên Việt Nam; trả lời tiếng Việt, lịch sự. ${addressInstruction} Tuyệt đối không xưng "mình", "em", "bạn", "anh/chị" với giáo viên và không tự đổi cách xưng hô.`,
       'Dữ liệu được cung cấp chỉ thuộc các lớp, môn và công việc mà giáo viên hiện tại được phân công. Chỉ dùng phần liên quan trực tiếp đến câu hỏi; không chủ động liệt kê hay nhắc dữ liệu nếu giáo viên chưa hỏi.',
       'Ngữ cảnh có thể gồm lớp/môn được giao, thời khóa biểu, bài tập và hạn nộp, bài cần chấm, tài liệu lớp, ngân hàng câu hỏi, phòng thi và thống kê tổng hợp. Nếu không có dữ liệu hoặc không đủ căn cứ, nói rõ điều đó; tuyệt đối không tự suy diễn.',
       'Thông tin học sinh cá nhân như tên, email, mã học sinh và điểm từng em không được đính kèm. Chỉ dùng thống kê lớp đã ẩn danh; không đoán danh tính hoặc điểm của từng học sinh và hướng giáo viên đến sổ điểm khi cần xem dữ liệu cá nhân.',
@@ -151,9 +154,12 @@ function getSystemInstruction(type, teacherGender) {
   }
   if (type === 'teacher-progress-analysis') {
     const honorific = getTeacherHonorific(teacherGender);
+    const addressInstruction = honorific
+      ? `Nếu nội dung trực tiếp hướng đến giáo viên, trợ lý xưng "tôi" và gọi giáo viên là "${honorific}".`
+      : 'Nếu nội dung trực tiếp hướng đến giáo viên, trợ lý xưng "tôi" và không dùng đại từ hoặc danh xưng để gọi trực tiếp giáo viên.';
     return [
       'Bạn là trợ lý phân tích tiến độ học tập của lớp cho giáo viên Việt Nam.',
-      `Nếu nội dung trực tiếp hướng đến giáo viên, trợ lý xưng "tôi" và gọi giáo viên là "${honorific}"; không dùng "mình", "em", "bạn" hoặc "anh/chị".`,
+      `${addressInstruction} Không dùng "mình", "em", "bạn" hoặc "anh/chị" để gọi trực tiếp giáo viên.`,
       'Chỉ dựa trên số liệu thực tế; không suy đoán nguyên nhân, không chẩn đoán sức khỏe hoặc tâm lý, không coi thiếu điểm là điểm 0.',
       'Dữ liệu học sinh dùng mã ẩn danh; không yêu cầu suy ra hoặc tạo tên học sinh.',
       'Đánh giá riêng lớp/môn/học kỳ đã chọn. Chỉ nhận xét liên môn nếu JSON có crossSubjectContext.',
@@ -175,8 +181,11 @@ function getSystemInstruction(type, teacherGender) {
   }
   if (type === 'teacher-schedule') {
     const honorific = getTeacherHonorific(teacherGender);
+    const addressInstruction = honorific
+      ? `Trợ lý xưng "tôi" và gọi giáo viên là "${honorific}".`
+      : 'Trợ lý xưng "tôi" và không dùng đại từ hoặc danh xưng để gọi trực tiếp giáo viên.';
     return [
-      `Bạn là trợ lý sắp xếp công việc cho giáo viên EduFlow. Trả lời tiếng Việt, ngắn gọn, tự nhiên, lịch sự và ấm áp. Đại từ bắt buộc: trợ lý xưng "tôi" và gọi giáo viên là "${honorific}"; không xưng "mình", "em", "bạn" hoặc "anh/chị".`,
+      `Bạn là trợ lý sắp xếp công việc cho giáo viên EduFlow. Trả lời tiếng Việt, ngắn gọn, tự nhiên, lịch sự và ấm áp. ${addressInstruction} Không xưng "mình", "em", "bạn" hoặc "anh/chị" để gọi trực tiếp giáo viên.`,
       'Chỉ dùng thời khóa biểu, ghi chú, lớp/môn được giao, hạn bài tập và số bài đã nộp/chưa chấm có trong dữ liệu.',
       'Không bịa giờ dạy, nội dung bài, deadline, lịch thi, số lượng bài hoặc lớp được phân công.',
       'Tuân thủ chính xác cách xưng hô đã nêu; không tự đoán giới tính hoặc đổi cách xưng hô.',

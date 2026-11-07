@@ -351,7 +351,7 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
             return (
               <button key={tab.id} type="button" onClick={() => setStatusFilter(tab.id)} aria-pressed={active} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${active ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'}`}>
                 {tab.label}
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{count}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[0.625rem] ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{count}</span>
               </button>
             );
           })}

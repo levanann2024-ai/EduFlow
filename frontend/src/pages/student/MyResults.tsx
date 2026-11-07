@@ -876,14 +876,14 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                                     <h4 className="text-xs font-bold text-slate-800">{item.topic}</h4>
                                   </div>
                                   {uniqueReferences.length > 0 && (
-                                    <span className="shrink-0 text-[11px] font-medium text-slate-500">{uniqueReferences.length} bài liên quan</span>
+                                    <span className="shrink-0 text-[0.6875rem] font-medium text-slate-500">{uniqueReferences.length} bài liên quan</span>
                                   )}
                                 </div>
                                 <p className="mt-1 text-xs leading-5 text-slate-600">{item.text}</p>
                                 {uniqueReferences.length > 0 && (
                                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                                     {uniqueReferences.map((entry) => (
-                                      <span key={entry.id} className="text-[11px] text-slate-600">
+                                      <span key={entry.id} className="text-[0.6875rem] text-slate-600">
                                         {entry.title}
                                       </span>
                                     ))}
@@ -986,7 +986,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                         <li key={item.id} className="flex items-start justify-between gap-2 border-t border-blue-200/70 pt-2 first:border-0 first:pt-0">
                           <div className="min-w-0">
                             <p className="truncate text-xs font-medium text-slate-800" title={item.title}>{item.title}</p>
-                            <p className="mt-0.5 text-[10px] text-blue-800/70">
+                            <p className="mt-0.5 text-[0.625rem] text-blue-800/70">
                               {new Date(item.gradedAt ?? item.dueAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                             </p>
                           </div>
@@ -1009,7 +1009,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                         <li key={exam.sessionId} className="flex items-start justify-between gap-2 border-t border-blue-200/70 pt-2 first:border-0 first:pt-0">
                           <div className="min-w-0">
                             <p className="truncate text-xs font-medium text-slate-800" title={exam.title}>{exam.title}</p>
-                            <p className="mt-0.5 text-[10px] text-blue-800/70">
+                            <p className="mt-0.5 text-[0.625rem] text-blue-800/70">
                               {new Date(exam.grade.gradedAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                             </p>
                           </div>
@@ -1033,8 +1033,8 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                   <div key={item.subject}>
                     <div className="mb-1 grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem_4.25rem] items-center gap-2 text-xs">
                       <span className="truncate font-semibold text-slate-700">{item.subject}</span>
-                      <span className={`justify-self-center whitespace-nowrap rounded-full px-2 py-1 text-center text-[10px] font-semibold ${standing.badge}`}>{standing.label}</span>
-                      <span className="text-center text-[10px] text-slate-500">{item.count} bài</span>
+                      <span className={`justify-self-center whitespace-nowrap rounded-full px-2 py-1 text-center text-[0.625rem] font-semibold ${standing.badge}`}>{standing.label}</span>
+                      <span className="text-center text-[0.625rem] text-slate-500">{item.count} bài</span>
                       <strong className="text-right tabular-nums text-slate-800">{item.average === null ? '—' : `${item.average.toFixed(1)}/10`}</strong>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
@@ -1076,7 +1076,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       setAllSubjectsChartMode('subjects');
                       setHistoryOpen(false);
                     }}
-                    className={`rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${allSubjectsChartMode === 'subjects' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${allSubjectsChartMode === 'subjects' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
                     Từng môn
                   </button>
@@ -1087,7 +1087,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       setAllSubjectsChartMode('overall');
                       setHistoryOpen(false);
                     }}
-                    className={`rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${allSubjectsChartMode === 'overall' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${allSubjectsChartMode === 'overall' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
                     TBM chung
                   </button>
@@ -1101,7 +1101,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       setHistoryFilter('completed');
                       setHistoryOpen(false);
                     }}
-                    className={`rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${historyFilter === 'completed' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${historyFilter === 'completed' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
                     Bài đã làm
                   </button>
@@ -1112,7 +1112,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       setHistoryFilter('average');
                       setHistoryOpen(false);
                     }}
-                    className={`rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${historyFilter === 'average' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${historyFilter === 'average' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
                     Điểm TBM
                   </button>
@@ -1383,13 +1383,13 @@ function InsightPanel({
           {items.map((item, index) => (
             <li key={`${item.title}-${index}`} className="border-t border-black/5 pt-2 first:border-0 first:pt-0">
               <h4 className={`text-xs font-bold ${green ? 'text-emerald-950' : 'text-rose-950'}`}>{item.title}</h4>
-              {item.text && <p className="mt-1 text-[11px] leading-4 text-slate-700">{item.text}</p>}
+              {item.text && <p className="mt-1 text-[0.6875rem] leading-4 text-slate-700">{item.text}</p>}
               <EvidenceList ids={item.ids} progress={progress} />
               {!green && onPractice && (
                 <button
                   type="button"
                   onClick={() => onPractice(item.title, item.ids)}
-                  className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-rose-800 hover:underline"
+                  className="mt-1 inline-flex items-center gap-1 text-[0.625rem] font-semibold text-rose-800 hover:underline"
                 >
                   Luyện tập chủ đề này <ArrowRight className="h-3 w-3" />
                 </button>
@@ -1397,7 +1397,7 @@ function InsightPanel({
             </li>
           ))}
         </ul>
-      ) : <p className="mt-2 text-[11px] leading-4 text-slate-600">{empty}</p>}
+      ) : <p className="mt-2 text-[0.6875rem] leading-4 text-slate-600">{empty}</p>}
     </section>
   );
 }
@@ -1444,7 +1444,7 @@ function LongTermPlan({
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <h4 className="text-sm font-semibold text-slate-800">{stage.stage}: {stage.goal}</h4>
                   {priority && (
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${priority === 'high' ? 'bg-rose-100 text-rose-800' : priority === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.625rem] font-semibold ${priority === 'high' ? 'bg-rose-100 text-rose-800' : priority === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                       {priority === 'high' ? 'Ưu tiên cao' : priority === 'medium' ? 'Ưu tiên vừa' : 'Theo dõi'}
                     </span>
                   )}
@@ -1454,7 +1454,7 @@ function LongTermPlan({
                     {mergedActions.map((action, actionIndex) => <li key={`${action}-${actionIndex}`}>{action}</li>)}
                   </ul>
                 )}
-                <p className="mt-1 text-[11px] text-slate-500">Theo dõi tiến bộ: {stage.evaluation}</p>
+                <p className="mt-1 text-[0.6875rem] text-slate-500">Theo dõi tiến bộ: {stage.evaluation}</p>
                 <EvidenceList ids={evidenceIds} progress={progress} />
                 {stage.relatedRecommendations.flatMap((item) => item.resourceIds).map((resourceId) => {
                   const resource = progress?.resources.find((entry) => entry.id === resourceId);
@@ -1463,7 +1463,7 @@ function LongTermPlan({
                       key={resource.id}
                       type="button"
                       onClick={() => onOpenResource(resource.subject, resource.lesson || resource.chapter)}
-                      className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:underline"
+                      className="mt-1 inline-flex items-center gap-1 text-[0.6875rem] font-semibold text-blue-700 hover:underline"
                     >
                       <BookOpen className="h-3 w-3" /> {resource.title}
                     </button>
@@ -1494,7 +1494,7 @@ function LongTermPlan({
 function EvidenceList({ ids, progress }: { ids: string[]; progress: StudentProgressData | null }) {
   if (!ids.length || !progress) return null;
   return (
-    <p className="mt-1 text-[10px] leading-4 text-slate-500">
+    <p className="mt-1 text-[0.625rem] leading-4 text-slate-500">
       Căn cứ: {ids.map((id) => evidenceLabel(id, progress)).join(' - ')}
     </p>
   );

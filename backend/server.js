@@ -4,6 +4,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const aiRoutes = require('./routes/ai.routes');
 const schoolRoutes = require('./routes/school.routes');
+const savedItemsRoutes = require('./routes/savedItems.routes');
 const { router: authRoutes } = require('./auth/routes');
 const { getAllowedOrigins } = require('./auth/trustedOrigins');
 const { requireAccountReady, requireAuth } = require('./auth/middleware');
@@ -24,17 +25,6 @@ if (process.env.NODE_ENV === 'production' && process.env.EDUFLOW_DEMO_MODE === '
   throw new Error('EDUFLOW_DEMO_MODE cannot be enabled in production.');
 }
 
-app.use(express.json({ limit: '1mb' }));
-app.use(cookieParser());
-app.use((error, _req, res, next) => {
-  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
-    return res.status(400).json({
-      success: false,
-      message: 'Request body phải là JSON hợp lệ.',
-    });
-  }
-  return next(error);
-});
 app.use((req, res, next) => {
   const allowedOrigins = getAllowedOrigins();
   const origin = req.get('origin');
@@ -48,7 +38,27 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
+app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
+    return res.status(400).json({
+      success: false,
+      message: 'Request body phải là JSON hợp lệ.',
+    });
+  }
+  if (error.type === 'entity.too.large') {
+    return res.status(413).json({
+      success: false,
+      message: req.path === '/api/saved-items/import'
+        ? 'Request body vượt quá 1 MiB; không có mục nào được nhập.'
+        : 'Request body vượt quá 1 MiB.',
+    });
+  }
+  return next(error);
+});
 app.use('/api/auth', authRoutes);
+app.use('/api/saved-items', savedItemsRoutes);
 app.use('/api', schoolRoutes);
 app.use('/api/ai', requireAuth, requireAccountReady, aiRoutes);
 

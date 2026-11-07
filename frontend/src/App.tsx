@@ -52,7 +52,7 @@ import { login as authenticate, logout as endSession, restoreSession, saveAvatar
 import type { Page, Role } from '@/types';
 
 const allowedPages: Record<Role, Page[]> = {
-  lecturer: ['dashboard', 'classes', 'schedule', 'lessons', 'lesson-builder', 'question-bank', 'saved-assignments', 'exams', 'exam-monitor', 'ai-grading', 'ai-chat', 'analytics', 'feedback', 'profile', 'settings'],
+  lecturer: ['dashboard', 'classes', 'schedule', 'lessons', 'lesson-builder', 'question-bank', 'saved-assignments', 'exams', 'exam-monitor', 'ai-grading', 'ai-chat', 'analytics', 'saved', 'feedback', 'profile', 'settings'],
   student: ['dashboard', 'schedule', 'my-classes', 'assignments', 'ai-learning', 'ai-chat', 'ai-practice', 'my-results', 'leaderboard', 'saved', 'feedback', 'profile', 'online-exams', 'settings'],
   admin: ['dashboard', 'users', 'lectures', 'analytics', 'settings'],
 };
@@ -70,6 +70,7 @@ const teacherPageByPath: Record<string, Page> = {
   '/teacher/ai-grading': 'ai-grading',
   '/teacher/ai-chat': 'ai-chat',
   '/teacher/analytics': 'analytics',
+  '/teacher/saved': 'saved',
   '/teacher/contact': 'feedback',
 };
 
@@ -107,6 +108,10 @@ function App() {
   const [initialSubjectView, setInitialSubjectView] = useState<'lessons' | 'assignments' | 'exam' | null>(null);
   const [initialSubjectTopic, setInitialSubjectTopic] = useState<string | null>(null);
   const [initialExamSessionId, setInitialExamSessionId] = useState<string | null>(null);
+  const [initialExamClassId, setInitialExamClassId] = useState<string | null>(null);
+  const [initialResourceId, setInitialResourceId] = useState<string | null>(null);
+  const [initialAssignmentId, setInitialAssignmentId] = useState<string | null>(null);
+  const [initialChatConversationId, setInitialChatConversationId] = useState<string | null>(null);
 
   useEffect(() => {
     const syncAuthScreen = () => setAuthScreen(window.location.pathname === '/' ? 'landing' : 'login');
@@ -167,7 +172,11 @@ function App() {
 
   useEffect(() => {
     document.documentElement.lang = userSettings.language;
-  }, [userSettings.language]);
+    document.documentElement.style.setProperty(
+      '--app-font-scale',
+      String(userSettings.fontScalePercent / 100),
+    );
+  }, [userSettings.fontScalePercent, userSettings.language]);
 
   const updateUserSettings = (nextSettings: UserSettings) => {
     if (!authUser) return;
@@ -178,6 +187,10 @@ function App() {
 
   const navigateToPage = (nextPage: Page) => {
     setInitialExamSessionId(null);
+    setInitialExamClassId(null);
+    setInitialResourceId(null);
+    setInitialAssignmentId(null);
+    setInitialChatConversationId(null);
     if (nextPage === 'lesson-builder') setLessonBuilderInitialMode(page === 'exams' ? 'exam' : 'lesson');
     if (nextPage === 'lessons') setLessonsWorkspaceVisited(true);
     setResourceSubjectSeed(null);
@@ -418,10 +431,10 @@ function App() {
             Đang khôi phục phiên đăng nhập
           </h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Đang chuẩn bị không gian học tập của bạn.
+            Đang chuẩn bị không gian học tập.
           </p>
-          <div className="mx-auto mt-7 h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-blue-50" aria-hidden="true">
-            <span className="session-loading-bar block h-full w-[32%] rounded-full bg-gradient-to-r from-blue-400 via-blue-600 to-sky-400" />
+          <div className="mx-auto mt-7 flex h-8 w-8 items-center justify-center" aria-hidden="true">
+            <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-blue-100 border-t-blue-600" />
           </div>
           <p className="mt-3 text-xs font-medium text-slate-400">Vui lòng đợi trong giây lát</p>
         </section>
@@ -498,8 +511,8 @@ function App() {
         current={activePage}
         onNavigate={navigateToPage}
         role={role}
+        userId={authUser.id}
         language={userSettings.language}
-        onLogout={logout}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
@@ -538,7 +551,7 @@ function App() {
                 : <Dashboard onNavigate={navigateToPage} role={role} />)}
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
-              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} />}
+              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} initialConversationId={initialChatConversationId ?? undefined} />}
               {role === 'lecturer' && lessonsWorkspaceVisited && (
                 <div className={activePage === 'lessons' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
                   <LessonRepository initialDraft={lessonRepositoryDraft} />
@@ -594,11 +607,17 @@ function App() {
                   initialSubjectView={initialSubjectView}
                   initialSubjectTopic={initialSubjectTopic}
                   initialExamSessionId={initialExamSessionId}
+                  initialExamClassId={initialExamClassId}
+                  initialResourceId={initialResourceId}
+                  initialAssignmentId={initialAssignmentId}
                   onExitGroup={() => {
                     setResourceSubjectSeed(null);
                     setInitialSubjectView(null);
                     setInitialSubjectTopic(null);
                     setInitialExamSessionId(null);
+                    setInitialExamClassId(null);
+                    setInitialResourceId(null);
+                    setInitialAssignmentId(null);
                   }}
                   onOpenSchedule={() => navigateToPage('schedule')}
                   onAskAI={askStudentAI}
@@ -628,15 +647,34 @@ function App() {
                   initialTopic={practiceTopicSeed?.topic ?? practiceSeed?.topic}
                   initialQuestions={practiceSeed?.questions}
                   initialMode={practiceSeed?.mode}
+                  initialSavedId={practiceSeed?.id}
                   isDemo={authUser.isDemo}
                 />
               )}
               {activePage === 'leaderboard' && <Leaderboard />}
               {activePage === 'saved' && (
                 <SavedResources
-                  onRepeatQuiz={(quiz) => {
-                    setPracticeSeed(quiz);
-                    setPage('ai-practice');
+                  role={role}
+                  onOpen={(item) => {
+                    if (item.type === 'quiz') {
+                      navigateToPage('ai-practice');
+                      setPracticeSeed(item);
+                    } else if (item.type === 'resource') {
+                      navigateToPage('my-classes');
+                      setInitialResourceId(item.id);
+                    } else if (role === 'student' && item.type === 'assignment' && 'assignmentId' in item) {
+                      navigateToPage('my-classes');
+                      setInitialAssignmentId(item.assignmentId);
+                    } else if (role === 'student' && item.type === 'exam' && 'sessionId' in item) {
+                      navigateToPage('my-classes');
+                      setInitialExamSessionId(item.sessionId);
+                      setInitialExamClassId(item.classId);
+                    } else if (item.type === 'answer' && item.conversationId) {
+                      navigateToPage('ai-chat');
+                      setInitialChatConversationId(item.conversationId);
+                    } else if (item.type === 'exam' || item.type === 'assignment') {
+                      navigateToPage(item.type === 'exam' ? 'exams' : 'saved-assignments');
+                    }
                   }}
                 />
               )}
@@ -645,6 +683,9 @@ function App() {
                 <StudentProfile
                   user={authUser}
                   avatarUrl={userSettings.avatar}
+                  language={userSettings.language}
+                  onUserUpdate={setAuthUser}
+                  onAvatarChange={(avatarUrl) => updateUserSettings({ ...userSettings, avatar: avatarUrl })}
                   onLogout={logout}
                   onNavigate={navigateToPage}
                   onOpenExamResult={openPublishedExamResult}
@@ -675,6 +716,7 @@ function App() {
         current={activePage}
         onNavigate={navigateToPage}
         role={role}
+        userId={authUser.id}
         language={userSettings.language}
       />
       {onboardingOpen && authUser && (role === 'student' || role === 'lecturer') && (

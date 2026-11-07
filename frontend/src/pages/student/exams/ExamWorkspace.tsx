@@ -1119,7 +1119,7 @@ export function ExamWorkspace({
                             </button>
                             <div className="min-w-0 pt-1">
                               <p className="max-w-48 truncate text-xs font-semibold text-slate-700">{image.name}</p>
-                              <p className="mt-1 text-[11px] text-emerald-700">Đã đính kèm</p>
+                              <p className="mt-1 text-[0.6875rem] text-emerald-700">Đã đính kèm</p>
                             </div>
                             <button
                               type="button"
@@ -1215,10 +1215,10 @@ export function ExamWorkspace({
             <section className="overflow-hidden rounded-xl border border-slate-200">
               <div className="flex items-center justify-between px-3 py-2">
                 <h2 className="text-xs font-bold text-slate-800">Webcam</h2>
-                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Bật trên thiết bị</span>
+                <span className="inline-flex items-center gap-1 text-[0.625rem] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Bật trên thiết bị</span>
               </div>
               <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full bg-slate-950 object-cover" />
-              <p className="px-3 py-2 text-[10px] text-slate-500">Chỉ hiển thị cục bộ; video không được gửi lên máy chủ.</p>
+              <p className="px-3 py-2 text-[0.625rem] text-slate-500">Chỉ hiển thị cục bộ; video không được gửi lên máy chủ.</p>
             </section>
           )}
           {settings.requireMicrophone && (

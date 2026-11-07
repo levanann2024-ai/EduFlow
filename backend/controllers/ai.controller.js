@@ -115,6 +115,7 @@ async function chatAI(req, res) {
         ...(isStudent ? { subject: detectedSubject || 'Chưa phân loại' } : {}),
         conversationId: savedTurn.conversationId,
         userMessageId: savedTurn.userMessageId,
+        assistantMessageId: savedTurn.assistantMessageId,
       },
     });
   } catch (error) {

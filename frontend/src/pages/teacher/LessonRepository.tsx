@@ -632,7 +632,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         }
       } else {
         if ((!chapter.trim() || !lesson.trim())
-          && !window.confirm('Bài tập chưa có đủ chương và bài cụ thể. Nếu tiếp tục, bài tập sẽ được chuyển vào mục “Bài tập tự do” của học sinh. Bạn có muốn tiếp tục không?')) {
+          && !window.confirm('Bài tập chưa có đủ chương và bài cụ thể. Nếu tiếp tục, bài tập sẽ được chuyển vào mục “Bài tập tự do” của học sinh. Tiếp tục?')) {
           return;
         }
         if (!Number.isFinite(Date.parse(dueAt)) || Date.parse(dueAt) <= Date.now()) {
@@ -1338,7 +1338,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                         setPreviousLatexContent(null);
                         setEditingDocumentContent(false);
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 transition-colors hover:bg-amber-100"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[0.6875rem] font-semibold text-amber-800 transition-colors hover:bg-amber-100"
                     >
                       <Undo2 className="h-3.5 w-3.5" /> Hoàn tác chuẩn hóa LaTeX
                     </button>
@@ -1352,7 +1352,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                       key={action}
                       onClick={() => runDocumentAssistant(action)}
                       disabled={aiBusy || !documentContent.trim()}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-blue-100 bg-blue-50/70 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-blue-100 bg-blue-50/70 px-2.5 py-1.5 text-[0.6875rem] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Icon className="h-3.5 w-3.5" /> {aiBusy ? 'Đang xử lý...' : label}
                     </button>
@@ -1369,12 +1369,12 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                 >
                   <CloudUpload className="h-8 w-8 text-blue-500" />
                   <p className="mt-1 text-xs font-semibold text-blue-950">Kéo và thả tệp vào đây</p>
-                  <p className="text-[11px] text-slate-400">hoặc</p>
+                  <p className="text-[0.6875rem] text-slate-400">hoặc</p>
                   <button onClick={() => fileInputRef.current?.click()} className="mt-1 inline-flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-600">
                     <FolderOpen className="h-4 w-4" /> Chọn tệp từ máy tính
                   </button>
                   <input ref={fileInputRef} type="file" accept={acceptedTypes} className="hidden" onChange={onFileInput} />
-                  <p className="mt-2 text-[10px] text-slate-500">Tệp sẽ được lưu cùng bài giảng để học sinh trong lớp truy cập.</p>
+                  <p className="mt-2 text-[0.625rem] text-slate-500">Tệp sẽ được lưu cùng bài giảng để học sinh trong lớp truy cập.</p>
                 </div>
                 {filePreviewUrl && (
                   <img src={filePreviewUrl} alt="Xem trước tệp ảnh đã chọn" className="mx-auto mt-2 max-h-40 max-w-full rounded-lg border border-slate-200 object-contain" />
@@ -1402,7 +1402,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
               <BookOpen className="h-5 w-5 text-blue-600" /> 2. Gắn chương - bài
             </h2>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <label className="block text-[11px] font-semibold text-slate-600">Chương
+              <label className="block text-[0.6875rem] font-semibold text-slate-600">Chương
                 {creatingChapter ? (
                   <span className="mt-1 flex gap-1">
                     <input
@@ -1416,7 +1416,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                     <button
                       type="button"
                       onClick={() => { setCreatingChapter(false); setChapter(''); }}
-                      className="shrink-0 rounded-md border border-slate-200 px-2 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                      className="shrink-0 rounded-md border border-slate-200 px-2 text-[0.625rem] font-semibold text-slate-600 hover:bg-slate-50"
                     >
                       Chọn chương
                     </button>
@@ -1440,10 +1440,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                   </select>
                 )}
               </label>
-              <label className="block text-[11px] font-semibold text-slate-600">Bài
+              <label className="block text-[0.6875rem] font-semibold text-slate-600">Bài
                 <input value={lesson} onChange={(event) => setLesson(event.target.value)} maxLength={200} placeholder="Ví dụ: Bài 1 - ..." className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
-              <label className="block text-[11px] font-semibold text-slate-600">Tiết (nếu có)
+              <label className="block text-[0.6875rem] font-semibold text-slate-600">Tiết (nếu có)
                 <input value={period} onChange={(event) => setPeriod(event.target.value)} maxLength={80} placeholder="Nhập tiết (không bắt buộc)" className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
             </div>
@@ -1454,15 +1454,15 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
               <FileText className="h-5 w-5 text-blue-600" /> 3. Thông tin {contentType === 'lesson' ? 'bài giảng' : 'bài tập'}
             </h2>
             <div className="grid gap-2 sm:grid-cols-2">
-              <label className="block text-[11px] font-semibold text-slate-600">Tên {contentType === 'lesson' ? 'bài giảng' : 'bài tập'} <span className="text-rose-500">*</span>
+              <label className="block text-[0.6875rem] font-semibold text-slate-600">Tên {contentType === 'lesson' ? 'bài giảng' : 'bài tập'} <span className="text-rose-500">*</span>
                 <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Nhập tên" maxLength={200} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
               </label>
               {contentType === 'assignment' && (
-                <label className="block text-[11px] font-semibold text-slate-600">Hạn nộp
+                <label className="block text-[0.6875rem] font-semibold text-slate-600">Hạn nộp
                   <input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="input-field mt-1 h-9 px-2.5 py-1.5 text-xs" />
                 </label>
               )}
-              <label className="block text-[11px] font-semibold text-slate-600">{contentType === 'lesson' ? 'Nội dung / Lời nhắn' : 'Lời nhắn bổ sung'} <span className="font-normal text-slate-800">(tùy chọn)</span>
+              <label className="block text-[0.6875rem] font-semibold text-slate-600">{contentType === 'lesson' ? 'Nội dung / Lời nhắn' : 'Lời nhắn bổ sung'} <span className="font-normal text-slate-800">(tùy chọn)</span>
                 <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder={contentType === 'lesson' ? 'Lời nhắn cho học sinh...' : 'Lời nhắn riêng cho học sinh...'} maxLength={500} rows={1} className="input-field mt-1 h-9 min-h-0 resize-y px-2.5 py-1.5 text-xs" />
               </label>
             </div>
@@ -1510,7 +1510,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                 {subjects.map((item) => <option key={item}>{item}</option>)}
               </select>
             )}
-            <label className="mt-2 block text-[10px] font-semibold text-slate-600">Học kỳ
+            <label className="mt-2 block text-[0.625rem] font-semibold text-slate-600">Học kỳ
               <select value={semester} onChange={(event) => setSemester(event.target.value)} className="input-field mt-1 h-9 !py-1 px-2 text-xs">
                 <option>Kỳ 1</option><option>Kỳ 2</option>
               </select>
@@ -1520,7 +1520,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
           <section className="flex shrink-0 flex-col rounded-xl border border-blue-100 bg-white p-2.5 shadow-sm">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><Clock3 className="h-4 w-4 text-blue-600" /> Tài liệu mới đăng</h2>
-              <span className="text-[10px] font-medium text-blue-600">{loadingRecent ? 'Đang tải...' : 'Gần đây'}</span>
+              <span className="text-[0.625rem] font-medium text-blue-600">{loadingRecent ? 'Đang tải...' : 'Gần đây'}</span>
             </div>
             <div className="max-h-[300px] divide-y divide-slate-100 overflow-y-auto">
               {recentEntries.map((entry) => {
@@ -1529,15 +1529,15 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                   <article key={entry.id} className="flex items-center gap-1.5 py-2">
                     <span className={`${color} flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white`}><Icon className="h-3.5 w-3.5" /></span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[10px] font-semibold leading-4 text-slate-800">{entry.title}</p>
-                      <p className="truncate text-[9px] leading-3 text-slate-400">
+                      <p className="truncate text-[0.625rem] font-semibold leading-4 text-slate-800">{entry.title}</p>
+                      <p className="truncate text-[0.5625rem] leading-3 text-slate-400">
                         {entry.kind === 'assignment' && (!entry.chapter.trim() || !entry.lesson.trim())
                           ? 'Bài tập tự do'
                           : `${entry.kind === 'lesson' ? 'Bài giảng' : 'Bài tập'} - ${entry.chapter} - ${entry.lesson}${entry.period ? ` - ${entry.period}` : ''}`}
                       </p>
-                      {entry.note && <p className="truncate text-[9px] leading-3 text-slate-500">{entry.note}</p>}
+                      {entry.note && <p className="truncate text-[0.5625rem] leading-3 text-slate-500">{entry.note}</p>}
                     </div>
-                    <span className="max-w-16 truncate rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">{entry.className}</span>
+                    <span className="max-w-16 truncate rounded-full bg-blue-50 px-1.5 py-0.5 text-[0.5625rem] font-medium text-blue-700">{entry.className}</span>
                   </article>
                 );
               })}
@@ -1624,7 +1624,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                   }`}
                 >
                   <Clock3 className="h-4 w-4" /> Bài tập
-                  <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                  <span className={`rounded-full px-1.5 py-0.5 text-[0.6875rem] ${
                     reviewPreviewTab === 'assignment' ? 'bg-white/20' : 'bg-rose-50 text-rose-700'
                   }`}>{visibleReviewAssignments.length}</span>
                 </button>
@@ -1819,8 +1819,8 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                                               <ResourceIcon className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
                                               <span className="min-w-0 flex-1">
                                                 <span className="block truncate font-semibold" title={resource.title}>{resource.title}</span>
-                                                {file && <span className="mt-0.5 block truncate text-[11px]" title={file.name}>{file.name}</span>}
-                                                {resource.period && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{resource.period}</span>}
+                                                {file && <span className="mt-0.5 block truncate text-[0.6875rem]" title={file.name}>{file.name}</span>}
+                                                {resource.period && <span className="mt-0.5 block truncate text-[0.6875rem] text-slate-500">{resource.period}</span>}
                                               </span>
                                             </button>
                                           </li>

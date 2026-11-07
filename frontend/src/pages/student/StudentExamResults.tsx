@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle2, CircleHelp, CircleX, Clock3, Send, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CircleHelp, CircleX, Clock3, Send, Sparkles, Star, X } from 'lucide-react';
 import { MathText } from '@/components/MathText';
 import {
   downloadStudentExamResultFile,
@@ -21,6 +21,9 @@ interface StudentExamResultsProps {
   onMarkRead: (result: StudentExamResult) => void | Promise<void>;
   onAskAI: (prompt: string, subject?: string) => void;
   initialSessionId?: string | null;
+  savedResultIds: Set<string>;
+  bookmarkPendingIds: Set<string>;
+  onToggleSaved: (result: StudentExamResult) => void;
 }
 
 function gradeRevision(result: StudentExamResult) {
@@ -142,6 +145,9 @@ export function StudentExamResults({
   onMarkRead,
   onAskAI,
   initialSessionId = null,
+  savedResultIds,
+  bookmarkPendingIds,
+  onToggleSaved,
 }: StudentExamResultsProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [revealStage, setRevealStage] = useState<RevealStage>('details');
@@ -346,28 +352,40 @@ export function StudentExamResults({
           {results.map((result) => {
             const unread = readRevisions[result.sessionId] !== gradeRevision(result);
             return (
-              <button
-                key={result.sessionId}
-                type="button"
-                onClick={() => openResult(result)}
-                className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md sm:p-5"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-base font-bold text-slate-900">{result.title}</span>
-                      {unread && <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">Điểm mới</span>}
-                    </span>
-                    <p className="mt-1 text-sm text-slate-500">{result.subject} - {result.className}</p>
-                    <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-                      <Clock3 className="h-3.5 w-3.5" /> Ngày công bố: {formatDate(result.grade.gradedAt)}
-                    </p>
+              <article key={result.sessionId} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md sm:p-4">
+                <button
+                  type="button"
+                  onClick={() => openResult(result)}
+                  className="min-w-0 flex-1 p-1 text-left"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-base font-bold text-slate-900">{result.title}</span>
+                        {unread && <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">Điểm mới</span>}
+                      </span>
+                      <p className="mt-1 text-sm text-slate-500">{result.subject} - {result.className}</p>
+                      <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+                        <Clock3 className="h-3.5 w-3.5" /> Ngày công bố: {formatDate(result.grade.gradedAt)}
+                      </p>
+                    </div>
+                    <strong className="shrink-0 text-2xl font-extrabold" style={{ color: scoreColor(result.grade.totalScore, result.questions.reduce((sum, question) => sum + question.points, 0)) }}>
+                      {formatPoints(result.grade.totalScore)}<span className="ml-1 text-sm font-semibold text-slate-500">/ {formatPoints(result.questions.reduce((sum, question) => sum + question.points, 0))}</span>
+                    </strong>
                   </div>
-                  <strong className="shrink-0 text-2xl font-extrabold" style={{ color: scoreColor(result.grade.totalScore, result.questions.reduce((sum, question) => sum + question.points, 0)) }}>
-                    {formatPoints(result.grade.totalScore)}<span className="ml-1 text-sm font-semibold text-slate-500">/ {formatPoints(result.questions.reduce((sum, question) => sum + question.points, 0))}</span>
-                  </strong>
-                </div>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  disabled={bookmarkPendingIds.has(result.sessionId)}
+                  aria-pressed={savedResultIds.has(result.sessionId)}
+                  aria-label={savedResultIds.has(result.sessionId) ? `Bỏ lưu ${result.title}` : `Lưu ${result.title}`}
+                  title={savedResultIds.has(result.sessionId) ? 'Bỏ lưu' : 'Lưu bài kiểm tra'}
+                  onClick={() => onToggleSaved(result)}
+                  className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-amber-50 hover:text-amber-600 disabled:opacity-50"
+                >
+                  <Star className={`h-5 w-5 ${savedResultIds.has(result.sessionId) ? 'fill-amber-400 text-amber-500' : ''}`} />
+                </button>
+              </article>
             );
           })}
         </div>

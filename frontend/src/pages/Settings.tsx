@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import {
   ImagePlus,
   KeyRound,
@@ -7,44 +7,38 @@ import {
   Palette,
   ShieldCheck,
   Sparkles,
-  UserRound,
   WandSparkles,
 } from 'lucide-react';
-import { changePassword, completeProfile, saveAvatar, type AuthUser } from '@/auth/authApi';
+import { changePassword, type AuthUser } from '@/auth/authApi';
+import { AccountProfileSection } from '@/components/AccountProfileSection';
 import { showToast } from '@/components/toast';
 import {
+  FONT_SCALE_STEP_PERCENT,
+  MAX_FONT_SCALE_PERCENT,
+  MIN_FONT_SCALE_PERCENT,
   backgroundPresets,
   isSafeImageUrl,
   type UserSettings,
 } from '@/settings/userSettings';
 
-const roleLabels: Record<AuthUser['role'], { vi: string; en: string }> = {
-  admin: { vi: 'Quản trị viên', en: 'Administrator' },
-  lecturer: { vi: 'Giáo viên', en: 'Teacher' },
-  student: { vi: 'Học sinh', en: 'Student' },
+const roleLabels: Record<AuthUser['role'], string> = {
+  admin: 'Quản trị viên',
+  lecturer: 'Giáo viên',
+  student: 'Học sinh',
 };
 
 const copy = {
   vi: {
-    account: 'Tài khoản',
-    title: 'Cài đặt',
-    subtitle: 'Cá nhân hóa EduFlow và quản lý tài khoản của bạn.',
-    profile: 'Hồ sơ cá nhân',
-    profileInfo: 'Bạn có thể đổi tên hiển thị; email đăng nhập do nhà trường quản lý.',
-    name: 'Tên hiển thị',
-    saveProfile: 'Lưu tên',
-    profileSaved: 'Đã cập nhật tên hiển thị.',
-    profileFail: 'Không thể cập nhật hồ sơ lúc này.',
-    changeAvatar: 'Chọn ảnh đại diện',
-    avatarHint: 'Ảnh được lưu vào tài khoản để dùng trên các thiết bị khác. PNG, JPG hoặc WebP.',
-    imageUrl: 'Hoặc dùng URL ảnh',
     apply: 'Áp dụng',
-    avatarError: 'Không thể đọc ảnh này. Hãy chọn PNG, JPG hoặc WebP nhỏ hơn 5 MB.',
-    avatarUrlError: 'URL ảnh cần bắt đầu bằng http:// hoặc https://.',
+    fontSize: 'Cỡ chữ',
+    fontSizeHint: 'Điều chỉnh cỡ chữ trên toàn bộ giao diện.',
+    fontSizeMinimum: 'Nhỏ nhất',
+    fontSizeMaximum: 'Lớn nhất',
+    fontSizeSlider: 'Cỡ chữ toàn ứng dụng',
     localOnly: 'Cài đặt cá nhân hóa chỉ lưu trên trình duyệt này.',
     appearance: 'Giao diện',
     background: 'Nền trang',
-    backgroundHint: 'Chọn một màu nền nhẹ hoặc dùng ảnh của riêng bạn.',
+    backgroundHint: 'Chọn một màu nền nhẹ hoặc dùng ảnh riêng.',
     customUrl: 'URL ảnh nền',
     motion: 'Hiệu ứng chuyển động',
     motionDetail: 'Cho phép animation và chuyển cảnh trong ứng dụng.',
@@ -74,10 +68,7 @@ const copy = {
     deleteConfirm: 'Xác nhận gửi yêu cầu xóa tài khoản',
     cancel: 'Hủy',
     emailRequest: 'Mở ứng dụng email',
-    deleteNote: 'Yêu cầu sẽ được gửi đến quản trị viên. Tài khoản không bị xóa ngay khi bạn bấm gửi.',
-    gemini: 'Tích hợp AI',
-    geminiHint: 'Gemini API key được quản lý an toàn ở máy chủ, không lưu trong trình duyệt.',
-    geminiAdmin: 'Để thay đổi key, quản trị viên cần cập nhật biến GEMINI_API_KEY trong cấu hình máy chủ.',
+    deleteNote: 'Yêu cầu sẽ được gửi đến quản trị viên. Tài khoản không bị xóa ngay sau khi gửi yêu cầu.',
     session: 'Phiên đăng nhập',
     sessionHint: 'Đăng xuất khỏi tài khoản trên thiết bị này.',
     logout: 'Đăng xuất',
@@ -86,21 +77,12 @@ const copy = {
     customBackgroundHint: 'Dùng URL ảnh HTTPS đáng tin cậy; URL ảnh được tải từ máy chủ bên ngoài.',
   },
   en: {
-    account: 'ACCOUNT',
-    title: 'Settings',
-    subtitle: 'Personalize EduFlow and manage your account.',
-    profile: 'Profile',
-    profileInfo: 'You can update your display name. Your sign-in email is managed by your school.',
-    name: 'Display name',
-    saveProfile: 'Save name',
-    profileSaved: 'Display name updated.',
-    profileFail: 'Could not update the profile right now.',
-    changeAvatar: 'Choose an avatar',
-    avatarHint: 'Saved to your account and available on other devices. PNG, JPG, or WebP.',
-    imageUrl: 'Or use an image URL',
     apply: 'Apply',
-    avatarError: 'Could not read this image. Choose a PNG, JPG, or WebP under 5 MB.',
-    avatarUrlError: 'Image URLs must start with http:// or https://.',
+    fontSize: 'Text size',
+    fontSizeHint: 'Adjust text size across the entire interface.',
+    fontSizeMinimum: 'Smallest',
+    fontSizeMaximum: 'Largest',
+    fontSizeSlider: 'Application text size',
     localOnly: 'Personalization settings are saved in this browser.',
     appearance: 'Appearance',
     background: 'Page background',
@@ -135,9 +117,6 @@ const copy = {
     cancel: 'Cancel',
     emailRequest: 'Open email app',
     deleteNote: 'Your account will not be deleted immediately when you prepare this email.',
-    gemini: 'AI integration',
-    geminiHint: 'The Gemini API key is securely managed on the server, not stored in your browser.',
-    geminiAdmin: 'To change the key, an administrator must update GEMINI_API_KEY in the server configuration.',
     session: 'Session',
     sessionHint: 'Sign out of EduFlow on this device.',
     logout: 'Sign out',
@@ -146,26 +125,6 @@ const copy = {
     customBackgroundHint: 'Use a trusted HTTPS image URL; it will be loaded from an external server.',
   },
 } as const;
-
-async function compressAvatar(file: File): Promise<string> {
-  if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) throw new Error('Invalid image');
-  const source = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    image.src = source;
-    await image.decode();
-    const canvas = document.createElement('canvas');
-    const scale = Math.min(1, 320 / Math.max(image.naturalWidth, image.naturalHeight));
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Image processing is unavailable');
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/webp', 0.82);
-  } finally {
-    URL.revokeObjectURL(source);
-  }
-}
 
 export function Settings({
   user,
@@ -188,75 +147,22 @@ export function Settings({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
-  const [displayName, setDisplayName] = useState(user.fullName);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileError, setProfileError] = useState('');
-  const [avatarError, setAvatarError] = useState('');
-  const [savingAvatar, setSavingAvatar] = useState(false);
   const [backgroundError, setBackgroundError] = useState('');
-  const [imageUrlDraft, setImageUrlDraft] = useState(settings.avatar.startsWith('http') ? settings.avatar : '');
   const [backgroundUrlDraft, setBackgroundUrlDraft] = useState(settings.backgroundUrl);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const initials = user.fullName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase(settings.language);
   const supportEmail = 'eduflow.contact2026@gmail.com';
   const deletionSubject = encodeURIComponent(`Yêu cầu xóa tài khoản EduFlow - ${user.email}`);
   const deletionBody = encodeURIComponent(
-    `Tôi yêu cầu quản trị viên xem xét xóa tài khoản EduFlow của tôi.\n\nEmail: ${user.email}\nUser ID: ${user.id}\nVai trò: ${roleLabels[user.role].vi}\n\nTôi hiểu rằng yêu cầu cần được quản trị viên xử lý và có thể cần xác minh thêm.`,
+    `Tôi yêu cầu quản trị viên xem xét xóa tài khoản EduFlow của tôi.\n\nEmail: ${user.email}\nUser ID: ${user.id}\nVai trò: ${roleLabels[user.role]}\n\nTôi hiểu rằng yêu cầu cần được quản trị viên xử lý và có thể cần xác minh thêm.`,
   );
   const deletionMailto = `mailto:${supportEmail}?subject=${deletionSubject}&body=${deletionBody}`;
-
-  useEffect(() => setDisplayName(user.fullName), [user.fullName]);
 
   const updateSettings = (patch: Partial<UserSettings>) => {
     try {
       onSettingsChange({ ...settings, ...patch });
     } catch (error) {
-      setAvatarError(error instanceof Error ? error.message : 'Không thể lưu cài đặt trên thiết bị này.');
+      setBackgroundError(error instanceof Error ? error.message : 'Không thể lưu cài đặt trên thiết bị này.');
     }
-  };
-
-  const persistAvatar = async (avatar: string) => {
-    if (user.isDemo) {
-      setAvatarError(settings.language === 'en' ? 'Demo accounts cannot save an avatar.' : 'Tài khoản trải nghiệm không thể lưu ảnh đại diện.');
-      return;
-    }
-    setSavingAvatar(true);
-    setAvatarError('');
-    try {
-      const updatedUser = await saveAvatar(avatar);
-      onUserUpdate(updatedUser);
-      updateSettings({ avatar: updatedUser.avatarUrl ?? '' });
-      setImageUrlDraft((updatedUser.avatarUrl ?? '').startsWith('http') ? updatedUser.avatarUrl ?? '' : '');
-    } catch (error) {
-      setAvatarError(error instanceof Error ? error.message : 'Không thể lưu ảnh đại diện lên máy chủ.');
-    } finally {
-      setSavingAvatar(false);
-    }
-  };
-
-  const handleAvatarFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setAvatarError('');
-    try {
-      const avatar = await compressAvatar(file);
-      await persistAvatar(avatar);
-    } catch {
-      setAvatarError(text.avatarError);
-    } finally {
-      event.target.value = '';
-    }
-  };
-
-  const applyAvatarUrl = async () => {
-    const value = imageUrlDraft.trim();
-    if (value && !isSafeImageUrl(value)) {
-      setAvatarError(text.avatarUrlError);
-      return;
-    }
-    setAvatarError('');
-    await persistAvatar(value);
   };
 
   const applyBackgroundUrl = () => {
@@ -294,120 +200,18 @@ export function Settings({
     }
   };
 
-  const handleProfileSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setProfileError('');
-    if (displayName.trim().length < 2 || displayName.trim().length > 120) {
-      setProfileError(settings.language === 'en'
-        ? 'Display name must be between 2 and 120 characters.'
-        : 'Tên hiển thị cần có từ 2 đến 120 ký tự.');
-      return;
-    }
-    setSavingProfile(true);
-    try {
-      const updatedUser = await completeProfile(displayName.trim());
-      onUserUpdate(updatedUser);
-      showToast(text.profileSaved);
-    } catch (error) {
-      setProfileError(error instanceof Error ? error.message : text.profileFail);
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  const downloadSettingsCopy = () => {
-    const exportData = {
-      exportedAt: new Date().toISOString(),
-      account: { id: user.id, email: user.email, fullName: user.fullName, role: user.role },
-      personalSettings: settings,
-      note: settings.language === 'en'
-        ? 'This file contains account profile and local preferences only, not school-managed academic records.'
-        : 'Tệp này chỉ gồm hồ sơ tài khoản và tùy chọn cá nhân trên thiết bị, không gồm hồ sơ học tập do trường quản lý.',
-    };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'eduflow-account-settings.json';
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast(settings.language === 'en'
-      ? 'Downloaded profile and preferences. Academic records are not included.'
-      : 'Đã tải hồ sơ và cài đặt. Tệp không gồm dữ liệu học tập.');
-  };
-
   return (
     <main className="mx-auto max-w-4xl space-y-6 pb-8">
-      <header>
-        <p className="text-sm font-semibold text-indigo-600">{text.account}</p>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">{text.title}</h1>
-        <p className="mt-2 text-sm text-slate-500">{text.subtitle}</p>
-      </header>
-
       {settingsError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{settingsError}</p>}
-      {avatarError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{avatarError}</p>}
       {backgroundError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{backgroundError}</p>}
 
-      <section aria-labelledby="profile-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><UserRound className="h-5 w-5" /></div>
-          <div>
-            <h2 id="profile-title" className="font-bold text-slate-900">{text.profile}</h2>
-            <p className="mt-1 text-sm text-slate-500">{text.profileInfo}</p>
-          </div>
-        </div>
-        <div className="mt-5 flex flex-wrap items-center gap-4 rounded-xl bg-slate-50 p-4">
-          {settings.avatar ? (
-            <img src={settings.avatar} alt="" className="h-16 w-16 rounded-2xl object-cover" />
-          ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white">{initials || 'EF'}</div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold text-slate-900">{user.fullName}</p>
-            <span className="mt-1 inline-flex rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold text-indigo-800">
-              {roleLabels[user.role][settings.language]}
-            </span>
-          </div>
-          {settings.avatar && (
-            <button type="button" disabled={savingAvatar} onClick={() => void persistAvatar('')} className="text-xs font-semibold text-rose-700 hover:underline disabled:opacity-50">
-              {settings.language === 'en' ? 'Remove avatar' : 'Xóa ảnh'}
-            </button>
-          )}
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void handleAvatarFile(event)} className="sr-only" />
-            <button type="button" disabled={savingAvatar || user.isDemo} onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-              <ImagePlus className="h-4 w-4" />{savingAvatar ? text.saving : text.changeAvatar}
-            </button>
-            <p className="mt-1.5 text-xs text-slate-500">{text.avatarHint}</p>
-          </div>
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">{text.imageUrl}</span>
-            <div className="mt-1.5 flex gap-2">
-              <input value={imageUrlDraft} onChange={(event) => setImageUrlDraft(event.target.value)} className="input-field min-w-0" type="url" maxLength={2048} placeholder="https://…" />
-              <button type="button" disabled={savingAvatar || user.isDemo} onClick={() => void applyAvatarUrl()} className="shrink-0 rounded-lg bg-slate-100 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50">{savingAvatar ? text.saving : text.apply}</button>
-            </div>
-          </label>
-        </div>
-        <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3">
-          <div className="text-xs font-semibold text-slate-500">{settings.language === 'en' ? 'Sign-in email' : 'Email đăng nhập'}</div>
-          <p className="mt-1 break-all text-sm font-medium text-slate-800">{user.email}</p>
-        </div>
-        {!user.isDemo && (
-          <form onSubmit={(event) => void handleProfileSave(event)} className="mt-4">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">{text.name}</span>
-              <div className="mt-1.5 flex flex-wrap gap-2">
-                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={2} maxLength={120} className="input-field min-w-0 flex-1" />
-                <button type="submit" disabled={savingProfile || displayName.trim() === user.fullName} className="shrink-0 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
-                  {savingProfile ? text.saving : text.saveProfile}
-                </button>
-              </div>
-            </label>
-            {profileError && <p role="alert" className="mt-2 text-sm text-rose-700">{profileError}</p>}
-          </form>
-        )}
-      </section>
+      <AccountProfileSection
+        user={user}
+        avatarUrl={settings.avatar}
+        language={settings.language}
+        onUserUpdate={onUserUpdate}
+        onAvatarChange={(avatarUrl) => updateSettings({ avatar: avatarUrl })}
+      />
 
       <section aria-labelledby="appearance-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex items-start gap-3">
@@ -455,6 +259,33 @@ export function Settings({
           </div>
           <span className="mt-1.5 block text-xs text-slate-500">{text.customBackgroundHint}</span>
         </label>
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">{text.fontSize}</h3>
+              <p className="mt-1 text-xs text-slate-500">{text.fontSizeHint}</p>
+            </div>
+            <output htmlFor="font-scale" className="shrink-0 rounded-lg bg-indigo-50 px-2.5 py-1 text-sm font-bold text-indigo-700">
+              {settings.fontScalePercent}%
+            </output>
+          </div>
+          <label htmlFor="font-scale" className="sr-only">{text.fontSizeSlider}</label>
+          <input
+            id="font-scale"
+            type="range"
+            min={MIN_FONT_SCALE_PERCENT}
+            max={MAX_FONT_SCALE_PERCENT}
+            step={FONT_SCALE_STEP_PERCENT}
+            value={settings.fontScalePercent}
+            aria-valuetext={`${settings.fontScalePercent}%`}
+            onChange={(event) => updateSettings({ fontScalePercent: Number(event.target.value) })}
+            className="mt-4 w-full cursor-pointer accent-indigo-600"
+          />
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>{text.fontSizeMinimum} · {MIN_FONT_SCALE_PERCENT}%</span>
+            <span>{text.fontSizeMaximum} · {MAX_FONT_SCALE_PERCENT}%</span>
+          </div>
+        </div>
         <label className="mt-5 flex cursor-pointer items-center justify-between gap-4 border-t border-slate-100 pt-4">
           <span className="flex items-center gap-3">
             <WandSparkles className="h-5 w-5 text-violet-600" />
@@ -494,19 +325,6 @@ export function Settings({
               <option value="detailed">{text.detailed}</option>
             </select>
           </label>
-        </section>
-      )}
-
-      {(user.role === 'admin' || user.role === 'lecturer') && (
-        <section aria-labelledby="gemini-title" className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700"><Sparkles className="h-5 w-5" /></div>
-            <div>
-              <h2 id="gemini-title" className="font-bold text-slate-900">{text.gemini}</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{text.geminiHint}</p>
-              {user.role === 'admin' && <p className="mt-2 text-xs leading-5 text-slate-500">{text.geminiAdmin}</p>}
-            </div>
-          </div>
         </section>
       )}
 
@@ -567,18 +385,6 @@ export function Settings({
           )}
         </section>
       )}
-
-      <section aria-labelledby="data-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 id="data-title" className="font-bold text-slate-900">{settings.language === 'en' ? 'Your data' : 'Dữ liệu của bạn'}</h2>
-        <p className="mt-1 text-sm leading-5 text-slate-500">
-          {settings.language === 'en'
-            ? 'Download a copy of your account profile and preferences. School-managed learning records are not included.'
-            : 'Tải bản sao hồ sơ tài khoản và tùy chọn cá nhân. Dữ liệu học tập do trường quản lý không nằm trong tệp này.'}
-        </p>
-        <button type="button" onClick={downloadSettingsCopy} className="mt-4 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-          {settings.language === 'en' ? 'Download profile and settings' : 'Tải hồ sơ và cài đặt'}
-        </button>
-      </section>
 
       <section aria-labelledby="session-title" className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>

@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowLeft, BookOpen, Clock3, RefreshCw, Settings2, Sparkles, Target, WandSparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock3, RefreshCw, Settings2, Sparkles, Star, Target, WandSparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
 import type { QuizQuestion } from '@/types';
-import { saveItem } from './savedItems';
+import { useSavedItems } from './savedItems';
 import { authenticatedFetch } from '@/auth/authApi';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 
@@ -62,6 +62,7 @@ export function AIPractice({
   initialTopic = '',
   initialQuestions = [],
   initialMode = 'practice',
+  initialSavedId,
   isDemo = false,
 }: {
   onExit?: () => void;
@@ -69,6 +70,7 @@ export function AIPractice({
   initialTopic?: string;
   initialQuestions?: QuizQuestion[];
   initialMode?: PracticeMode;
+  initialSavedId?: string;
   isDemo?: boolean;
 }) {
   const [subject, setSubject] = useState(initialSubject);
@@ -86,6 +88,10 @@ export function AIPractice({
   const [isSample, setIsSample] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [quizId, setQuizId] = useState<string | null>(initialSavedId ?? null);
+  const [savingQuiz, setSavingQuiz] = useState(false);
+  const saved = useSavedItems();
+  const quizSaved = saved.items.some((item) => item.type === 'quiz' && item.id === quizId);
 
   useEffect(() => {
     if (mode !== 'test' || phase !== 'answering') return undefined;
@@ -136,10 +142,12 @@ export function AIPractice({
           console.error('Could not record student AI-practice activity.', activityError);
         });
       }
-      saveItem({
-        id: `quiz-${Date.now()}`,
+      const id = `quiz-${crypto.randomUUID()}`;
+      setQuizId(id);
+      await saved.saveItem({
+        id,
         type: 'quiz',
-        title: requestTopic.trim(),
+        title: Array.from(requestTopic.trim().replace(/\s+/g, ' ')).slice(0, 400).join(''),
         subject: requestSubject || 'Tổng hợp',
         topic: requestTopic.trim(),
         questionCount: result.data.length,
@@ -155,6 +163,7 @@ export function AIPractice({
   };
 
   const loadSampleQuestions = () => {
+    setQuizId(null);
     const sampleQuestions: QuizQuestion[] = [
       {
         id: 'sample-1',
@@ -250,7 +259,7 @@ export function AIPractice({
               id="practice-natural-prompt"
               value={naturalPrompt}
               onChange={(event) => setNaturalPrompt(event.target.value)}
-              placeholder="Ví dụ: Luyện 5 câu Lý Newton"
+              placeholder="Ví dụ: Luyện 5 câu dao động điều hóa lớp 11"
               rows={3}
               className="input-field min-h-24 resize-y"
             />
@@ -407,6 +416,7 @@ export function AIPractice({
 
           <div className={`min-w-0 space-y-4 ${phase !== 'setup' ? 'mx-auto w-full max-w-4xl' : ''}`}>
             {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">{error}</div>}
+            {saved.error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">{saved.error}</div>}
 
             {generating ? (
               <div className="card flex min-h-72 flex-col items-center justify-center p-8 text-center">
@@ -440,9 +450,24 @@ export function AIPractice({
                     <h3 className="mt-1 text-xl font-bold text-slate-900">{topic || 'Câu hỏi minh họa'}</h3>
                     <p className="mt-1 text-sm text-slate-500">{subject} - {questions.length} câu - {difficulty === 'easy' ? 'Dễ' : difficulty === 'hard' ? 'Thử thách' : 'Vừa sức'}</p>
                   </div>
-                  <button type="button" onClick={() => setPhase('setup')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                    <Settings2 className="h-4 w-4" /> Chỉnh cài đặt
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setPhase('setup')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                      <Settings2 className="h-4 w-4" /> Chỉnh cài đặt
+                    </button>
+                    {quizId && !isSample && (
+                      <button type="button" disabled={savingQuiz || saved.loading || Boolean(saved.error)} aria-label={quizSaved ? 'Bỏ lưu bộ câu hỏi' : 'Lưu bộ câu hỏi'} aria-pressed={quizSaved}
+                        onClick={() => {
+                          setSavingQuiz(true);
+                          const action = quizSaved
+                            ? saved.removeSavedItem('quiz', quizId)
+                            : saved.saveItem({ id: quizId, type: 'quiz', title: Array.from(topic.trim().replace(/\s+/g, ' ')).slice(0, 400).join(''), subject, topic, questionCount: questions.length, mode, savedAt: new Date().toISOString(), questions });
+                          void action.then(() => setError('')).catch((saveError: unknown) => setError(saveError instanceof Error ? saveError.message : 'Không thể cập nhật kho lưu trữ.')).finally(() => setSavingQuiz(false));
+                        }}
+                        className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:bg-slate-50 disabled:opacity-50">
+                        <Star className={`h-5 w-5 ${quizSaved ? 'fill-amber-400 text-amber-500' : ''}`} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">
                   {mode === 'practice'

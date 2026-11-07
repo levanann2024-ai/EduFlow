@@ -35,7 +35,7 @@ export function Grading() {
   };
 
   const suggestComment = () => {
-    setComment('Bài làm trình bày rõ ràng, nắm được kiến thức trọng tâm. Bạn nên bổ sung phần giải thích bước biến đổi để bài làm thuyết phục hơn.');
+    setComment('Bài làm trình bày rõ ràng, nắm được kiến thức trọng tâm. Cần bổ sung phần giải thích bước biến đổi để bài làm thuyết phục hơn.');
   };
 
   // Tính toán số liệu thống kê

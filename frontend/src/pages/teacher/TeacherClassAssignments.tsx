@@ -75,24 +75,18 @@ export function TeacherClassAssignments({
         <div className="divide-y divide-slate-100">
           {assignments.map((assignment) => (
             <article key={assignment.id} className="py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div className="flex min-w-0 items-start gap-3">
                   <span className="rounded-lg bg-blue-50 p-2 text-blue-700"><ClipboardList className="h-4 w-4" /></span>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-slate-900">{assignment.title}</h3>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                        {assignment.subject} - {assignment.semester}
-                      </span>
-                    </div>
-                    {assignment.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{assignment.description}</p>}
+                    <h3 className="font-semibold text-slate-900">{assignment.title}</h3>
                     <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
                       <Calendar className="h-3.5 w-3.5" />
                       Hạn nộp: {new Date(assignment.dueAt).toLocaleString('vi-VN')}
                     </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
                   <span className="text-sm text-slate-600">
                     <strong className="text-slate-900">{assignment.submittedCount}/{assignment.studentCount}</strong> đã nộp
                   </span>
@@ -106,7 +100,7 @@ export function TeacherClassAssignments({
                   >
                     {checkingAssignmentId === assignment.id
                       ? <><X className="h-4 w-4" /> Đóng</>
-                      : <><Eye className="h-4 w-4" /> Kiểm tra</>}
+                      : <><Eye className="h-4 w-4" /> Xem</>}
                   </button>
                 </div>
               </div>
@@ -161,7 +155,7 @@ export function TeacherClassAssignments({
                                     {submitted && student.score !== null && (
                                       <span className={`inline-flex shrink-0 items-center gap-0.5 rounded-md border px-2 py-1 text-center ${scoreColor(student.score)}`}>
                                         <span className="text-xl font-extrabold leading-none">{student.score}</span>
-                                        <span className="text-[10px] font-semibold leading-none">/10</span>
+                                        <span className="text-[0.625rem] font-semibold leading-none">/10</span>
                                       </span>
                                     )}
                                   </li>

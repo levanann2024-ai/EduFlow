@@ -1,198 +1,190 @@
 import { useMemo, useState } from 'react';
+import { Bookmark, Search, Star } from 'lucide-react';
+import { MathText } from '@/components/MathText';
+import type { Role } from '@/types';
 import {
-  BookOpen,
-  CheckCircle2,
-  ClipboardList,
-  FileText,
-  Layers3,
-  Sparkles,
-  Trash2,
-  WandSparkles,
-} from 'lucide-react';
-import { getSavedItems, removeSavedItem, type SavedItem, type SavedQuiz } from './savedItems';
+  importLegacySavedItems,
+  readLegacySavedItems,
+  removeLegacySavedItems,
+  useSavedItems,
+  type SavedItem,
+} from './savedItems';
 
-type SavedTab = 'quizzes' | 'answers' | 'resources';
+const labels: Record<SavedItem['type'], string> = {
+  quiz: 'Bộ câu hỏi AI',
+  answer: 'Câu trả lời AI',
+  resource: 'Tài liệu',
+  question: 'Câu hỏi',
+  exam: 'Đề kiểm tra',
+  assignment: 'Bài tập',
+  lesson: 'Giáo án AI',
+};
 
-interface SavedResourcesProps {
-  onRepeatQuiz: (quiz: SavedQuiz) => void;
+function itemLabel(role: Role, type: SavedItem['type']) {
+  return role === 'student' && type === 'exam' ? 'Kết quả kiểm tra' : labels[type];
 }
 
-const tabs: { id: SavedTab; label: string; icon: typeof ClipboardList }[] = [
-  { id: 'quizzes', label: 'Đề luyện tập & Bài kiểm tra', icon: ClipboardList },
-  { id: 'answers', label: 'Lời giải AI hay', icon: Sparkles },
-  { id: 'resources', label: 'Tài liệu môn học', icon: BookOpen },
-];
-
-export function SavedResources({ onRepeatQuiz }: SavedResourcesProps) {
-  const [activeTab, setActiveTab] = useState<SavedTab>('quizzes');
-  const [items, setItems] = useState<SavedItem[]>(() => getSavedItems());
+export function SavedResources({ role, onOpen }: {
+  role: Role;
+  onOpen: (item: SavedItem) => void;
+}) {
+  const { items, loading, error: loadError, refresh, removeSavedItem } = useSavedItems();
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('newest');
   const [error, setError] = useState('');
-
-  const visibleItems = useMemo(() => items.filter((item) => (
-    activeTab === 'quizzes'
-      ? item.type === 'quiz'
-      : activeTab === 'answers'
-        ? item.type === 'answer'
-        : item.type === 'resource'
-  )), [activeTab, items]);
-
-  const handleRemove = (id: string) => {
+  const [busy, setBusy] = useState('');
+  const [legacy, setLegacy] = useState(() => {
+    if (role !== 'student') return null;
     try {
-      removeSavedItem(id);
-      setItems((current) => current.filter((item) => item.id !== id));
+      return readLegacySavedItems();
+    } catch (readError) {
+      return { raw: '', items: [], error: readError instanceof Error ? readError.message : 'Không thể đọc dữ liệu cũ.' };
+    }
+  });
+  const [importAcknowledged, setImportAcknowledged] = useState(false);
+  const [importedRaw, setImportedRaw] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const kinds: SavedItem['type'][] = role === 'student'
+    ? ['resource', 'assignment', 'exam', 'quiz', 'answer']
+    : ['question', 'exam', 'assignment', 'lesson'];
+  const visible = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase('vi');
+    return items.filter((item) => (filter === 'all' || item.type === filter)
+      && `${item.title} ${item.subject} ${itemLabel(role, item.type)}`.toLocaleLowerCase('vi').includes(normalized))
+      .sort((a, b) => sort === 'newest'
+        ? Date.parse(b.savedAt) - Date.parse(a.savedAt)
+        : Date.parse(a.savedAt) - Date.parse(b.savedAt));
+  }, [items, filter, query, role, sort]);
+
+  const remove = async (item: SavedItem) => {
+    setBusy(`${item.type}:${item.id}`);
+    try {
+      await removeSavedItem(item.type, item.id);
       setError('');
     } catch (removeError) {
-      setError(removeError instanceof Error ? removeError.message : 'Không thể cập nhật kho lưu trữ.');
+      setError(removeError instanceof Error ? removeError.message : 'Không thể bỏ lưu nội dung.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const importLegacy = async () => {
+    if (!legacy || !importAcknowledged || 'error' in legacy) return;
+    setBusy('import');
+    try {
+      await importLegacySavedItems(legacy.items);
+      setImportedRaw(legacy.raw);
+      setError('');
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Không thể nhập dữ liệu cũ.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const deleteLegacy = () => {
+    if (importedRaw === null) return;
+    try {
+      removeLegacySavedItems(importedRaw);
+      setLegacy(null);
+      setImportedRaw(null);
+      setError('');
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Không thể xóa dữ liệu cũ.');
     }
   };
 
   return (
-    <div className="animate-fadeIn space-y-4">
-      <section className="space-y-4">
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Lọc nội dung đã lưu">
-          {tabs.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setActiveTab(id)}
-              aria-pressed={activeTab === id}
-              className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === id
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-700'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{error}</p>}
-
-        {visibleItems.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {visibleItems.map((item) => item.type === 'quiz' ? (
-              <article key={item.id} className="card flex h-full flex-col p-5 transition hover:-translate-y-0.5 hover:shadow-md">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-                    <WandSparkles className="h-5 w-5" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(item.id)}
-                    aria-label={`Xóa đề ${item.title}`}
-                    className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-4 flex-1">
-                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">{item.subject}</span>
-                  <h3 className="mt-3 font-semibold text-slate-900">{item.title}</h3>
-                  <p className="mt-2 flex items-center gap-2 text-sm text-slate-500">
-                    <Layers3 className="h-4 w-4" /> {item.questionCount} câu hỏi
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">Lưu ngày {formatSavedDate(item.savedAt)}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onRepeatQuiz(item)}
-                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
-                >
-                  <CheckCircle2 className="h-4 w-4" /> Làm lại
-                </button>
-              </article>
-            ) : item.type === 'answer' ? (
-              <article key={item.id} className="card flex h-full flex-col p-5 transition hover:shadow-md">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(item.id)}
-                    aria-label={`Xóa bookmark ${item.title}`}
-                    className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-4 flex-1">
-                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{item.subject}</span>
-                  <h3 className="mt-3 font-semibold text-slate-900">{item.title}</h3>
-                  <p className="mt-3 line-clamp-3 rounded-xl bg-slate-50 p-3 text-sm leading-5 text-slate-600">{item.answer}</p>
-                  <p className="mt-2 text-xs text-slate-400">Lưu ngày {formatSavedDate(item.savedAt)}</p>
-                </div>
-                <details className="mt-4 border-t border-slate-100 pt-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-indigo-700">Xem câu hỏi</summary>
-                  <p className="mt-2 text-sm leading-5 text-slate-600">{item.question}</p>
-                </details>
-              </article>
-            ) : (
-              <article key={item.id} className="card flex h-full flex-col p-5 transition hover:shadow-md">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(item.id)}
-                    aria-label={`Xóa tài liệu ${item.title}`}
-                    className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-4 flex-1">
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{item.subject}</span>
-                  <h3 className="mt-3 font-semibold text-slate-900">{item.title}</h3>
-                  <p className="mt-2 text-xs text-slate-400">Lưu ngày {formatSavedDate(item.savedAt)}</p>
-                </div>
-                <p className="mt-5 border-t border-slate-100 pt-3 text-xs text-slate-500">Chủ đề bài học đã đánh dấu để xem lại.</p>
-              </article>
-            ))}
+    <div className="mx-auto max-w-6xl space-y-6">
+      <header className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-sky-50 px-6 py-7 sm:px-8 sm:py-9">
+        <div className="flex items-start gap-4">
+          <div className="rounded-2xl bg-blue-600 p-3 text-white"><Bookmark className="h-6 w-6" /></div>
+          <div><h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Nội dung đã lưu</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">Những nội dung bạn muốn quay lại, được lưu riêng trong tài khoản EduFlow.</p>
           </div>
-        ) : (
-          <EmptyState tab={activeTab} />
-        )}
+        </div>
+      </header>
+
+      {legacy && !('error' in legacy) && (
+        <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+          <h2 className="font-bold">Dữ liệu đã lưu cũ trên trình duyệt</h2>
+          <p>Dữ liệu này có thể bao gồm nội dung của tài khoản khác đã dùng cùng trình duyệt. Chỉ nhập nếu bạn đã kiểm tra và muốn đưa dữ liệu vào tài khoản hiện tại.</p>
+          {importedRaw === null ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2"><input type="checkbox" checked={importAcknowledged} onChange={(event) => setImportAcknowledged(event.target.checked)} /> Tôi hiểu và muốn nhập {legacy.items.length} nội dung cũ.</label>
+              <button type="button" disabled={!importAcknowledged || Boolean(busy)} onClick={() => void importLegacy()} className="rounded-lg bg-amber-900 px-4 py-2 font-semibold text-white disabled:opacity-50">Nhập vào tài khoản</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <span>Đã nhập thành công. Dữ liệu cũ vẫn còn trên trình duyệt.</span>
+              <button type="button" onClick={deleteLegacy} className="rounded-lg border border-amber-700 px-4 py-2 font-semibold hover:bg-amber-100">Xác nhận xóa dữ liệu cũ trên trình duyệt</button>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <label className="relative block"><Search className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
+            <input aria-label="Tìm nội dung đã lưu" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên hoặc môn học" className="input-field w-full pl-10" />
+          </label>
+          <select aria-label="Lọc loại nội dung" className="input-field" value={filter} onChange={(event) => setFilter(event.target.value)}>
+            <option value="all">Tất cả nội dung</option>
+            {kinds.map((kind) => <option key={kind} value={kind}>{itemLabel(role, kind)}</option>)}
+          </select>
+          <select aria-label="Sắp xếp nội dung" className="input-field" value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="newest">Mới lưu nhất</option><option value="oldest">Cũ nhất</option>
+          </select>
+        </div>
+        {(error || loadError) && <div role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
+          {error || loadError}
+          {loadError && <button type="button" onClick={() => void refresh().then(() => setError('')).catch((retryError: unknown) => setError(retryError instanceof Error ? retryError.message : 'Không thể tải nội dung đã lưu.'))} className="ml-3 font-semibold underline">Thử lại</button>}
+        </div>}
+        {loading ? <p className="py-10 text-center text-sm text-slate-500">Đang tải nội dung đã lưu...</p>
+          : !loadError && visible.length === 0 ? (
+            <div className="py-12 text-center">
+              <Star className="mx-auto h-9 w-9 text-blue-300" />
+              <h2 className="mt-4 text-lg font-bold text-slate-800">{items.length ? 'Không tìm thấy nội dung phù hợp' : 'Chưa có nội dung nào được lưu'}</h2>
+              <p className="mt-2 text-sm text-slate-500">{items.length ? 'Thử từ khóa hoặc bộ lọc khác.' : 'Chọn ngôi sao trên nội dung bạn muốn xem lại để lưu vào đây.'}</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {visible.map((item) => {
+                const key = `${item.type}:${item.id}`;
+                const canPreview = item.type === 'answer' || item.type === 'question' || item.type === 'lesson';
+                return (
+                  <li key={key} className="py-4">
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-blue-700">
+                          <span>{itemLabel(role, item.type)}</span><span className="text-slate-500">{item.subject || 'Chưa phân loại'}</span>
+                        </div>
+                        <button type="button" onClick={() => canPreview ? setExpanded(expanded === key ? null : key) : onOpen(item)} className="mt-1 text-left text-base font-semibold text-slate-900 hover:text-blue-700">{item.title}</button>
+                        <p className="mt-1 text-xs text-slate-500">Đã lưu {formatDate(item.savedAt)}</p>
+                      </div>
+                      <button type="button" disabled={Boolean(busy)} aria-label={`Bỏ lưu ${item.title}`} title="Bỏ lưu" onClick={() => void remove(item)} className="rounded-lg p-2 text-amber-500 hover:bg-amber-50 disabled:opacity-50"><Star className="h-5 w-5 fill-amber-400" /></button>
+                    </div>
+                    {expanded === key && (
+                      <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                        {item.type === 'answer' && <><p className="mb-3 font-semibold">{item.question}</p><MathText text={item.answer} /></>}
+                        {item.type === 'question' && <MathText text={item.question.question} />}
+                        {item.type === 'lesson' && <MathText text={item.content} />}
+                        {item.type === 'answer' && item.conversationId && <button type="button" onClick={() => onOpen(item)} className="mt-4 font-semibold text-blue-700">Mở cuộc trò chuyện</button>}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
       </section>
     </div>
   );
 }
 
-function EmptyState({ tab }: { tab: SavedTab }) {
-  const emptyContent: Record<SavedTab, { title: string; description: string; icon: typeof ClipboardList }> = {
-    quizzes: {
-      title: 'Chưa có đề luyện nào',
-      description: 'Đề đã tạo sẽ hiện ở đây.',
-      icon: ClipboardList,
-    },
-    answers: {
-      title: 'Chưa lưu lời giải nào',
-      description: 'Lưu câu trả lời trong AI Trợ giảng để xem lại.',
-      icon: Sparkles,
-    },
-    resources: {
-      title: 'Chưa có tài liệu được lưu',
-      description: 'Bài học đã lưu sẽ hiện ở đây.',
-      icon: FileText,
-    },
-  };
-  const content = emptyContent[tab];
-  const Icon = content.icon;
-
-  return (
-    <div className="card flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
-        <Icon className="h-7 w-7" />
-      </div>
-      <h3 className="mt-4 font-semibold text-slate-800">{content.title}</h3>
-      <p className="mt-1 max-w-md text-sm leading-5 text-slate-500">{content.description}</p>
-    </div>
-  );
-}
-
-function formatSavedDate(value: string) {
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value));
+function formatDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium' }).format(date);
 }

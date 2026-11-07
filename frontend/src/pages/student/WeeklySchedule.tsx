@@ -85,7 +85,7 @@ export function WeeklySchedule({
               }`}
             >
               <span className="block text-xs font-semibold">{day.label}</span>
-              <span className="mt-0.5 block text-[11px]">{day.date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</span>
+              <span className="mt-0.5 block text-[0.6875rem]">{day.date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</span>
             </button>
           ))}
         </div>
@@ -103,7 +103,7 @@ export function WeeklySchedule({
               <>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    {entry.classCode && <div className="truncate text-[11px] font-bold uppercase tracking-wide opacity-75">{entry.classCode}</div>}
+                    {entry.classCode && <div className="truncate text-[0.6875rem] font-bold uppercase tracking-wide opacity-75">{entry.classCode}</div>}
                     <div className="mt-0.5 break-words text-sm font-semibold">{entry.subject}</div>
                   </div>
                   {entry.isHomeroom && <Star aria-label="Lớp chủ nhiệm" className="mt-0.5 h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />}
@@ -169,7 +169,7 @@ export function WeeklySchedule({
                     <>
                       <div className="flex items-start justify-between gap-1">
                         <div className="min-w-0">
-                          {entry.classCode && <div className="truncate text-[11px] font-bold uppercase tracking-wide opacity-75">{entry.classCode}</div>}
+                          {entry.classCode && <div className="truncate text-[0.6875rem] font-bold uppercase tracking-wide opacity-75">{entry.classCode}</div>}
                           <div className="mt-0.5 line-clamp-2 text-sm font-semibold">{entry.subject}</div>
                         </div>
                         {entry.isHomeroom && <Star aria-label="Lớp chủ nhiệm" className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />}
@@ -205,7 +205,7 @@ export function WeeklySchedule({
                         <div className="mt-1 rounded border-l-2 border-emerald-500 bg-emerald-50 px-1.5 py-1 text-xs leading-4 text-emerald-950">
                           <span className="font-semibold">Trả bài:</span>{entry.examReturnNote ? ` ${entry.examReturnNote}` : ''}
                           {entry.examReturnAt && (
-                            <span className="block text-[11px] opacity-80">
+                            <span className="block text-[0.6875rem] opacity-80">
                               {new Date(entry.examReturnAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                             </span>
                           )}

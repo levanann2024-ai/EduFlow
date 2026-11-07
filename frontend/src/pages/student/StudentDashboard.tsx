@@ -162,7 +162,7 @@ function SubjectCarousel({
           Môn học của bạn
         </h2> 
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => onNavigate('my-classes')} className="mr-2 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
+          <button type="button" onClick={() => onNavigate('my-classes')} className="mr-2 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
             Xem tất cả <ArrowRight className="ml-0.5 inline h-3 w-3" />
           </button>
           <button type="button" aria-label="Môn học trước" onClick={showPreviousSubject} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
@@ -632,7 +632,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                     key={page}
                     type="button"
                     onClick={() => onNavigate(page)}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-2 text-[10px] font-bold text-blue-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 sm:text-xs"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-2 text-[0.625rem] font-bold text-blue-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 sm:text-xs"
                   >
                     <Icon className="h-4 w-4 shrink-0 text-blue-600" />
                     <span>{label}</span>
@@ -658,7 +658,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                       type="button"
                       onClick={() => setActivityFilter(id)}
                       aria-pressed={activityFilter === id}
-                      className={`rounded-md px-2 py-1.5 text-[10px] font-semibold transition ${activityFilter === id ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                      className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${activityFilter === id ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                     >
                       {label}
                     </button>
@@ -682,13 +682,13 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                             {isExam ? <CalendarClock className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[11px] font-semibold text-slate-800">{isExam ? `Kiểm tra ${item.subject}: ${item.title}` : `BTVN ${item.subject}: ${item.title}`}</span>
-                            <span className="mt-1 flex items-center gap-1 truncate text-[9px] text-slate-500">
+                            <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{isExam ? `Kiểm tra ${item.subject}: ${item.title}` : `BTVN ${item.subject}: ${item.title}`}</span>
+                            <span className="mt-1 flex items-center gap-1 truncate text-[0.5625rem] text-slate-500">
                               <Clock3 className="h-2.5 w-2.5 shrink-0" />
                               {isExam ? 'Ngày kiểm tra' : 'Hạn nộp'}: {item.date.toLocaleDateString('vi-VN')}
                             </span>
                           </span>
-                          <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold ${countdownLabel.startsWith('Quá hạn') ? 'bg-rose-50 text-rose-700' : isExam ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[0.5625rem] font-semibold ${countdownLabel.startsWith('Quá hạn') ? 'bg-rose-50 text-rose-700' : isExam ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
                             {countdownLabel}
                           </span>
                           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -703,7 +703,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                         {liveDataError || 'Chưa có bài tập hoặc lịch kiểm tra sắp tới.'}
                       </p>
                     )}
-                    <button type="button" onClick={() => onNavigate('assignments')} className="w-full py-2 text-left text-[10px] font-semibold text-blue-700 hover:text-blue-900">
+                    <button type="button" onClick={() => onNavigate('assignments')} className="w-full py-2 text-left text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
                       Xem tất cả bài tập <ArrowRight className="ml-1 inline h-3 w-3" />
                     </button>
                   </>
@@ -715,10 +715,10 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                   <button key={result.id} type="button" onClick={() => onNavigate('my-results')} className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Trophy className="h-4 w-4" /></span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[11px] font-semibold text-slate-800">{result.name}</span>
-                      <span className="mt-1 block truncate text-[9px] text-slate-500">{result.subject} - {result.date}</span>
+                      <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{result.name}</span>
+                      <span className="mt-1 block truncate text-[0.5625rem] text-slate-500">{result.subject} - {result.date}</span>
                     </span>
-                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700">{result.score}/10</span>
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[0.5625rem] font-semibold text-emerald-700">{result.score}/10</span>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                   </button>
                 ))}
@@ -732,7 +732,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                   Chi tiết <ArrowRight className="ml-1 inline h-3.5 w-3.5" />
                 </button>
               </div>
-              <b className="mt-3 text-[16px] text-slate-500">Điểm trung bình:</b>
+              <b className="mt-3 text-[1rem] text-slate-500">Điểm trung bình:</b>
               <div className="flex items-end gap-2 border-b border-slate-100 pb-2">
                 <strong className="text-3xl font-extrabold leading-none text-slate-900">{allAverage === null ? '—' : allAverage.toFixed(1)}</strong>
               </div>
@@ -740,6 +740,10 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                 className="mt-3 flex-1"
                 onMouseEnter={() => progressCycle.setPaused(true)}
                 onMouseLeave={() => progressCycle.setPaused(false)}
+                onFocus={() => progressCycle.setPaused(true)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) progressCycle.setPaused(false);
+                }}
               >
                 <div className="student-dashboard-cycle-viewport">
                   <div
@@ -753,7 +757,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                       <div key={page} className="student-dashboard-cycle-page space-y-3" style={{ flexBasis: `${100 / progressCycle.pageCount}%` }}>
                         {subjectScores.slice(page * 4, page * 4 + 4).map(({ subject, average }) => (
                           <div key={subject}>
-                            <div className="mb-1 flex justify-between gap-2 text-[10px]">
+                            <div className="mb-1 flex justify-between gap-2 text-[0.625rem]">
                               <span className="truncate font-medium text-slate-700">{subject}</span>
                               <strong className="text-slate-800">{average === null ? '—' : average.toFixed(1)}</strong>
                             </div>
@@ -767,9 +771,18 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                   </div>
                 </div>
                 {progressCycle.pageCount > 1 && (
-                  <div aria-hidden="true" className="mt-3 flex justify-center gap-1">
+                  <div className="mt-3 flex justify-center gap-1">
                     {Array.from({ length: progressCycle.pageCount }, (_, index) => (
-                      <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === progressCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                      <button
+                        key={index}
+                        type="button"
+                        aria-label={`Xem nhóm môn học ${index + 1}`}
+                        aria-pressed={index === progressCycle.page}
+                        onClick={() => progressCycle.setPage(index)}
+                        className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      >
+                        <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === progressCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                      </button>
                     ))}
                   </div>
                 )}
@@ -800,8 +813,8 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                         <button key={item.id} type="button" onClick={item.onClick} className={`flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${item.cardClass}`}>
                           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white ${item.iconClass}`}><Icon className="h-4 w-4" /></span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[11px] font-bold text-slate-900">{item.title}</span>
-                            <span className="mt-0.5 block truncate text-[10px] text-slate-600">{item.detail}</span>
+                            <span className="block truncate text-[0.6875rem] font-bold text-slate-900">{item.title}</span>
+                            <span className="mt-0.5 block truncate text-[0.625rem] text-slate-600">{item.detail}</span>
                           </span>
                           <ArrowRight className={`h-3.5 w-3.5 shrink-0 ${item.iconClass}`} />
                         </button>
@@ -809,9 +822,18 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                     })}
                   </div>
                   {attentionCycle.pageCount > 1 && (
-                    <div aria-hidden="true" className="mt-2 flex justify-center gap-1">
+                    <div className="mt-2 flex justify-center gap-1">
                       {Array.from({ length: attentionCycle.pageCount }, (_, index) => (
-                        <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === attentionCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                        <button
+                          key={index}
+                          type="button"
+                          aria-label={`Xem nhóm cần chú ý ${index + 1}`}
+                          aria-pressed={index === attentionCycle.page}
+                          onClick={() => attentionCycle.setPage(index)}
+                          className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        >
+                          <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === attentionCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                        </button>
                       ))}
                     </div>
                   )}
@@ -825,7 +847,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" />Lịch ngày mai - {tomorrow.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</h2>
-              <button type="button" onClick={() => onNavigate('schedule')} className="shrink-0 text-[10px] font-semibold text-blue-700 hover:text-blue-900">
+              <button type="button" onClick={() => onNavigate('schedule')} className="shrink-0 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
                 Thời khóa biểu <ArrowRight className="ml-0.5 inline h-3 w-3" />
               </button>
             </div>
@@ -858,13 +880,13 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                             {tomorrowEntries.slice(page * 2, page * 2 + 2).map((entry, index) => (
                               <button key={`${entry.weekday}-${entry.period}-${entry.subject}-${index}`} type="button" tabIndex={page === tomorrowCycle.page ? 0 : -1} onClick={() => onNavigate('schedule')} className="flex h-20 w-full min-w-0 items-center gap-3 overflow-hidden py-2 text-left transition hover:bg-blue-50">
                                 <span className="flex h-12 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-50 text-blue-800">
-                                  <span className="text-[9px] font-medium text-slate-500">{weekdayLabels[entry.weekday]}</span>
+                                  <span className="text-[0.5625rem] font-medium text-slate-500">{weekdayLabels[entry.weekday]}</span>
                                   <span className="whitespace-nowrap text-lg font-extrabold leading-5">Tiết {entry.period}</span>
                                 </span>
                                 <span className="w-0 min-w-0 flex-1 overflow-hidden">
                                   <span title={entry.subject} className="block max-w-full truncate text-xs font-bold leading-4 text-slate-800">{entry.subject}</span>
-                                  <span title={entry.title || entry.topic || 'Buổi học theo thời khóa biểu'} className="mt-0.5 block max-w-full truncate text-[10px] leading-3 text-slate-500">{entry.title || entry.topic || 'Buổi học theo thời khóa biểu'}</span>
-                                  {entry.hasExam && <span title={`Có kiểm tra: ${entry.examTitle}`} className="mt-0.5 block max-w-full truncate text-[10px] font-semibold leading-3 text-rose-700">Có kiểm tra: {entry.examTitle}</span>}
+                                  <span title={entry.title || entry.topic || 'Buổi học theo thời khóa biểu'} className="mt-0.5 block max-w-full truncate text-[0.625rem] leading-3 text-slate-500">{entry.title || entry.topic || 'Buổi học theo thời khóa biểu'}</span>
+                                  {entry.hasExam && <span title={`Có kiểm tra: ${entry.examTitle}`} className="mt-0.5 block max-w-full truncate text-[0.625rem] font-semibold leading-3 text-rose-700">Có kiểm tra: {entry.examTitle}</span>}
                                 </span>
                                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                               </button>
@@ -874,9 +896,18 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                       </div>
                     </div>
                     {tomorrowCycle.pageCount > 1 && (
-                      <div aria-hidden="true" className="mt-2 flex justify-center gap-1">
+                      <div className="mt-2 flex justify-center gap-1">
                         {Array.from({ length: tomorrowCycle.pageCount }, (_, index) => (
-                          <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === tomorrowCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                          <button
+                            key={index}
+                            type="button"
+                            aria-label={`Xem lịch ngày mai trang ${index + 1}`}
+                            aria-pressed={index === tomorrowCycle.page}
+                            onClick={() => tomorrowCycle.setPage(index)}
+                            className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          >
+                            <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === tomorrowCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                          </button>
                         ))}
                       </div>
                     )}

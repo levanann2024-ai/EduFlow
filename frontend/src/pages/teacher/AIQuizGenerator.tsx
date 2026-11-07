@@ -698,15 +698,9 @@ export function AIQuizGenerator({
                   </div>
                   <div>
                     <p className="font-semibold text-slate-800 text-sm">{assessmentType === 'official' ? 'Đã tạo đề kiểm tra' : assessmentType === 'practice' ? 'Đã tạo bài tập tự luyện' : `Đã tạo ${questions.length} câu hỏi`}</p>
-                    {assessmentType && <p className="text-xs text-slate-500">{questions.length} câu hỏi được AI trả về</p>}
-                    <p className="text-sm text-slate-400">
-                      {hasSubjectContext ? `${subject} • ` : ''}{grade} • {examMode
-                        ? `${questions.length} câu${!isVietnamese && !isEnglish ? ' • 10 điểm' : ''}`
-                        : difficulties.find((d) => d.value === difficulty)?.label}
-                    </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <button onClick={handleGenerate} className="btn-ghost">
                     <RefreshCw className="w-3.5 h-3.5" /> Tạo lại
                   </button>
@@ -747,7 +741,7 @@ export function AIQuizGenerator({
                         <div className="flex-1 min-w-0">
                           <div className="mb-2 flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="mb-1 text-[11px] font-semibold text-blue-700">
+                              <p className="mb-1 text-[0.6875rem] font-semibold text-blue-700">
                                 {questionTypeLabel(q.type)}{examMode && ` - ${Number(displayedQuestion.points?.toFixed(2) ?? 0)} điểm`}
                               </p>
                               <MathText text={q.question} className="font-medium text-slate-800 text-sm leading-relaxed" />

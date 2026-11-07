@@ -198,7 +198,7 @@ export function PreExamCheckModal({
                 {microphoneReady && needsMicrophone && <Check className="ml-auto h-4 w-4" />}
               </div>
             </div>
-            <p className="rounded-lg bg-blue-50 px-3 py-2 text-[11px] leading-4 text-blue-800">
+            <p className="rounded-lg bg-blue-50 px-3 py-2 text-[0.6875rem] leading-4 text-blue-800">
               Webcam và micro chỉ được xử lý trực tiếp trên thiết bị. Không chụp ảnh, ghi âm hoặc truyền dữ liệu hình ảnh/âm thanh; máy chủ chỉ nhận loại sự kiện, thời điểm và thời lượng.
             </p>
             {!permissionGranted && (needsCamera || needsMicrophone) && (

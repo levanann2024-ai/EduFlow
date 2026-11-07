@@ -6,6 +6,7 @@ import {
   Mail,
   MessageSquareText,
 } from 'lucide-react';
+import { GOOGLE_FORMS_SURVEY_URL } from '@/config/links';
 import type { Role } from '@/types';
 
 const supportEmail = 'eduflow.contact2026@gmail.com';
@@ -83,7 +84,13 @@ const englishRoleContent = {
 
 export function ContactPage({ role, language = 'vi' }: { role: Role; language?: 'vi' | 'en' }) {
   const content = language === 'en' ? englishRoleContent[role] : roleContent[role];
-  const emailHref = `mailto:${supportEmail}?subject=${encodeURIComponent(`${language === 'en' ? 'EduFlow support' : 'Hỗ trợ EduFlow'} - ${content.audience}`)}`;
+  const emailSubject = `${language === 'en' ? 'EduFlow support' : 'Hỗ trợ EduFlow'} - ${content.audience}`;
+  const emailHref = `https://mail.google.com/mail/?${new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: supportEmail,
+    su: emailSubject,
+  }).toString()}`;
 
   return (
     <main className="mx-auto max-w-5xl space-y-7 pb-8">
@@ -108,10 +115,12 @@ export function ContactPage({ role, language = 'vi' }: { role: Role; language?: 
             <p className="mt-1 text-sm leading-5 text-slate-500">
               {language === 'en'
                 ? 'Briefly describe your question or idea so our team can help.'
-                : 'Mô tả ngắn gọn vấn đề hoặc ý tưởng của bạn để đội ngũ dễ hỗ trợ hơn.'}
+                : 'Mô tả ngắn gọn vấn đề hoặc ý tưởng để đội ngũ dễ hỗ trợ hơn.'}
             </p>
             <a
               href={emailHref}
+              target="_blank"
+              rel="noopener noreferrer"
               className="mt-5 inline-flex min-h-12 w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 text-sm font-bold text-white shadow-md shadow-indigo-600/15 transition hover:from-indigo-700 hover:to-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             >
               <span className="break-all">{supportEmail}</span>
@@ -124,11 +133,12 @@ export function ContactPage({ role, language = 'vi' }: { role: Role; language?: 
       <section aria-labelledby="contact-options-title">
         <div className="mb-4">
           <h2 id="contact-options-title" className="text-xl font-extrabold text-slate-900">{language === 'en' ? 'Get in touch' : 'Kết nối với chúng mình'}</h2>
-          <p className="mt-1 text-sm text-slate-500">{language === 'en' ? 'Choose the option that works best for you.' : 'Chọn cách phù hợp nhất với điều bạn cần.'}</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <a
             href={emailHref}
+            target="_blank"
+            rel="noopener noreferrer"
             className="group rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <div className="flex items-start justify-between gap-3">
@@ -147,23 +157,28 @@ export function ContactPage({ role, language = 'vi' }: { role: Role; language?: 
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
                 <MessageSquareText className="h-5 w-5" />
               </div>
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">{language === 'en' ? 'Coming soon' : 'Sắp có'}</span>
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[0.6875rem] font-bold text-amber-800">{language === 'en' ? 'Have your say' : 'Cùng góp ý'}</span>
             </div>
             <h3 className="mt-4 font-bold text-slate-900">{language === 'en' ? 'Feedback form' : 'Biểu mẫu góp ý'}</h3>
             <p className="mt-1 text-sm leading-5 text-slate-500">
               {language === 'en'
-                ? 'Our Google Form is being prepared. In the meantime, you can send feedback by email.'
-                : 'Google Forms đang được chuẩn bị. Trong lúc chờ, bạn có thể gửi góp ý qua email.'}
+                ? 'Share your experience to help EduFlow improve teaching and learning.'
+                : 'Chia sẻ trải nghiệm để EduFlow cải thiện việc dạy và học.'}
             </p>
-            <a href={emailHref} className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-amber-800 hover:text-amber-900">
-              {language === 'en' ? 'Send feedback by email' : 'Gửi góp ý qua email'} <ArrowUpRight className="h-3.5 w-3.5" />
+            <a
+              href={GOOGLE_FORMS_SURVEY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-amber-400 px-4 py-3 text-sm font-bold text-amber-950 shadow-sm transition-colors hover:bg-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+            >
+              {language === 'en' ? 'Take the survey' : 'Tham gia khảo sát'} <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
         </div>
       </section>
 
       <section aria-labelledby="contact-topics-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 id="contact-topics-title" className="text-lg font-bold text-slate-900">{language === 'en' ? 'What we can help with' : 'Bạn có thể liên hệ về'}</h2>
+        <h2 id="contact-topics-title" className="text-lg font-bold text-slate-900">{language === 'en' ? 'What we can help with' : 'Các nội dung hỗ trợ'}</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {content.topics.map(({ icon: Icon, title, text }) => (
             <div key={title} className="rounded-xl bg-slate-50 p-4">

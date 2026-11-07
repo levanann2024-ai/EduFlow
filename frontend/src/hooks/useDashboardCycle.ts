@@ -33,5 +33,5 @@ export function useDashboardCycle(
     };
   }, [pageCount, paused, staggerMs]);
 
-  return { page, pageCount, setPaused };
+  return { page, pageCount, setPage, setPaused };
 }

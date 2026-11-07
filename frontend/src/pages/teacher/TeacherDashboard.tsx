@@ -35,6 +35,7 @@ import {
   type TeacherTimetableResponse,
 } from '@/api/schoolApi';
 import type { Page } from '@/types';
+import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
 import type { ExamRoomRecord } from './examRoomDemoData';
@@ -314,8 +315,9 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
   const now = useMemo(() => new Date(), []);
   const tomorrow = useMemo(() => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1), [now]);
   const tomorrowWeekday = ((tomorrow.getDay() + 6) % 7) + 1;
-  const honorific = userGender === 'male' ? 'thầy' : userGender === 'female' ? 'cô' : 'thầy/cô';
+  const honorific = getTeacherHonorific(userGender);
   const greeting = now.getHours() < 11 ? 'buổi sáng' : now.getHours() < 14 ? 'buổi trưa' : now.getHours() < 18 ? 'buổi chiều' : 'buổi tối';
+  const greetingName = honorific ? `${honorific} ${userName}` : userName;
 
   useEffect(() => {
     let active = true;
@@ -601,7 +603,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
         />
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-blue-950/40 via-blue-900/15 to-transparent" />
         <div className="relative z-10 flex min-h-[270px] flex-col justify-center sm:min-h-[286px] sm:max-w-[76%]">
-          <p className="text-lg font-bold tracking-wide text-white sm:text-xl">Chào {greeting}, {honorific} {userName}</p>
+          <p className="text-lg font-bold tracking-wide text-white sm:text-xl">Chào {greeting}, {greetingName}</p>
           <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight sm:text-3xl">
             Dạy đúng trọng tâm.<br className="hidden sm:block" /> Tiến bộ <span className="text-amber-300">từng ngày.</span>
           </h1>
@@ -612,7 +614,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
               id="teacher-dashboard-ai-prompt"
               value={chatPrompt}
               onChange={(event) => setChatPrompt(event.target.value)}
-              placeholder="Thầy/cô muốn chuẩn bị gì hôm nay?"
+              placeholder={honorific === 'thầy' ? 'Thầy muốn chuẩn bị gì hôm nay?' : honorific === 'cô' ? 'Cô muốn chuẩn bị gì hôm nay?' : 'Muốn chuẩn bị gì hôm nay?'}
               className="min-w-0 flex-1 bg-transparent px-1 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
             />
             <button type="submit" aria-label="Gửi câu hỏi cho AI" disabled={!chatPrompt.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
@@ -625,7 +627,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
               { page: 'exams', label: 'Tạo đề kiểm tra', Icon: FileCheck2 },
               { page: 'analytics', label: 'Phân tích lớp học', Icon: BarChart3 },
             ] as const).map(({ page, label, Icon }) => (
-              <button key={page} type="button" onClick={() => onNavigate(page)} className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-2 text-[10px] font-bold text-blue-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 sm:text-xs">
+              <button key={page} type="button" onClick={() => onNavigate(page)} className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/85 px-3 py-2 text-[0.625rem] font-bold text-blue-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 sm:text-xs">
                 <Icon className="h-4 w-4 shrink-0 text-blue-600" />
                 <span>{label}</span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-blue-600" />
@@ -678,7 +680,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                         <span className="block truncate text-sm font-semibold text-slate-800">{work.title}</span>
                         <span className="mt-1 block truncate text-xs text-slate-500">{work.classCode} - Hạn {formatDate(work.dueAt)} - {work.submittedCount} đã nộp</span>
                       </span>
-                      {work.ungradedCount > 0 && <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1.5 text-[10px] font-semibold text-rose-700">{work.ungradedCount} chưa chấm</span>}
+                      {work.ungradedCount > 0 && <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-1.5 text-[0.625rem] font-semibold text-rose-700">{work.ungradedCount} chưa chấm</span>}
                       <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
                     </button>
                   </li>
@@ -737,7 +739,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                       <strong className="text-3xl font-extrabold leading-none text-slate-900">
                         {selectedHomeroomProgress.overallAverage === null ? '—' : selectedHomeroomProgress.overallAverage.toFixed(1)}
                       </strong>
-                      <span className="pb-0.5 text-[10px] text-slate-500">/10 - điểm trung bình toàn lớp</span>
+                      <span className="pb-0.5 text-[0.625rem] text-slate-500">/10 - điểm trung bình toàn lớp</span>
                     </div>
                     <div className="student-dashboard-cycle-viewport h-[176px]">
                       <div
@@ -766,15 +768,17 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                         ))}
                       </div>
                     </div>
-                    <div aria-hidden="true" className="mt-2 flex h-2 items-center justify-center gap-1">
+                    <div className="mt-2 flex min-h-4 items-center justify-center gap-1">
                       {progressCycle.pageCount > 1 && Array.from({ length: progressCycle.pageCount }, (_, index) => (
-                          <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === progressCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                        <button key={index} type="button" aria-label={`Xem nhóm môn học ${index + 1}`} aria-pressed={index === progressCycle.page} onClick={() => progressCycle.setPage(index)} className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                          <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === progressCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                        </button>
                       ))}
                     </div>
                   </>
                 ) : selectedSubjectProgress.length > 0 ? (
                   <>
-                    <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-slate-500">
+                    <div className="mb-1 flex items-center justify-between gap-2 text-[0.625rem] font-medium text-slate-500">
                       <span>Lớp</span>
                       <span>Điểm trung bình lớp</span>
                     </div>
@@ -806,9 +810,11 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                         ))}
                       </div>
                     </div>
-                    <div aria-hidden="true" className="mt-2 flex h-2 items-center justify-center gap-1">
+                    <div className="mt-2 flex min-h-4 items-center justify-center gap-1">
                       {progressCycle.pageCount > 1 && Array.from({ length: progressCycle.pageCount }, (_, index) => (
-                          <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === progressCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                        <button key={index} type="button" aria-label={`Xem nhóm môn học ${index + 1}`} aria-pressed={index === progressCycle.page} onClick={() => progressCycle.setPage(index)} className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                          <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === progressCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                        </button>
                       ))}
                     </div>
                   </>
@@ -865,7 +871,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white ${item.tone === 'rose' ? 'text-rose-600' : item.tone === 'blue' ? 'text-blue-700' : 'text-amber-700'}`}><Icon className="h-5 w-5" /></span>
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-xs font-bold text-slate-900">{item.title}</span>
-                                  <span className="mt-1 block truncate text-[11px] text-slate-600">{item.detail}</span>
+                                  <span className="mt-1 block truncate text-[0.6875rem] text-slate-600">{item.detail}</span>
                                 </span>
                                 <ArrowRight className={`h-4 w-4 shrink-0 ${item.tone === 'rose' ? 'text-rose-600' : item.tone === 'blue' ? 'text-blue-700' : 'text-amber-700'}`} />
                               </button>
@@ -882,9 +888,11 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                   </p>
                 )}
               </div>
-              <div aria-hidden="true" className="mt-2 flex h-2 items-center justify-center gap-1">
+              <div className="mt-2 flex min-h-4 items-center justify-center gap-1">
                 {attentionCycle.pageCount > 1 && Array.from({ length: attentionCycle.pageCount }, (_, index) => (
-                  <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === attentionCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                  <button key={index} type="button" aria-label={`Xem nhóm cần chú ý ${index + 1}`} aria-pressed={index === attentionCycle.page} onClick={() => attentionCycle.setPage(index)} className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === attentionCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                  </button>
                 ))}
               </div>
             </div>
@@ -941,7 +949,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                                 className="flex h-24 w-full items-center gap-4 overflow-hidden py-4 text-left transition hover:bg-blue-50"
                               >
                                 <span className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-50 text-blue-800">
-                                  <span className="text-[10px] font-medium text-slate-500">{weekdayLabels[entry.weekday]}</span>
+                                  <span className="text-[0.625rem] font-medium text-slate-500">{weekdayLabels[entry.weekday]}</span>
                                   <span className="text-xl font-extrabold leading-6">Tiết {entry.period}</span>
                                 </span>
                                 <span className="min-w-0 flex-1">
@@ -964,9 +972,11 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                   </p>
                 )}
               </div>
-              <div aria-hidden="true" className="mt-2 flex h-2 items-center justify-center gap-1">
+              <div className="mt-2 flex min-h-4 items-center justify-center gap-1">
                 {tomorrowCycle.pageCount > 1 && Array.from({ length: tomorrowCycle.pageCount }, (_, index) => (
-                  <span key={index} className={`h-1.5 w-1.5 rounded-full ${index === tomorrowCycle.page ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                  <button key={index} type="button" aria-label={`Xem lịch ngày mai trang ${index + 1}`} aria-pressed={index === tomorrowCycle.page} onClick={() => tomorrowCycle.setPage(index)} className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === tomorrowCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
+                  </button>
                 ))}
               </div>
             </div>
@@ -978,7 +988,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                 <FileCheck2 className="h-5 w-5 text-blue-600" />
                 Tài liệu đã gửi
               </h2>
-              <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700">2 gần nhất</span>
+              <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[0.625rem] font-semibold text-blue-700">2 gần nhất</span>
             </div>
             {loading ? <p className="py-5 text-sm text-slate-500">Đang tải tài liệu đã gửi…</p>
               : dashboard?.recentDocuments.length ? (

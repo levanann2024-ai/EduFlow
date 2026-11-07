@@ -7,11 +7,14 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  html {
+    font-size: calc(100% * var(--app-font-scale, 1));
+  }
   body {
     font-family: 'Inter', system-ui, sans-serif;
     background-color: #f8fafc;
     color: #0f172a;
-    font-size: 16px;
+    font-size: 1rem;
   }
   #root {
     min-height: 100%;
@@ -50,19 +53,6 @@
 
   .toast-progress-fill {
     animation: toast-progress-fill 5s linear forwards;
-  }
-
-  @keyframes session-loading {
-    from {
-      transform: translateX(-105%);
-    }
-    to {
-      transform: translateX(215%);
-    }
-  }
-
-  .session-loading-bar {
-    animation: session-loading 1.6s ease-in-out infinite;
   }
 
   .reduce-motion .toast-progress-fill {
@@ -107,11 +97,6 @@
   @media (prefers-reduced-motion: reduce) {
     .dashboard-cycle-enter {
       animation: none;
-    }
-
-    .session-loading-bar {
-      animation: none;
-      opacity: 0.55;
     }
 
     .student-dashboard-cycle-track {
@@ -353,13 +338,25 @@ button.student-utility-tile:hover .student-utility-arrow {
 
 .student-subject-marquee-track {
   display: flex;
-  width: 500%;
+  width: 666.6667%;
 }
 
 .student-subject-card {
   box-sizing: border-box;
   flex: 0 0 5%;
   padding-inline: 0.375rem;
+}
+
+.chat-camera-control {
+  display: none;
+}
+
+@media (max-width: 1024px), (any-pointer: coarse) and (max-width: 1366px) {
+  .chat-camera-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }
 
 @container (max-width: 399px) {

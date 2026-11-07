@@ -460,7 +460,7 @@ export function ExamGradingWorkspace() {
               ) : (
                 <div className="space-y-4 p-4 sm:p-5">
                   <h3 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                    Bài làm của bạn {selectedStudent.studentName}
+                    Bài làm của học sinh {selectedStudent.studentName}
                   </h3>
                   {selectedStudentAppeal && (
                     <section

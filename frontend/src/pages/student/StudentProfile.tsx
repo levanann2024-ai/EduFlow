@@ -3,7 +3,8 @@ import { showToast } from '@/components/toast';
 import { Activity, BookMarked, BookOpen, Building2, CalendarDays, ChevronRight, CircleAlert, Copy, GraduationCap, History, KeyRound, LogOut, ScanLine, Search, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import type { AuthUser } from '@/auth/authApi';
 import { changePassword } from '@/auth/authApi';
-import { readUserSettings, saveUserSettings } from '@/settings/userSettings';
+import { AccountProfileSection } from '@/components/AccountProfileSection';
+import { readUserSettings, saveUserSettings, type AppLanguage } from '@/settings/userSettings';
 import {
   getTeacherExamRoomGrading,
   listClassAssignments,
@@ -52,12 +53,18 @@ export function StudentProfile({
   onLogout,
   user,
   avatarUrl = '',
+  language,
+  onUserUpdate,
+  onAvatarChange,
   onOpenExamResult,
   onNavigate,
 }: {
   onLogout: () => void;
   user: AuthUser;
   avatarUrl?: string;
+  language: AppLanguage;
+  onUserUpdate: (user: AuthUser) => void;
+  onAvatarChange: (avatarUrl: string) => void;
   onOpenExamResult: (result: StudentExamResult) => void;
   onNavigate: (page: 'classes' | 'ai-grading' | 'exams') => void;
 }) {
@@ -76,8 +83,6 @@ export function StudentProfile({
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState('');
   const isTeacher = user.role === 'lecturer';
-  const displayName = user.fullName || user.email;
-  const initials = displayName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase();
 
   useEffect(() => {
     const result = readUserSettings(user.id, user.role);
@@ -290,24 +295,16 @@ export function StudentProfile({
 
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
 
+      <AccountProfileSection
+        user={user}
+        avatarUrl={avatarUrl}
+        language={language}
+        onUserUpdate={onUserUpdate}
+        onAvatarChange={onAvatarChange}
+      />
+
       {isTeacher ? (
         <>
-          <section aria-labelledby="student-card-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex items-center gap-4">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="h-16 w-16 shrink-0 rounded-2xl object-cover" />
-              ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-xl font-bold text-amber-600">
-                  {initials}
-                </div>
-              )}
-              <div className="min-w-0">
-                <h2 id="student-card-title" className="truncate text-xl font-bold text-slate-900">{displayName}</h2>
-                <p className="mt-1 truncate text-sm text-slate-500">{user.email}</p>
-              </div>
-            </div>
-          </section>
-
           <section aria-labelledby="teacher-details-title" className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:grid-cols-2">
             <div>
               <h2 id="teacher-details-title" className="text-base font-bold text-slate-900">Tác vụ gần nhất</h2>
@@ -382,34 +379,20 @@ export function StudentProfile({
           </section>
         </>
       ) : (
-      <section aria-labelledby="student-card-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" className="h-16 w-16 shrink-0 rounded-2xl object-cover" />
-            ) : (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-xl font-bold text-amber-600">
-                {initials}
+        user.isDemo && (
+          <section aria-label="Mã liên kết phụ huynh" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mã liên kết phụ huynh</p>
+                <p className="mt-1 font-mono text-lg font-bold tracking-wider text-slate-900">{PARENT_LINK_CODE}</p>
+                <p className="mt-1 text-xs text-slate-500">Phụ huynh có thể dùng mã này để gửi yêu cầu liên kết.</p>
               </div>
-            )}
-            <div>
-              <h2 id="student-card-title" className="text-xl font-bold text-slate-900">{displayName}</h2>
-              <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+              <button type="button" onClick={() => void copyParentCode()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700">
+                <Copy className="h-4 w-4" />Sao chép mã
+              </button>
             </div>
-          </div>
-
-          {user.isDemo && !isTeacher && <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between lg:min-w-[380px]">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mã liên kết phụ huynh</p>
-              <p className="mt-1 font-mono text-lg font-bold tracking-wider text-slate-900">{PARENT_LINK_CODE}</p>
-              <p className="mt-1 text-xs text-slate-500">Phụ huynh có thể dùng mã này để gửi yêu cầu liên kết.</p>
-            </div>
-            <button type="button" onClick={() => void copyParentCode()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700">
-              <Copy className="h-4 w-4" />Sao chép mã
-            </button>
-          </div>}
-        </div>
-      </section>
+          </section>
+        )
       )}
 
       <div className={isTeacher ? '' : 'grid gap-5 lg:grid-cols-[1.05fr_0.95fr]'}>
@@ -457,7 +440,7 @@ export function StudentProfile({
                         style={{ height: `${fill}%` }}
                       />
                     </div>
-                    <span className="text-[11px] font-medium capitalize text-slate-500">{weekdayLabel(day.date)}</span>
+                    <span className="text-[0.6875rem] font-medium capitalize text-slate-500">{weekdayLabel(day.date)}</span>
                   </div>
                 );
               })}

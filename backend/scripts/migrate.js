@@ -280,6 +280,11 @@ const MIGRATIONS = [
     file: path.join(__dirname, '..', 'db', 'migrations', '037_exam_room_timetable_events.sql'),
     preflight: null,
   },
+  {
+    name: '038_saved_items',
+    file: path.join(__dirname, '..', 'db', 'migrations', '038_saved_items.sql'),
+    preflight: null,
+  },
 ];
 
 const CORE_TABLES = [
@@ -327,6 +332,7 @@ const APPLICATION_TABLES = [
   'exam_appeals',
   'student_term_grade_history',
   'exam_logs',
+  'saved_items',
 ];
 
 function assertMigrationStatements(sql, migrationName) {

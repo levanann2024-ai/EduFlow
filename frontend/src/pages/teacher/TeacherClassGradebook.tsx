@@ -88,15 +88,6 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
     };
   }, [classId, academicYear, semester, subject, reloadKey]);
 
-  const totals = useMemo(() => students.reduce(
-    (summary, student) => ({
-      assignments: summary.assignments + student.assignments.total,
-      submitted: summary.submitted + student.assignments.submitted,
-    }),
-    { assignments: 0, submitted: 0 },
-  ), [students]);
-  const progress = totals.assignments === 0 ? null : Math.round((totals.submitted / totals.assignments) * 100);
-
   const changedStudents = students.filter((student) => {
     const values = drafts[student.id] ?? toInputs(student.grades);
     return hasGradeChanges(values, student.grades);
@@ -141,23 +132,6 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Tiến độ bài tập</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {totals.assignments === 0
-                ? 'Chưa có bài tập được giao trong kỳ này.'
-                : `${totals.submitted} / ${totals.assignments} lượt nộp đã hoàn thành`}
-            </p>
-          </div>
-          {progress !== null && <span className="text-xl font-bold text-blue-700">{progress}%</span>}
-        </div>
-        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${progress ?? 0}%` }} />
-        </div>
-      </section>
-
       <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
@@ -213,7 +187,7 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
                   <th rowSpan={2} className="min-w-32 p-2">Tỷ lệ hoàn thành</th>
                   <th rowSpan={2} className="min-w-52 p-2">Đánh giá &amp; cảnh báo</th>
                 </tr>
-                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-500">
+                <tr className="border-b border-slate-200 bg-slate-50 text-[0.6875rem] font-medium text-slate-500">
                   {[1, 2, 3, 4].map((number) => <th key={number} className="p-2 text-center">CC {number}</th>)}
                 </tr>
               </thead>
@@ -272,7 +246,7 @@ export function TeacherClassGradebook({ classId, className, academicYear, subjec
                       </td>
                       <td className="p-3 text-center">
                         <span className="font-bold text-slate-900">{newAverage === null ? '—' : newAverage.toFixed(2)}</span>
-                        {gradesChanged && <span className="mt-1 block text-[10px] text-slate-400">Chưa lưu</span>}
+                        {gradesChanged && <span className="mt-1 block text-[0.625rem] text-slate-400">Chưa lưu</span>}
                       </td>
                       <td className="p-3">
                         {newAverage === null ? '—' : oldAverage === null ? (

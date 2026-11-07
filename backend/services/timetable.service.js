@@ -120,17 +120,21 @@ function validateStudentSchedulePlan(value) {
   };
 }
 
-function validateTeacherSchedulePlan(value) {
+function validateTeacherSchedulePlan(value, teacherGender) {
   const isRecord = (item) => item !== null && typeof item === 'object' && !Array.isArray(item);
   const isShortText = (item, maxLength) => (
     typeof item === 'string' && item.trim().length > 0 && item.length <= maxLength
   );
   const validKinds = new Set(['prep', 'grading', 'feedback', 'class', 'admin', 'break', 'busy', 'personal', 'other']);
   const validTime = (item) => typeof item === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(item);
+  const honorific = getTeacherHonorific(teacherGender);
+  const retryMessage = honorific
+    ? `${honorific === 'thầy' ? 'Thầy' : 'Cô'} thử tạo lại nhé.`
+    : 'Vui lòng thử tạo lại.';
   const invalidPlan = () => timetableError(
     502,
     'SCHOOL_INVALID_AI_TEACHER_PLAN',
-    'AI chưa tạo được kế hoạch công việc đúng định dạng. Thầy/cô thử tạo lại nhé.',
+    `AI chưa tạo được kế hoạch công việc đúng định dạng. ${retryMessage}`,
   );
 
   if (!isRecord(value)
@@ -816,13 +820,16 @@ async function generateStudentTimetableSuggestion(auth, input) {
 async function generateTeacherTimetableSuggestion(auth, filters) {
   const schedule = await getTeacherTimetable(auth, filters);
   const preferredAddress = getTeacherHonorific(auth.gender);
+  const addressInstruction = preferredAddress
+    ? `Xưng hô nhất quán với giáo viên là "${preferredAddress}" khi cần gọi trực tiếp; không tự đoán giới tính, không đổi cách xưng hô.`
+    : 'Không dùng đại từ hoặc danh xưng để gọi trực tiếp giáo viên khi giới tính chưa được xác định.';
   const generatedPlan = await generateJson({
     type: 'teacher-schedule',
     schema: 'teacher weekly plan',
     teacherGender: auth.gender,
     prompt: JSON.stringify({
       instructions: [
-        `Xưng hô nhất quán với giáo viên là "${preferredAddress}" khi cần gọi trực tiếp; không tự đoán giới tính, không đổi cách xưng hô.`,
+        addressInstruction,
         'Tổng hợp toàn bộ lịch từ thứ 2 đến chủ nhật, lịch dạy theo tiết, ghi chú thời gian bận/rảnh, hạn bài tập và bài cần chấm để lập kế hoạch ngắn gọn, thực tế.',
         'Không bịa lớp, môn, nội dung bài, deadline, số lượng bài hoặc thời gian bắt đầu/kết thúc tiết học. Số tiết chỉ xác định thứ tự tiết, không suy ra giờ đồng hồ.',
         'Trong teacherNote, chỉ coi nội dung dưới nhãn "Thời gian rảnh" là thời gian có thể xếp việc và nội dung dưới nhãn "Thời gian bận" là khung cần tránh. "Ghi chú cũ (chưa phân loại)" chỉ là ngữ cảnh, không được tự coi là giờ rảnh hoặc giờ bận.',
@@ -850,7 +857,7 @@ async function generateTeacherTimetableSuggestion(auth, filters) {
       assignmentsDueSoon: schedule.upcomingWork,
     }),
   });
-  const plan = validateTeacherSchedulePlan(generatedPlan);
+  const plan = validateTeacherSchedulePlan(generatedPlan, auth.gender);
   return { suggestion: JSON.stringify(plan) };
 }
 

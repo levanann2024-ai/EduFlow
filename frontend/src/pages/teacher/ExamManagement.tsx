@@ -4,6 +4,7 @@ import { deleteTeacherAssessment, saveTeacherAssessment } from '@/api/schoolApi'
 import { showToast } from '@/components/toast';
 import { loadTeacherAssessments, type SavedExam } from '@/pages/teacher/assessmentStorage';
 import { ExamEditor } from '@/pages/teacher/ExamEditor';
+import { BookmarkButton, useTeacherBookmarks, type SavedTeacherExam } from '@/pages/teacher/teacherSavedItems';
 
 function examReady(exam: SavedExam) {
   return exam.status === 'ready'
@@ -19,6 +20,7 @@ export function ExamManagement({ onCreateExamRoom }: { onCreateExamRoom: (exam: 
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const bookmarks = useTeacherBookmarks();
 
   useEffect(() => {
     let active = true;
@@ -57,7 +59,7 @@ export function ExamManagement({ onCreateExamRoom }: { onCreateExamRoom: (exam: 
   };
 
   const deleteExam = async (exam: SavedExam) => {
-    if (!window.confirm(`Bạn có chắc muốn xóa đề "${exam.title}"?`)) return;
+    if (!window.confirm(`Xác nhận xóa đề "${exam.title}"?`)) return;
     try {
       await deleteTeacherAssessment('exam', exam.id);
       setExams((current) => current.filter((item) => item.id !== exam.id));
@@ -101,7 +103,7 @@ export function ExamManagement({ onCreateExamRoom }: { onCreateExamRoom: (exam: 
         </button>
       </div>
 
-      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
+      {(error || bookmarks.error) && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error || bookmarks.error}</p>}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_repeat(2,minmax(135px,190px))]">
@@ -149,6 +151,19 @@ export function ExamManagement({ onCreateExamRoom }: { onCreateExamRoom: (exam: 
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                  <BookmarkButton
+                    saved={bookmarks.isSaved('exam', exam.id)}
+                    busy={bookmarks.loading || bookmarks.isPending('exam', exam.id)}
+                    label={`đề kiểm tra ${exam.title || 'chưa đặt tên'}`}
+                    onToggle={() => void bookmarks.toggle({
+                      id: exam.id,
+                      type: 'exam',
+                      title: exam.title || 'Đề kiểm tra chưa đặt tên',
+                      subject: exam.subject,
+                      savedAt: new Date().toISOString(),
+                      assessmentId: exam.id,
+                    } satisfies SavedTeacherExam)}
+                  />
                   <button onClick={() => setSelectedExam(exam)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Eye className="h-4 w-4" /> Mở đề</button>
                   <button onClick={() => deleteExam(exam)} aria-label={`Xóa đề ${exam.title}`} className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
                   <button

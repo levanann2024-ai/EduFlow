@@ -5,12 +5,17 @@ export type AppLanguage = 'vi' | 'en';
 export type BackgroundPreset = 'default' | 'aurora' | 'mint' | 'sunset' | 'ocean' | 'custom';
 export type ExplanationStyle = 'concise' | 'detailed';
 
+export const MIN_FONT_SCALE_PERCENT = 85;
+export const MAX_FONT_SCALE_PERCENT = 115;
+export const FONT_SCALE_STEP_PERCENT = 5;
+
 export interface UserSettings {
   avatar: string;
   background: BackgroundPreset;
   backgroundUrl: string;
   animationsEnabled: boolean;
   language: AppLanguage;
+  fontScalePercent: number;
   explanationStyle: ExplanationStyle;
 }
 
@@ -20,6 +25,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   backgroundUrl: '',
   animationsEnabled: true,
   language: 'vi',
+  fontScalePercent: 100,
   explanationStyle: 'detailed',
 };
 
@@ -32,6 +38,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function validBackground(value: unknown): value is BackgroundPreset {
   return ['default', 'aurora', 'mint', 'sunset', 'ocean', 'custom'].includes(String(value));
+}
+
+function validFontScalePercent(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= MIN_FONT_SCALE_PERCENT
+    && value <= MAX_FONT_SCALE_PERCENT
+    && (value - MIN_FONT_SCALE_PERCENT) % FONT_SCALE_STEP_PERCENT === 0;
 }
 
 export function readUserSettings(userId: string, role: Role): { settings: UserSettings; error: string } {
@@ -51,6 +65,7 @@ export function readUserSettings(userId: string, role: Role): { settings: UserSe
         ...(typeof parsed.backgroundUrl === 'string' ? { backgroundUrl: parsed.backgroundUrl } : {}),
         ...(typeof parsed.animationsEnabled === 'boolean' ? { animationsEnabled: parsed.animationsEnabled } : {}),
         ...(parsed.language === 'vi' || parsed.language === 'en' ? { language: parsed.language } : {}),
+        ...(validFontScalePercent(parsed.fontScalePercent) ? { fontScalePercent: parsed.fontScalePercent } : {}),
         ...(parsed.explanationStyle === 'concise' || parsed.explanationStyle === 'detailed'
           ? { explanationStyle: parsed.explanationStyle }
           : {}),

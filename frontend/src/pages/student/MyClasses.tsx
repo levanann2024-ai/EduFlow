@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bookmark,
-  BookmarkCheck,
+  Star,
   BookOpen,
   ClipboardCheck,
   CheckCircle2,
@@ -30,7 +29,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
-import { getSavedItems, saveItem } from './savedItems';
+import { useSavedItems } from './savedItems';
 import {
   distributeAssignmentPoints,
   parseAssignmentAnswers,
@@ -63,6 +62,9 @@ interface MyClassesProps {
   initialSubjectView: 'lessons' | 'assignments' | 'exam' | null;
   initialSubjectTopic: string | null;
   initialExamSessionId?: string | null;
+  initialExamClassId?: string | null;
+  initialResourceId?: string | null;
+  initialAssignmentId?: string | null;
   onExitGroup: () => void;
   onAskAI: (prompt: string, subject?: string) => void;
 }
@@ -230,6 +232,9 @@ export function MyClasses(props: MyClassesProps) {
     initialSubjectView,
     initialSubjectTopic,
     initialExamSessionId,
+    initialExamClassId,
+    initialResourceId,
+    initialAssignmentId,
     onExitGroup,
     onAskAI,
   } = props;
@@ -259,6 +264,8 @@ export function MyClasses(props: MyClassesProps) {
   const [responseText, setResponseText] = useState('');
   const [submissionFiles, setSubmissionFiles] = useState<File[]>([]);
   const [submitError, setSubmitError] = useState('');
+  const [bookmarkError, setBookmarkError] = useState('');
+  const [bookmarkPending, setBookmarkPending] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formattingAnswerIndex, setFormattingAnswerIndex] = useState<number | null>(null);
   const [formatAnswerError, setFormatAnswerError] = useState('');
@@ -270,9 +277,10 @@ export function MyClasses(props: MyClassesProps) {
   const [resourceFileError, setResourceFileError] = useState('');
   const refreshInFlight = useRef(false);
   const responseDraft = useRef({ assignmentId: null as string | null, dirty: false });
-  const [savedResourceIds, setSavedResourceIds] = useState(
-    () => new Set(getSavedItems().filter((item) => item.type === 'resource').map((item) => item.id)),
-  );
+  const saved = useSavedItems();
+  const savedResourceIds = new Set(saved.items.filter((item) => item.type === 'resource').map((item) => item.id));
+  const savedAssignmentIds = new Set(saved.items.filter((item) => item.type === 'assignment' && 'assignmentId' in item).map((item) => item.id));
+  const savedExamIds = new Set(saved.items.filter((item) => item.type === 'exam' && 'sessionId' in item).map((item) => item.id));
 
   useEffect(() => {
     try {
@@ -432,7 +440,46 @@ export function MyClasses(props: MyClassesProps) {
   }, [assignments, classes, resources]);
 
   useEffect(() => {
-    if (!selectedGroupKey && initialSubjectCode) {
+    if (!initialAssignmentId || selectedGroupKey) return;
+    const match = groups.find((group) => group.assignments.some((item) => item.id === initialAssignmentId));
+    const assignment = match?.assignments.find((item) => item.id === initialAssignmentId);
+    if (!match || !assignment) return;
+    setSemester(displaySemester(assignment.semester));
+    setSelectedGroupKey(match.key);
+    setSelectedAssignmentId(assignment.id);
+    setSelectedResourceId(null);
+    setResponseText(assignment.responseText ?? '');
+    setActiveTab('assignment');
+  }, [groups, initialAssignmentId, selectedGroupKey]);
+
+  useEffect(() => {
+    if (!initialExamSessionId || !initialExamClassId || selectedGroupKey) return;
+    const result = examResults.find((item) => item.sessionId === initialExamSessionId && item.classId === initialExamClassId);
+    if (!result) return;
+    const match = groups.find((group) => group.classId === result.classId
+      && group.academicYear === result.academicYear
+      && normalizeSubjectName(group.subject) === normalizeSubjectName(result.subject));
+    if (!match) return;
+    setSemester(result.semester === 'Kỳ 2' ? 'Kỳ 2' : 'Kỳ 1');
+    setSelectedGroupKey(match.key);
+    setActiveTab('exam');
+  }, [examResults, groups, initialExamClassId, initialExamSessionId, selectedGroupKey]);
+
+  useEffect(() => {
+    if (!initialResourceId || selectedGroupKey) return;
+    const match = groups.find((group) => group.resources.some((item) => item.id === initialResourceId));
+    if (match) {
+      const resource = match.resources.find((item) => item.id === initialResourceId);
+      if (!resource) return;
+      setSemester(displaySemester(resource.semester));
+      setSelectedGroupKey(match.key);
+      setSelectedResourceId(resource.id);
+      setActiveTab('lesson');
+    }
+  }, [groups, initialResourceId, selectedGroupKey]);
+
+  useEffect(() => {
+    if (!initialResourceId && !initialAssignmentId && !initialExamSessionId && !selectedGroupKey && initialSubjectCode) {
       const subjectCode = normalizeSubjectName(initialSubjectCode).replace(/\d+$/, '');
       const match = groups.find((group) => {
         const subjectName = normalizeSubjectName(group.subject);
@@ -458,7 +505,7 @@ export function MyClasses(props: MyClassesProps) {
         }
       }
     }
-  }, [groups, initialSubjectCode, initialSubjectTopic, initialSubjectView, selectedGroupKey, semester]);
+  }, [groups, initialAssignmentId, initialExamSessionId, initialResourceId, initialSubjectCode, initialSubjectTopic, initialSubjectView, selectedGroupKey, semester]);
 
   const filteredGroups = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('vi');
@@ -640,20 +687,71 @@ export function MyClasses(props: MyClassesProps) {
     }
   };
 
-  const handleSaveResource = (resource: StudentLearningResource) => {
-    if (savedResourceIds.has(resource.id)) return;
+  const handleSaveResource = async (resource: StudentLearningResource) => {
     try {
-      saveItem({
+      if (savedResourceIds.has(resource.id)) {
+        await saved.removeSavedItem('resource', resource.id);
+      } else {
+        await saved.saveItem({
         id: resource.id,
         type: 'resource',
         title: resource.title,
         subject: resource.subject,
         savedAt: new Date().toISOString(),
-      });
-      setSavedResourceIds((current) => new Set(current).add(resource.id));
+        });
+      }
       setSubmitError('');
     } catch (saveError) {
       setSubmitError(saveError instanceof Error ? saveError.message : 'Không thể lưu tài liệu.');
+    }
+  };
+
+  const toggleAssignmentBookmark = async (assignment: StudentAssignment) => {
+    if (bookmarkPending.includes(`assignment:${assignment.id}`)) return;
+    setBookmarkPending((current) => [...current, `assignment:${assignment.id}`]);
+    setBookmarkError('');
+    try {
+      if (savedAssignmentIds.has(assignment.id)) {
+        await saved.removeSavedItem('assignment', assignment.id);
+      } else {
+        await saved.saveItem({
+          id: assignment.id,
+          type: 'assignment',
+          title: assignment.title,
+          subject: assignment.subject,
+          savedAt: new Date().toISOString(),
+          assignmentId: assignment.id,
+        });
+      }
+    } catch (error) {
+      setBookmarkError(error instanceof Error ? error.message : 'Không thể cập nhật nội dung đã lưu.');
+    } finally {
+      setBookmarkPending((current) => current.filter((key) => key !== `assignment:${assignment.id}`));
+    }
+  };
+
+  const toggleExamBookmark = async (result: StudentExamResult) => {
+    if (bookmarkPending.includes(`exam:${result.sessionId}`)) return;
+    setBookmarkPending((current) => [...current, `exam:${result.sessionId}`]);
+    setBookmarkError('');
+    try {
+      if (savedExamIds.has(result.sessionId)) {
+        await saved.removeSavedItem('exam', result.sessionId);
+      } else {
+        await saved.saveItem({
+          id: result.sessionId,
+          type: 'exam',
+          title: result.title,
+          subject: result.subject,
+          savedAt: new Date().toISOString(),
+          sessionId: result.sessionId,
+          classId: result.classId,
+        });
+      }
+    } catch (error) {
+      setBookmarkError(error instanceof Error ? error.message : 'Không thể cập nhật nội dung đã lưu.');
+    } finally {
+      setBookmarkPending((current) => current.filter((key) => key !== `exam:${result.sessionId}`));
     }
   };
 
@@ -847,7 +945,7 @@ export function MyClasses(props: MyClassesProps) {
                 }`}
               >
                 <ClipboardList className="h-4 w-4" /> Bài tập
-                <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${activeTab === 'assignment' ? 'bg-white/20' : 'bg-rose-50 text-rose-700'}`}>
+                <span className={`rounded-full px-1.5 py-0.5 text-[0.6875rem] ${activeTab === 'assignment' ? 'bg-white/20' : 'bg-rose-50 text-rose-700'}`}>
                   {visibleAssignments.length}
                 </span>
               </button>
@@ -933,8 +1031,8 @@ export function MyClasses(props: MyClassesProps) {
                                             <ResourceIcon className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
                                             <span className="min-w-0 flex-1">
                                               <span className="block whitespace-normal break-words font-semibold">{resource.title}</span>
-                                              {resourceFile && <span className="mt-0.5 block whitespace-normal break-words text-[11px]">{resourceFile.name}</span>}
-                                              {resource.period && <span className="mt-0.5 block whitespace-normal break-words text-[11px] text-slate-500">{resource.period}</span>}
+                                              {resourceFile && <span className="mt-0.5 block whitespace-normal break-words text-[0.6875rem]">{resourceFile.name}</span>}
+                                              {resource.period && <span className="mt-0.5 block whitespace-normal break-words text-[0.6875rem] text-slate-500">{resource.period}</span>}
                                             </span>
                                           </button>
                                         </li>
@@ -1001,7 +1099,7 @@ export function MyClasses(props: MyClassesProps) {
                                   {(isFree || lessonExpanded) && (
                                     <ul className="min-w-0 space-y-1 overflow-x-hidden pb-1 pl-3">
                                       {lessonAssignments.map((assignment) => (
-                                        <li key={assignment.id} className="min-w-0">
+                                        <li key={assignment.id} className="flex min-w-0 items-start gap-1">
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -1011,7 +1109,7 @@ export function MyClasses(props: MyClassesProps) {
                                               setResponseText(assignment.responseText ?? '');
                                               setSubmitError('');
                                             }}
-                                            className={`flex min-h-9 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
+                                            className={`flex min-h-9 min-w-0 flex-1 items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
                                               selectedAssignment?.id === assignment.id
                                                 ? 'border-rose-500 bg-rose-50 text-rose-900'
                                                 : 'border-transparent text-slate-600 hover:bg-white'
@@ -1020,7 +1118,7 @@ export function MyClasses(props: MyClassesProps) {
                                             <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
                                             <span className="min-w-0 flex-1">
                                               <span className="block truncate font-semibold" title={assignment.title}>{assignment.title}</span>
-                                              <span className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-medium ${
+                                              <span className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-[0.6875rem] font-medium ${
                                                 assignment.score !== null ? 'text-emerald-700'
                                                   : assignment.submittedAt ? 'text-blue-700'
                                                     : 'text-rose-700'
@@ -1034,6 +1132,17 @@ export function MyClasses(props: MyClassesProps) {
                                                 )}
                                               </span>
                                             </span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={saved.loading || Boolean(saved.error) || bookmarkPending.includes(`assignment:${assignment.id}`)}
+                                            aria-pressed={savedAssignmentIds.has(assignment.id)}
+                                            aria-label={savedAssignmentIds.has(assignment.id) ? `Bỏ lưu ${assignment.title}` : `Lưu ${assignment.title}`}
+                                            title={savedAssignmentIds.has(assignment.id) ? 'Bỏ lưu' : 'Lưu bài tập'}
+                                            onClick={() => void toggleAssignmentBookmark(assignment)}
+                                            className="mt-1 shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:opacity-50"
+                                          >
+                                            <Star className={`h-4 w-4 ${savedAssignmentIds.has(assignment.id) ? 'fill-amber-400 text-amber-500' : ''}`} />
                                           </button>
                                         </li>
                                       ))}
@@ -1066,6 +1175,7 @@ export function MyClasses(props: MyClassesProps) {
           </aside>}
           <main className="min-w-0 px-5 py-7 sm:px-8 sm:py-10 lg:px-12">
             {loadError && <p role="alert" className="mb-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{loadError}</p>}
+            {bookmarkError && !(activeTab === 'assignment' && selectedAssignment) && <p role="alert" className="mb-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{bookmarkError}</p>}
             {activeTab === 'exam' ? (
               <StudentExamResults
                 results={selectedGroupExamResults}
@@ -1076,10 +1186,27 @@ export function MyClasses(props: MyClassesProps) {
                 onMarkRead={markExamGradeAsRead}
                 onAskAI={onAskAI}
                 initialSessionId={initialExamSessionId}
+                savedResultIds={savedExamIds}
+                bookmarkPendingIds={new Set(bookmarkPending.filter((key) => key.startsWith('exam:')).map((key) => key.slice('exam:'.length)))}
+                onToggleSaved={(result) => void toggleExamBookmark(result)}
               />
             ) : activeTab === 'assignment' && selectedAssignment ? (
               <article className="mx-auto max-w-4xl">
-                <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">{selectedAssignment.title}</h1>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h1 className="min-w-0 flex-1 text-2xl font-bold text-slate-950 sm:text-3xl">{selectedAssignment.title}</h1>
+                  <button
+                    type="button"
+                    disabled={saved.loading || Boolean(saved.error) || bookmarkPending.includes(`assignment:${selectedAssignment.id}`)}
+                    aria-pressed={savedAssignmentIds.has(selectedAssignment.id)}
+                    aria-label={savedAssignmentIds.has(selectedAssignment.id) ? 'Bỏ lưu bài tập' : 'Lưu bài tập'}
+                    onClick={() => void toggleAssignmentBookmark(selectedAssignment)}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Star className={`h-4 w-4 ${savedAssignmentIds.has(selectedAssignment.id) ? 'fill-amber-400 text-amber-500' : ''}`} />
+                    {savedAssignmentIds.has(selectedAssignment.id) ? 'Đã lưu' : 'Lưu bài'}
+                  </button>
+                </div>
+                {bookmarkError && <p role="alert" className="mt-3 text-sm text-rose-700">{bookmarkError}</p>}
                 <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
                   <span className="inline-flex items-center gap-2">
                     <Clock3 className="h-4 w-4" /> Hạn nộp: {formatDueDate(selectedAssignment.dueAt)}
@@ -1378,8 +1505,8 @@ export function MyClasses(props: MyClassesProps) {
                   <div>
                     <h1 className="mt-2 text-2xl font-bold leading-tight text-slate-950 sm:text-3xl">{selectedResource.title}</h1>
                   </div>
-                  <button type="button" onClick={() => handleSaveResource(selectedResource)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                    {savedResourceIds.has(selectedResource.id) ? <BookmarkCheck className="h-4 w-4 text-blue-600" /> : <Bookmark className="h-4 w-4" />}
+                  <button type="button" onClick={() => void handleSaveResource(selectedResource)} disabled={saved.loading || Boolean(saved.error)} aria-pressed={savedResourceIds.has(selectedResource.id)} aria-label={savedResourceIds.has(selectedResource.id) ? 'Bỏ lưu tài liệu' : 'Lưu tài liệu'} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                    <Star className={`h-4 w-4 ${savedResourceIds.has(selectedResource.id) ? 'fill-amber-400 text-amber-500' : ''}`} />
                     {savedResourceIds.has(selectedResource.id) ? 'Đã lưu' : 'Lưu bài'}
                   </button>
                 </div>
@@ -1406,6 +1533,7 @@ export function MyClasses(props: MyClassesProps) {
                   <section className="mt-7 whitespace-pre-wrap text-base leading-7 text-slate-700">{selectedResource.content}</section>
                 )}
                 {submitError && <p role="alert" className="mt-4 text-sm text-rose-700">{submitError}</p>}
+                {saved.error && <p role="alert" className="mt-4 text-sm text-rose-700">{saved.error}</p>}
               </article>
             ) : (
               <div className="flex min-h-64 flex-col items-center justify-center text-center">
@@ -1447,6 +1575,7 @@ export function MyClasses(props: MyClassesProps) {
         </div>
         {loading ? <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">Đang tải lớp học...</p> : null}
         {loadError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}<button type="button" onClick={() => void refresh()} className="ml-3 font-semibold underline">Thử lại</button></div>}
+        {!loading && !loadError && initialResourceId && !groups.some((group) => group.resources.some((item) => item.id === initialResourceId)) && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Không tìm thấy tài liệu này hoặc bạn không còn quyền truy cập.</p>}
         {averageLoadError && !loadError && (
           <p role="alert" className="text-sm text-rose-700">{averageLoadError}</p>
         )}

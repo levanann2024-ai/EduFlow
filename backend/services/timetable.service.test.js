@@ -301,6 +301,19 @@ test('teacher schedule plan validates structured priorities and weekly timeline'
   assert.equal(plan.timeline[0].activity, 'Soạn bài Hóa');
 });
 
+test('teacher schedule validation uses the stored gender or neutral wording', () => {
+  for (const [gender, expected] of [
+    ['male', /Thầy thử tạo lại nhé\./],
+    ['female', /Cô thử tạo lại nhé\./],
+    ['unspecified', /Vui lòng thử tạo lại\./],
+  ]) {
+    assert.throws(
+      () => validateTeacherSchedulePlan({}, gender),
+      { code: 'SCHOOL_INVALID_AI_TEACHER_PLAN', message: expected },
+    );
+  }
+});
+
 test('teacher schedule plan rejects malformed times and unsupported activity kinds', () => {
   const validPlan = {
     overview: 'Kế hoạch công việc trong tuần.',

@@ -71,7 +71,7 @@ export function PracticeHistory({ onBackToSaved }: PracticeHistoryProps) {
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-xs font-extrabold uppercase tracking-wide text-slate-900 sm:text-sm">{record.title}</h2>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] text-slate-500 sm:text-xs">
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.625rem] text-slate-500 sm:text-xs">
                   <span className="inline-flex items-center gap-1"><BookOpen className="h-3 w-3" /> {record.subject}</span>
                   <span className="inline-flex items-center gap-1"><span aria-hidden="true">◉</span> {record.term}</span>
                   <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> {record.date}</span>
@@ -79,7 +79,7 @@ export function PracticeHistory({ onBackToSaved }: PracticeHistoryProps) {
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-base font-extrabold leading-tight text-slate-900 sm:text-lg">{record.score}/{record.total}</p>
-                <p className={`mt-0.5 text-[10px] font-bold ${passed ? 'text-emerald-600' : 'text-rose-600'}`}>{percentage}%</p>
+                <p className={`mt-0.5 text-[0.625rem] font-bold ${passed ? 'text-emerald-600' : 'text-rose-600'}`}>{percentage}%</p>
               </div>
             </article>
           );

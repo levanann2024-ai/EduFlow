@@ -3,6 +3,12 @@ import { showToast } from '@/components/toast';
 import { BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, Save, Sparkles, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import {
+  buildCalendarFile,
+  createDeadlineCalendarEvent,
+  createPeriodCalendarEvent,
+  downloadCalendarFile,
+} from '@/calendarExport';
+import {
   generateTeacherTimetableSuggestion,
   getTeacherTimetable,
   listClasses,
@@ -293,7 +299,6 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
     busyTime,
     legacyNote,
   }), [freeTime, busyTime, legacyNote]);
-  const teacherAddress = gender === 'male' ? 'thầy' : gender === 'female' ? 'cô' : 'thầy/cô';
   const periodCount = data?.timetable?.periodCount ?? 5;
   const sessionLabel = data?.timetable?.session === 'afternoon' ? 'Buổi chiều' : 'Buổi sáng';
 
@@ -552,6 +557,58 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
     exam: 'Bài kiểm tra',
     other: 'Khác',
   };
+  const exportCalendar = () => {
+    const calendarEvents = entries
+      .filter((entry) => entry.type !== 'cancelled')
+      .map((entry) => createPeriodCalendarEvent({
+        id: `teacher-class-${entry.classCode}-${weekStartKey}-${entry.weekday}-${entry.period}`,
+        date: dateKey(addDays(weekStart, entry.weekday - 1)),
+        session: data?.timetable?.session ?? null,
+        period: entry.period,
+        title: `${entry.subject} - ${entry.classCode}${entry.hasExam && entry.examTitle ? ` - ${entry.examTitle}` : ''}`,
+        description: [
+          entry.title ? `Nội dung: ${entry.title}` : '',
+          entry.topic ? `Tài liệu: ${entry.topic}` : '',
+          entry.hasHomework ? `Bài tập: ${entry.homeworkTitle || 'Có bài tập'}` : '',
+          entry.hasExam ? `Kiểm tra: ${entry.examTitle || 'Bài kiểm tra'}` : '',
+          entry.roomExamTitle ? `Phòng thi: ${entry.roomExamTitle}` : '',
+        ].filter(Boolean).join('\n'),
+        reminders: Boolean(entry.hasExam && entry.examStartsAt),
+      }));
+    for (const entry of entries) {
+      if (entry.hasHomework && entry.homeworkDueAt) {
+        const deadline = createDeadlineCalendarEvent({
+          id: `teacher-homework-${entry.classCode}-${entry.weekday}-${entry.period}-${entry.homeworkDueAt}`,
+          startsAt: entry.homeworkDueAt,
+          title: `Hạn nộp: ${entry.homeworkTitle || `Bài tập ${entry.subject}`}`,
+          description: `Môn: ${entry.subject}\nLớp: ${entry.classCode}`,
+        });
+        if (deadline) calendarEvents.push(deadline);
+      }
+      if (entry.hasExamReturn && entry.examReturnAt) {
+        const returnEvent = createDeadlineCalendarEvent({
+          id: `teacher-exam-return-${entry.classCode}-${entry.weekday}-${entry.period}-${entry.examReturnAt}`,
+          startsAt: entry.examReturnAt,
+          title: `Trả bài: ${entry.examReturnNote || entry.subject}`,
+          description: `Môn: ${entry.subject}\nLớp: ${entry.classCode}`,
+        });
+        if (returnEvent) calendarEvents.push(returnEvent);
+      }
+    }
+    for (const item of data?.upcomingWork ?? []) {
+      const deadline = createDeadlineCalendarEvent({
+        id: `teacher-assignment-${item.id}`,
+        startsAt: item.dueAt,
+        title: `Hạn nộp: ${item.title}`,
+        description: `Môn: ${item.subject}\nLớp: ${item.classCode}`,
+      });
+      if (deadline) calendarEvents.push(deadline);
+    }
+    downloadCalendarFile(
+      buildCalendarFile(calendarEvents, `Thời khóa biểu giáo viên EduFlow - ${academicYear}`),
+      `eduflow-giao-vien-${weekStartKey}.ics`,
+    );
+  };
 
   if (initialLoading) {
     return (
@@ -604,7 +661,21 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <button
+              type="button"
+              onClick={exportCalendar}
+              disabled={loading || !academicYear || !data || (entries.length === 0 && data.upcomingWork.length === 0)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CalendarDays className="h-4 w-4" />
+              Xuất .ics
+            </button>
+            <p className="max-w-xs text-xs text-slate-500">
+              Bản chụp tuần đang xem; xuất lại khi lịch đổi. Deadline nhắc trước 1 ngày và 1 giờ.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => void persistSchedule('published')}
@@ -623,7 +694,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
         </div>
       ) : estimated && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-          Lịch nháp ước lượng theo các lớp và môn đã được phân công; {teacherAddress} cần kiểm tra, chỉnh sửa trước khi công bố. Chưa có giờ cụ thể hoặc nội dung bài được tự thêm.
+          Lịch nháp ước lượng theo các lớp và môn đã được phân công; cần kiểm tra, chỉnh sửa trước khi công bố. Chưa có giờ cụ thể hoặc nội dung bài được tự thêm.
         </div>
       )}
       {error && (
@@ -859,7 +930,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Kế hoạch tuần này</h2>
-            <p className="mt-1 text-sm text-slate-600">Ghi rõ khung giờ rảnh và bận để AI xếp công việc phù hợp với lịch của {teacherAddress}.</p>
+            <p className="mt-1 text-sm text-slate-600">Ghi rõ khung giờ rảnh và bận để AI xếp công việc phù hợp với thời khóa biểu.</p>
           </div>
           <button
             type="button"
@@ -918,7 +989,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
           </div>
         )}
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-          <span>Ghi chú được lưu theo từng tuần khi {teacherAddress} tạo gợi ý hoặc lưu thời khóa biểu.</span>
+          <span>Ghi chú được lưu theo từng tuần khi tạo gợi ý hoặc lưu thời khóa biểu.</span>
           <span className={`rounded-full px-2.5 py-1 font-semibold ${teacherNotes.length > 5000 ? 'bg-rose-100 text-rose-800' : 'bg-white/80 text-slate-600'}`}>
             {teacherNotes.length}/5000 ký tự
           </span>
@@ -953,7 +1024,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
               </span>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Kế hoạch tuần dành cho {teacherAddress}
+                  Kế hoạch tuần
                 </p>
                 <h2 className="mt-1 text-lg font-bold text-indigo-950">Gợi ý sắp xếp công việc</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-600">{plan.overview}</p>
@@ -1011,7 +1082,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
                               </span>
                               <span className="min-w-0 border-l-2 border-indigo-300 pl-3">
                                 <span className="block text-sm font-medium leading-5 text-slate-800">{item.activity}</span>
-                                <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PLAN_KIND_STYLES[item.kind]}`}>
+                                <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${PLAN_KIND_STYLES[item.kind]}`}>
                                   {PLAN_KIND_LABELS[item.kind]}
                                 </span>
                               </span>
@@ -1024,7 +1095,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
               </div>
             ) : (
               <p className="mt-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
-                Chưa có khung giờ cụ thể để xếp lịch. {teacherAddress} có thể ghi thêm giờ rảnh/bận ở phần ghi chú tuần.
+                Chưa có khung giờ cụ thể để xếp lịch. Có thể ghi thêm giờ rảnh/bận ở phần ghi chú tuần.
               </p>
             )}
           </div>

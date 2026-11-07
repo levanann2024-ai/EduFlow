@@ -511,7 +511,7 @@ export function ClassAnalytics() {
       {loadingClasses ? (
         <p role="status" className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Đang tải danh sách lớp...</p>
       ) : !classes.length ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Bạn chưa được phân công lớp nào.</p>
+        <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Chưa có lớp được phân công.</p>
       ) : !subjects.length ? (
         <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Lớp này chưa có môn học được phân công.</p>
       ) : loadingReport ? (
@@ -671,7 +671,7 @@ export function ClassAnalytics() {
               )}
 
               <div className="space-y-1 rounded-lg bg-white/70 px-3 py-2 text-xs leading-5 text-slate-500">
-                <p>AI chỉ hỗ trợ tham khảo; thầy/cô kiểm tra dữ liệu và quyết định cách hỗ trợ phù hợp. Học sinh được ẩn danh khi gửi dữ liệu phân tích.</p>
+                <p>AI chỉ hỗ trợ tham khảo; cần kiểm tra dữ liệu và quyết định cách hỗ trợ phù hợp. Học sinh được ẩn danh khi gửi dữ liệu phân tích.</p>
                 {analysis.analysis.limitations.map((item, index) => <p key={index}>• {displayStudentNames(item)}</p>)}
               </div>
             </section>
