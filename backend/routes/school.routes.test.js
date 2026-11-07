@@ -89,6 +89,24 @@ function makeFixture() {
     { class_id: ids.classA, teacher_user_id: ids.teacherA, school_id: ids.schoolA, subject: 'Ngữ văn', revoked_at: null },
     { class_id: ids.classB, teacher_user_id: ids.teacherB, school_id: ids.schoolB, subject: 'Toán học', revoked_at: null },
   ];
+  const studentTermGrades = [
+    {
+      class_id: ids.classA,
+      student_user_id: ids.studentA,
+      subject: 'Ngữ văn',
+      academic_year: '2026-2027',
+      semester: 'Kỳ 1',
+      confirmed_average: 8,
+    },
+    {
+      class_id: ids.classA,
+      student_user_id: ids.disabledStudent,
+      subject: 'Ngữ văn',
+      academic_year: '2026-2027',
+      semester: 'Kỳ 1',
+      confirmed_average: 0,
+    },
+  ];
   const sessions = new Map([...users.keys()].map((userId) => [`session-${userId}`, userId]));
   return {
     users,
@@ -97,9 +115,12 @@ function makeFixture() {
     classes,
     classMemberships,
     teacherAssignments,
+    studentTermGrades,
     sessions,
     assessments: new Map(),
     examRooms: new Map(),
+    classAssignments: [],
+    classAssignmentSubmissions: [],
     classTimetableEvents: new Map(),
     examSessions: new Map(),
     examSubmissionFiles: new Map(),
@@ -730,6 +751,8 @@ const fakePool = {
       const [roomIds] = values;
       const rows = [...fixture.examSessions.values()]
         .filter((session) => roomIds.includes(session.room_id))
+        .filter((session) => !query.includes("u.status = 'active'")
+          || fixture.users.get(session.student_user_id)?.status === 'active')
         .map((session) => {
           const user = fixture.users.get(session.student_user_id);
           const classroom = fixture.classes.find((item) => item.id === session.class_id);
@@ -1148,15 +1171,99 @@ const fakePool = {
         .map(classRow);
       return { rows };
     }
-    if (query.includes('FROM teacher_class_assignments tca')) {
+    if (query.includes('FROM teacher_class_assignments tca')
+      && query.includes('FROM classes c') && query.includes('AS student_count')) {
       const [teacherId, schoolId] = values;
       const rows = fixture.teacherAssignments
         .filter((assignment) => assignment.teacher_user_id === teacherId && assignment.revoked_at === null)
         .map((assignment) => fixture.classes.find((item) => item.id === assignment.class_id))
         .filter((classroom) => classroom && classroom.school_id === schoolId && classroom.status === 'active'
           && fixture.schools.get(classroom.school_id)?.status === 'active')
-        .map(classRow);
+        .map((classroom) => {
+          const row = classRow(classroom);
+          if (query.includes('AS student_count')) {
+            const activeUserFilter = query.includes("active_student.status = 'active'")
+              && query.includes("active_student.role = 'student'");
+            row.student_count = fixture.classMemberships
+              .filter((membership) => membership.class_id === classroom.id && membership.status === 'active')
+              .filter((membership) => {
+                const user = fixture.users.get(membership.student_user_id);
+                return user && (!activeUserFilter || (user.status === 'active' && user.role === 'student'));
+              }).length;
+          }
+          if (query.includes('AS class_average')) {
+            const activeUserFilter = query.includes('ON active_student.id = grade.student_user_id')
+              && query.includes("active_student.status = 'active'")
+              && query.includes("active_student.role = 'student'");
+            const grades = fixture.studentTermGrades
+              .filter((grade) => grade.class_id === classroom.id
+               && grade.academic_year === classroom.academic_year
+               && fixture.classMemberships.some((membership) => (
+                 membership.class_id === classroom.id
+                   && membership.student_user_id === grade.student_user_id
+                   && membership.status === 'active'
+               ))
+               && fixture.teacherAssignments.some((assignment) => (
+                 assignment.class_id === classroom.id
+                   && assignment.teacher_user_id === teacherId
+                   && assignment.revoked_at === null
+                   && assignment.subject.trim().toLowerCase() === grade.subject.trim().toLowerCase()
+               )))
+              .filter((grade) => {
+               const user = fixture.users.get(grade.student_user_id);
+               return user && (!activeUserFilter || (user.status === 'active' && user.role === 'student'));
+              });
+            row.class_average = grades.length
+              ? grades.reduce((total, grade) => total + grade.confirmed_average, 0) / grades.length
+              : null;
+          }
+          return row;
+        });
       return { rows };
+    }
+    if (query.startsWith('SELECT 1 FROM teacher_class_assignments')) {
+      const [classId, teacherId, schoolId, subject] = values;
+      const assigned = fixture.teacherAssignments.some((item) => (
+        item.class_id === classId && item.teacher_user_id === teacherId && item.school_id === schoolId
+          && item.revoked_at === null && item.subject.toLowerCase() === subject.trim().toLowerCase()
+      ));
+      return { rowCount: assigned ? 1 : 0, rows: assigned ? [{ '?column?': 1 }] : [] };
+    }
+    if (query.includes('FROM class_assignments a') && query.includes('jsonb_agg')) {
+      const [classId, teacherId, academicYear, semester, subject] = values;
+      const activeUserFilter = query.includes("u.status = 'active'") && query.includes("u.role = 'student'");
+      const assignments = fixture.classAssignments
+        .filter((assignment) => assignment.class_id === classId
+          && assignment.teacher_user_id === teacherId
+          && assignment.academic_year === academicYear
+          && assignment.semester === semester
+          && assignment.subject === subject);
+      return {
+        rows: assignments.map((assignment) => {
+          const students = fixture.classMemberships
+            .filter((membership) => membership.class_id === classId && membership.status === 'active')
+            .flatMap((membership) => {
+              const user = fixture.users.get(membership.student_user_id);
+              if (!user || (activeUserFilter && (user.status !== 'active' || user.role !== 'student'))) return [];
+              const submission = fixture.classAssignmentSubmissions.find((item) => (
+                item.assignment_id === assignment.id && item.student_user_id === membership.student_user_id
+              ));
+              return [{
+                id: membership.student_user_id,
+                fullName: user.full_name,
+                submittedAt: submission?.submitted_at ?? null,
+                score: submission?.score ?? null,
+                gradedAt: submission?.graded_at ?? null,
+              }];
+            });
+          return {
+            ...assignment,
+            student_count: students.length,
+            submitted_count: students.filter((student) => student.submittedAt).length,
+            students,
+          };
+        }),
+      };
     }
     if (query.includes('FROM class_memberships cm')) {
       const [studentId, schoolId] = values;
@@ -1255,6 +1362,8 @@ test('teacher sees only assigned classes and cannot read a class after assignmen
   const list = await request('/classes', ids.teacherA);
   assert.equal(list.status, 200);
   assert.deepEqual(list.body.classes.map((item) => item.id), [ids.classA]);
+  assert.equal(list.body.classes[0].student_count, 2);
+  assert.equal(list.body.classes[0].class_average, 8);
 
   const crossClass = await request(`/classes/${ids.classB}`, ids.teacherA);
   assert.equal(crossClass.status, 404);
@@ -1323,6 +1432,42 @@ test('authorized teacher can read active students, but student cannot read a ros
 
   const forbidden = await request(`/classes/${ids.classA}/students`, ids.studentA);
   assert.equal(forbidden.status, 403);
+});
+
+test('teacher assignment lists hide disabled students and their submissions', async () => {
+  const assignmentId = '40000000-0000-4000-8000-000000000002';
+  fixture.classAssignments.push({
+    id: assignmentId,
+    class_id: ids.classA,
+    teacher_user_id: ids.teacherA,
+    title: 'Bài tập thử',
+    description: '',
+    subject: 'Ngữ văn',
+    academic_year: '2026-2027',
+    semester: 'Kỳ 1',
+    chapter: null,
+    lesson: null,
+    period: null,
+    due_at: new Date('2026-11-07T10:00:00.000Z'),
+    created_at: new Date('2026-11-01T10:00:00.000Z'),
+  });
+  fixture.classAssignmentSubmissions.push({
+    assignment_id: assignmentId,
+    student_user_id: ids.disabledStudent,
+    submitted_at: new Date('2026-11-06T10:00:00.000Z'),
+    score: 9,
+    graded_at: new Date('2026-11-06T11:00:00.000Z'),
+  });
+
+  const response = await request(
+    `/classes/${ids.classA}/assignments?academicYear=2026-2027&semester=Kỳ%201&subject=Ngữ%20văn`,
+    ids.teacherA,
+  );
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.assignments.length, 1);
+  assert.equal(response.body.assignments[0].studentCount, 2);
+  assert.equal(response.body.assignments[0].submittedCount, 0);
+  assert.ok(!response.body.assignments[0].students.some((student) => student.id === ids.disabledStudent));
 });
 
 test('unauthenticated and malformed class requests are rejected', async () => {
@@ -1706,7 +1851,19 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
     body: JSON.stringify(updatedRoom.body.room),
   });
 
+  const disabledSessionId = '50000000-0000-4000-8000-000000000001';
+  fixture.examSessions.set(disabledSessionId, {
+    id: disabledSessionId,
+    room_id: room.id,
+    student_user_id: ids.disabledStudent,
+    class_id: ids.classB,
+    status: 'submitted',
+    started_at: new Date(),
+    submitted_at: new Date(),
+    last_activity_at: new Date(),
+  });
   const listed = await request('/teacher/exam-rooms', ids.teacherB);
+  fixture.examSessions.delete(disabledSessionId);
   assert.equal(listed.status, 200);
   assert.equal(listed.body.rooms.length, 1);
   assert.equal(listed.body.rooms[0].code, updatedRoom.body.room.code);

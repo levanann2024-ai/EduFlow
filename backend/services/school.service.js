@@ -413,6 +413,7 @@ async function listTeacherExamRooms(auth) {
             )) FILTER (WHERE e.id IS NOT NULL), '[]'::jsonb) AS events
        FROM teacher_exam_sessions s
        JOIN users u ON u.id = s.student_user_id
+                  AND u.status = 'active' AND u.role = 'student'
        JOIN classes c ON c.id = s.class_id
        LEFT JOIN teacher_exam_events e ON e.session_id = s.id
       WHERE s.room_id = ANY($1::uuid[])
@@ -2088,7 +2089,11 @@ async function listClasses(auth, requestedSchoolId) {
               ) AS is_homeroom,
               (SELECT hra.subject FROM class_homeroom_assignments hra
                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $1) AS homeroom_subject,
-              (SELECT count(*)::int FROM class_memberships cm
+              (SELECT count(*)::int
+                 FROM class_memberships cm
+                 JOIN users active_student
+                   ON active_student.id = cm.student_user_id
+                  AND active_student.status = 'active' AND active_student.role = 'student'
                 WHERE cm.class_id = c.id AND cm.status = 'active') AS student_count,
               (SELECT avg(COALESCE(
                        grade.confirmed_average::float8,
@@ -2112,6 +2117,8 @@ async function listClasses(auth, requestedSchoolId) {
                  FROM student_term_grades grade
                  JOIN class_memberships cm ON cm.class_id = grade.class_id
                   AND cm.student_user_id = grade.student_user_id AND cm.status = 'active'
+                 JOIN users active_student ON active_student.id = grade.student_user_id
+                  AND active_student.status = 'active' AND active_student.role = 'student'
                 WHERE grade.class_id = c.id AND grade.academic_year = c.academic_year
                   AND EXISTS (
                     SELECT 1 FROM teacher_class_assignments taught_subject
@@ -2154,6 +2161,9 @@ async function listClasses(auth, requestedSchoolId) {
                   AND EXISTS (
                     SELECT 1
                       FROM class_memberships cm
+                      JOIN users active_student
+                        ON active_student.id = cm.student_user_id
+                       AND active_student.status = 'active' AND active_student.role = 'student'
                       LEFT JOIN class_assignment_submissions submission
                         ON submission.assignment_id = assignment.id
                        AND submission.student_user_id = cm.student_user_id
@@ -2671,8 +2681,8 @@ async function listClassAssignments(auth, classId, { academicYear, semester, sub
   const result = await getPool().query(
     `SELECT a.id, a.title, a.description, a.subject, a.academic_year, a.semester,
             a.chapter, a.lesson, a.period, a.due_at, a.created_at,
-            count(DISTINCT cm.student_user_id)::int AS student_count,
-            count(DISTINCT s.student_user_id)::int AS submitted_count,
+            count(DISTINCT u.id)::int AS student_count,
+            (count(DISTINCT s.student_user_id) FILTER (WHERE u.id IS NOT NULL))::int AS submitted_count,
             COALESCE(
               jsonb_agg(
                 jsonb_build_object(
@@ -2683,15 +2693,17 @@ async function listClassAssignments(auth, classId, { academicYear, semester, sub
                   'gradedAt', s.graded_at
                 )
                 ORDER BY u.full_name, u.id
-              ) FILTER (WHERE cm.student_user_id IS NOT NULL),
+              ) FILTER (WHERE u.id IS NOT NULL),
               '[]'::jsonb
             ) AS students
        FROM class_assignments a
        LEFT JOIN class_memberships cm
          ON cm.class_id = a.class_id AND cm.status = 'active'
-       LEFT JOIN users u ON u.id = cm.student_user_id
+       LEFT JOIN users u
+         ON u.id = cm.student_user_id AND u.status = 'active' AND u.role = 'student'
        LEFT JOIN class_assignment_submissions s
          ON s.assignment_id = a.id AND s.student_user_id = cm.student_user_id
+        AND u.id IS NOT NULL
       WHERE a.class_id = $1 AND a.teacher_user_id = $2
         AND a.academic_year = $3 AND a.semester = $4 AND a.subject = $5
         AND EXISTS (
