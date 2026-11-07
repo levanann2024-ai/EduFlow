@@ -672,9 +672,6 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
               <CalendarDays className="h-4 w-4" />
               Xuất .ics
             </button>
-            <p className="max-w-xs text-xs text-slate-500">
-              Bản chụp tuần đang xem; xuất lại khi lịch đổi. Deadline nhắc trước 1 ngày và 1 giờ.
-            </p>
           </div>
           <button
             type="button"

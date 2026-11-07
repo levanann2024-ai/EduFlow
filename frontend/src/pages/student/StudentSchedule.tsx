@@ -451,9 +451,6 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               : <CalendarDays className="h-4 w-4" />}
             {exportingCalendar ? 'Đang chuẩn bị...' : 'Xuất .ics'}
           </button>
-          <p className="max-w-xs text-right text-xs text-slate-500">
-            Bản chụp tuần đang xem; xuất lại khi lịch đổi. Deadline nhắc trước 1 ngày và 1 giờ.
-          </p>
           {calendarExportError && (
             <p className="max-w-xs text-right text-xs text-rose-700" role="alert">{calendarExportError}</p>
           )}
