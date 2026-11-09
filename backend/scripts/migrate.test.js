@@ -7,6 +7,7 @@ const {
   crlfMigrationChecksum,
   migrationChecksum,
   migrationNames,
+  preflightSchoolManagement,
 } = require('./migrate');
 
 const migrationsDirectory = path.join(__dirname, '..', 'db', 'migrations');
@@ -76,4 +77,94 @@ test('migration 033 stores metadata-only exam behavior logs', () => {
   assert.match(sql, /duration_seconds numeric\(8, 3\) NOT NULL CHECK \(duration_seconds BETWEEN 0 AND 36000\)/i);
   assert.match(sql, /CREATE INDEX exam_logs_session_event_received_idx/i);
   assert.doesNotMatch(sql, /bytea|media|audio|video|image/i);
+});
+
+test('migration 041 preserves legacy snapshots and adds school-scoped year and subject relations', () => {
+  const sql = fs.readFileSync(
+    path.join(migrationsDirectory, '041_school_management.sql'),
+    'utf8',
+  );
+  assert.match(sql, /CREATE TABLE academic_years/i);
+  assert.match(sql, /CREATE TABLE school_subjects/i);
+  assert.match(sql, /UPDATE classes c\s+SET academic_year_id = ay\.id/i);
+  assert.match(sql, /UPDATE class_memberships cm\s+SET academic_year_id = c\.academic_year_id/i);
+  assert.match(sql, /DROP CONSTRAINT class_homeroom_assignments_pkey/i);
+  assert.match(sql, /class_homeroom_assignments_one_active_per_class/i);
+  assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN/i);
+  assert.doesNotThrow(() => assertMigrationStatements(sql, '041_school_management'));
+});
+
+test('migration 041 preflight accepts complete legacy data without writing', async () => {
+  const queries = [];
+  const conflicts = await preflightSchoolManagement({
+    async query(sql) {
+      queries.push(sql);
+      return { rows: [{ count: 0 }] };
+    },
+  });
+
+  assert.deepEqual(conflicts, {
+    classesWithBlankAcademicYear: 0,
+    academicYearLabelsNeedingManualReview: 0,
+    academicYearLabelsTooLong: 0,
+    subjectRowsWithBlankName: 0,
+    subjectLabelsTooLong: 0,
+    subjectLabelsNeedingManualReview: 0,
+    duplicateClassNamesByYear: 0,
+    studentsInMultipleActiveClassesPerYear: 0,
+    duplicateActiveSubjectAssignments: 0,
+  });
+  assert.equal(queries.length, 9);
+  assert.ok(queries.every((sql) => /^\s*SELECT\b/i.test(sql)));
+});
+
+test('migration 041 preflight rejects incomplete or ambiguous legacy labels before DDL', async (t) => {
+  const cases = [
+    ['blank academic year', 'classesWithBlankAcademicYear', /FROM classes\s+WHERE academic_year IS NULL/i],
+    [
+      'ambiguous academic-year labels',
+      'academicYearLabelsNeedingManualReview',
+      /count\(DISTINCT regexp_replace\(academic_year/i,
+    ],
+    [
+      'academic-year label too long',
+      'academicYearLabelsTooLong',
+      /length\(regexp_replace\(academic_year/i,
+    ],
+    ['blank subject', 'subjectRowsWithBlankName', /subject IS NULL OR subject !~ '\[\^\[:space:\]\]'/i],
+    [
+      'subject label too long',
+      'subjectLabelsTooLong',
+      /length\(regexp_replace\(subject/i,
+    ],
+    [
+      'ambiguous subject labels',
+      'subjectLabelsNeedingManualReview',
+      /count\(DISTINCT regexp_replace\(subject/i,
+    ],
+    ['duplicate normalized class code', 'duplicateClassNamesByYear', /upper\(regexp_replace\(trim\(code\)/i],
+    ['multiple active classes per student and year', 'studentsInMultipleActiveClassesPerYear', /FROM class_memberships cm/i],
+    [
+      'duplicate active subject assignments',
+      'duplicateActiveSubjectAssignments',
+      /GROUP BY class_id,?\s*school_id,\s*lower\(regexp_replace\(subject/i,
+    ],
+  ];
+
+  for (const [label, conflictKey, queryPattern] of cases) {
+    await t.test(label, async () => {
+      const queries = [];
+      await assert.rejects(
+        preflightSchoolManagement({
+          async query(sql) {
+            queries.push(sql);
+            return { rows: [{ count: queryPattern.test(sql) ? 1 : 0 }] };
+          },
+        }),
+        (error) => error.message.includes(`"${conflictKey}":1`),
+      );
+      assert.equal(queries.length, 9);
+      assert.ok(queries.every((sql) => /^\s*SELECT\b/i.test(sql)));
+    });
+  }
 });

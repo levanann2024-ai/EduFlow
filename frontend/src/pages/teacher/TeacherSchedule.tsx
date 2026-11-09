@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { showToast } from '@/components/toast';
-import { BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, Save, Sparkles, X } from 'lucide-react';
+import { BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, Sparkles, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import {
   buildCalendarFile,
@@ -685,11 +685,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
         </div>
       </div>
 
-      {isTemplate ? (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-900">
-          Khung tiết được lấy từ tuần gần nhất để giữ lịch dạy cố định; nội dung bài giảng, bài tập và bài kiểm tra vẫn lưu riêng theo từng tuần.
-        </div>
-      ) : estimated && (
+      {!isTemplate && estimated && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
           Lịch nháp ước lượng theo các lớp và môn đã được phân công; cần kiểm tra, chỉnh sửa trước khi công bố. Chưa có giờ cụ thể hoặc nội dung bài được tự thêm.
         </div>

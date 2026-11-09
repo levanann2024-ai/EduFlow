@@ -5,6 +5,112 @@ const { Pool } = require('pg');
 
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+async function preflightSchoolManagement(client) {
+  const blankYearRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM classes
+      WHERE academic_year IS NULL OR academic_year !~ '[^[:space:]]'`,
+  );
+  const ambiguousYearRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT school_id, lower(regexp_replace(academic_year, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+           FROM classes
+          WHERE academic_year IS NOT NULL AND academic_year ~ '[^[:space:]]'
+          GROUP BY school_id, lower(regexp_replace(academic_year, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+         HAVING count(DISTINCT regexp_replace(academic_year, '^[[:space:]]+|[[:space:]]+$', '', 'g')) > 1
+       ) conflicts`,
+  );
+  const longYearRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM classes
+      WHERE length(regexp_replace(academic_year, '^[[:space:]]+|[[:space:]]+$', '', 'g')) > 80`,
+  );
+  const blankSubjectRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT school_id, subject FROM class_subjects
+         UNION ALL
+         SELECT school_id, subject FROM teacher_class_assignments
+       ) subject_rows
+      WHERE subject IS NULL OR subject !~ '[^[:space:]]'`,
+  );
+  const longSubjectRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT school_id, subject FROM class_subjects
+         UNION ALL
+         SELECT school_id, subject FROM teacher_class_assignments
+       ) subject_rows
+      WHERE length(regexp_replace(subject, '^[[:space:]]+|[[:space:]]+$', '', 'g')) > 120`,
+  );
+  const ambiguousSubjectRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT school_id, lower(regexp_replace(subject, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+           FROM (
+             SELECT school_id, subject FROM class_subjects
+             UNION ALL
+             SELECT school_id, subject FROM teacher_class_assignments
+           ) subject_rows
+          WHERE subject IS NOT NULL AND subject ~ '[^[:space:]]'
+          GROUP BY school_id, lower(regexp_replace(subject, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+         HAVING count(DISTINCT regexp_replace(subject, '^[[:space:]]+|[[:space:]]+$', '', 'g')) > 1
+       ) conflicts`,
+  );
+  const classRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT school_id, upper(regexp_replace(trim(code), '[[:space:]]+', '', 'g')),
+                lower(regexp_replace(academic_year, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+           FROM classes
+          GROUP BY school_id, upper(regexp_replace(trim(code), '[[:space:]]+', '', 'g')),
+                   lower(regexp_replace(academic_year, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+         HAVING count(*) > 1
+       ) conflicts`,
+  );
+  const membershipRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT cm.student_user_id, cm.school_id,
+                lower(COALESCE(NULLIF(trim(c.academic_year), ''), 'Chưa xác định'))
+           FROM class_memberships cm
+           JOIN classes c ON c.id = cm.class_id AND c.school_id = cm.school_id
+          WHERE cm.status = 'active'
+          GROUP BY cm.student_user_id, cm.school_id,
+                   lower(COALESCE(NULLIF(trim(c.academic_year), ''), 'Chưa xác định'))
+         HAVING count(*) > 1
+       ) conflicts`,
+  );
+  const assignmentRows = await client.query(
+    `SELECT count(*)::int AS count
+       FROM (
+         SELECT class_id, school_id,
+                lower(regexp_replace(subject, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+           FROM teacher_class_assignments
+          WHERE revoked_at IS NULL
+          GROUP BY class_id, school_id,
+                   lower(regexp_replace(subject, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+         HAVING count(*) > 1
+       ) conflicts`,
+  );
+  const conflicts = {
+    classesWithBlankAcademicYear: blankYearRows.rows[0].count,
+    academicYearLabelsNeedingManualReview: ambiguousYearRows.rows[0].count,
+    academicYearLabelsTooLong: longYearRows.rows[0].count,
+    subjectRowsWithBlankName: blankSubjectRows.rows[0].count,
+    subjectLabelsTooLong: longSubjectRows.rows[0].count,
+    subjectLabelsNeedingManualReview: ambiguousSubjectRows.rows[0].count,
+    duplicateClassNamesByYear: classRows.rows[0].count,
+    studentsInMultipleActiveClassesPerYear: membershipRows.rows[0].count,
+    duplicateActiveSubjectAssignments: assignmentRows.rows[0].count,
+  };
+  if (Object.values(conflicts).some((count) => count > 0)) {
+    throw new Error(`Migration stopped: 039 school-management data conflicts require review: ${JSON.stringify(conflicts)}.`);
+  }
+  return conflicts;
+}
+
 const MIGRATIONS = [
   {
     name: '001_auth_accounts',
@@ -285,6 +391,22 @@ const MIGRATIONS = [
     file: path.join(__dirname, '..', 'db', 'migrations', '038_saved_items.sql'),
     preflight: null,
   },
+  {
+    name: '039_sunday_timetables',
+    file: path.join(__dirname, '..', 'db', 'migrations', '039_sunday_timetables.sql'),
+    preflight: null,
+  },
+  {
+    name: '040_invitation_teacher_assignment',
+    file: path.join(__dirname, '..', 'db', 'migrations', '040_invitation_teacher_assignment.sql'),
+    preflight: null,
+  },
+  {
+    name: '041_school_management',
+    file: path.join(__dirname, '..', 'db', 'migrations', '041_school_management.sql'),
+    lockTables: ['classes', 'class_memberships', 'class_subjects', 'teacher_class_assignments', 'class_homeroom_assignments'],
+    preflight: preflightSchoolManagement,
+  },
 ];
 
 const CORE_TABLES = [
@@ -333,6 +455,8 @@ const APPLICATION_TABLES = [
   'student_term_grade_history',
   'exam_logs',
   'saved_items',
+  'academic_years',
+  'school_subjects',
 ];
 
 function assertMigrationStatements(sql, migrationName) {
@@ -347,6 +471,12 @@ function assertMigrationStatements(sql, migrationName) {
     /^UPDATE teacher_weekly_timetable_entries\s+SET has_homework = entry_type = 'homework'/i,
     /^UPDATE school_memberships\s+sm\s+SET role = u\.role\s+FROM users u\b/i,
     /^UPDATE student_term_grades\s+SET confirmed_average = \(\s*COALESCE\(regular_1, 0\)/i,
+    /^INSERT INTO academic_years \(id, school_id, name, status, is_current\)\s+SELECT DISTINCT ON \(/i,
+    /^UPDATE classes c\s+SET academic_year_id = ay\.id\s+FROM academic_years ay\b/i,
+    /^UPDATE class_memberships cm\s+SET academic_year_id = c\.academic_year_id\s+FROM classes c\b/i,
+    /^INSERT INTO school_subjects \(id, school_id, name\)\s+SELECT DISTINCT ON \(/i,
+    /^UPDATE class_subjects cs\s+SET school_subject_id = ss\.id\s+FROM school_subjects ss\b/i,
+    /^UPDATE teacher_class_assignments tca\s+SET school_subject_id = ss\.id\s+FROM school_subjects ss\b/i,
   ];
   if (
     statements.length === 0
@@ -547,4 +677,5 @@ module.exports = {
   migrationChecksum,
   migrationNames: MIGRATIONS.map(({ name }) => name),
   migrate,
+  preflightSchoolManagement,
 };

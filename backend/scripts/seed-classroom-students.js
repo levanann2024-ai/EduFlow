@@ -18,6 +18,7 @@ const REQUIRED_MIGRATIONS = [
   '002_class_membership_history',
   '003_school_membership_invariant',
   '009_homeroom_class_subjects',
+  '041_school_management',
 ];
 
 function assertEnabled() {
@@ -121,7 +122,7 @@ async function provision(roster, credentialsPath) {
       }
 
       const classResult = await client.query(
-        `SELECT c.id, c.school_id, c.name, c.grade
+        `SELECT c.id, c.school_id, c.name, c.grade, c.academic_year_id
            FROM classes c
            JOIN schools s ON s.id = c.school_id
           WHERE lower(c.code) = lower($1) AND c.academic_year = $2
@@ -185,7 +186,7 @@ async function provision(roster, credentialsPath) {
       const homeroom = await client.query(
         `SELECT teacher_user_id, subject
            FROM class_homeroom_assignments
-          WHERE class_id = $1 AND school_id = $2
+          WHERE class_id = $1 AND school_id = $2 AND ended_at IS NULL
           FOR UPDATE`,
         [classroom.id, classroom.school_id],
       );
@@ -330,9 +331,10 @@ async function provision(roster, credentialsPath) {
         }
         if (!classMembership.rowCount) {
           await client.query(
-            `INSERT INTO class_memberships (id, class_id, student_user_id, school_id, status)
-             VALUES ($1, $2, $3, $4, 'active')`,
-            [randomUUID(), classroom.id, account.id, classroom.school_id],
+            `INSERT INTO class_memberships
+               (id, class_id, student_user_id, school_id, academic_year_id, status)
+             VALUES ($1, $2, $3, $4, $5, 'active')`,
+            [randomUUID(), classroom.id, account.id, classroom.school_id, classroom.academic_year_id],
           );
           summary.classLinksCreated += 1;
         }

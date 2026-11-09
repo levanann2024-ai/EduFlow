@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { BookOpen, FileText, Filter, Plus, Search, Download } from 'lucide-react';
-import type { Role } from '@/types';
 
 const documents = [
   { id: 1, title: 'Vật lý 11 - Chương 3.pdf', subject: 'Vật lý', grade: 'Khối 11', size: '4.2 MB', date: '12/09/2024' },
@@ -9,7 +8,7 @@ const documents = [
   { id: 4, title: 'Liên kết ion và cộng hóa trị.pdf', subject: 'Hóa học', grade: 'Khối 10', size: '3.1 MB', date: '05/09/2024' },
 ];
 
-export function Lectures({ role }: { role: Role }) {
+export function Lectures() {
   const [query, setQuery] = useState('');
   const [subject, setSubject] = useState('Tất cả môn');
   const [grade, setGrade] = useState('Tất cả khối');

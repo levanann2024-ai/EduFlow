@@ -45,6 +45,7 @@ function isTeacherItem(value: unknown): value is SavedTeacherItem {
 
 const keyOf = (type: TeacherSavedType, id: string) => `${type}:${id}`;
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTeacherBookmarks() {
   const { items, loading, error, saveItem, removeSavedItem } = useSavedItems();
   const [pending, setPending] = useState<string[]>([]);

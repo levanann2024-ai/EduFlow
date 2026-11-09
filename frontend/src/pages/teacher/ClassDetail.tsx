@@ -1,8 +1,19 @@
 import { useState } from 'react';
 import { 
-  BookOpen, Calendar, Users, FileText, Bell, 
-  MessageSquare, CheckSquare, BarChart2, ArrowLeft, Download, RefreshCw 
+  BookOpen, Bell, MessageSquare, CheckSquare, BarChart2, ArrowLeft, Download
 } from 'lucide-react';
+
+interface ClassDetailData {
+  id: string | number;
+  name: string;
+  subject: string;
+  grade: string | number;
+  studentCount: number;
+  completedLessons: number;
+  totalLessons: number;
+  schedule: string;
+  nextLesson: string;
+}
 
 // Danh sách các tab mô phỏng theo ảnh của bạn
 const tabs = [
@@ -13,7 +24,7 @@ const tabs = [
   { id: 'grades', label: 'Kết quả học tập', icon: BarChart2 },
 ];
 
-export function ClassDetail({ classData, onBack }: { classData: any; onBack: () => void }) {
+export function ClassDetail({ classData, onBack }: { classData: ClassDetailData; onBack: () => void }) {
   const [activeTab, setActiveTab] = useState('overview');
 
   return (

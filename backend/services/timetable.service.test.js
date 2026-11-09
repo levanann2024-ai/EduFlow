@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const {
   getTeacherTimetable,
   generateStudentTimetableSuggestion,
+  mapTeacherClass,
   mergeTeacherExamRoomNotes,
   mapTeacherTimetableEntries,
   validateStudentSchedulePlan,
@@ -101,6 +102,41 @@ test('teacher timetable input supports multiple cell activities and explicit can
     }),
     { code: 'SCHOOL_INVALID_TIMETABLE_ENTRY' },
   );
+});
+
+test('homeroom teacher classes allow Sinh hoạt without changing assigned subjects', () => {
+  const homeroom = mapTeacherClass({
+    id: 'class-id',
+    code: '11A2',
+    name: 'Lớp 11A2',
+    grade: '11',
+    academic_year: '2026-2027',
+    is_homeroom: true,
+    subjects: ['Hóa học'],
+  });
+  assert.deepEqual(homeroom.subjects, ['Hóa học', 'Sinh hoạt']);
+
+  const alreadyAssigned = mapTeacherClass({
+    id: 'class-id',
+    code: '11A2',
+    name: 'Lớp 11A2',
+    grade: '11',
+    academic_year: '2026-2027',
+    is_homeroom: true,
+    subjects: ['Hóa học', 'Sinh hoạt'],
+  });
+  assert.deepEqual(alreadyAssigned.subjects, ['Hóa học', 'Sinh hoạt']);
+
+  const nonHomeroom = mapTeacherClass({
+    id: 'other-class',
+    code: '11A3',
+    name: 'Lớp 11A3',
+    grade: '11',
+    academic_year: '2026-2027',
+    is_homeroom: false,
+    subjects: ['Hóa học'],
+  });
+  assert.deepEqual(nonHomeroom.subjects, ['Hóa học']);
 });
 
 test('teacher timetable template keeps recurring cells but clears week-specific details', () => {

@@ -115,6 +115,7 @@ function makeFixture() {
     classes,
     classMemberships,
     teacherAssignments,
+    homeroomAssignments: [],
     studentTermGrades,
     sessions,
     assessments: new Map(),
@@ -1132,7 +1133,7 @@ const fakePool = {
         item.class_id === classId && item.teacher_user_id === teacherId && item.revoked_at === null
       ));
       const homeroomAssigned = fixture.homeroomAssignments?.some((item) => (
-        item.class_id === classId && item.teacher_user_id === teacherId
+        item.class_id === classId && item.teacher_user_id === teacherId && item.ended_at === null
       ));
       const classroom = fixture.classes.find((item) => item.id === classId
         && item.school_id === schoolId && item.status === 'active'
@@ -1370,6 +1371,29 @@ test('teacher sees only assigned classes and cannot read a class after assignmen
   fixture.teacherAssignments[0].revoked_at = new Date();
   const revoked = await request(`/classes/${ids.classA}`, ids.teacherA);
   assert.equal(revoked.status, 404);
+});
+
+test('a former homeroom teacher loses current class access after the assignment ends', async () => {
+  const originalAssignments = fixture.teacherAssignments;
+  const originalHomeroomAssignments = fixture.homeroomAssignments;
+  fixture.teacherAssignments = originalAssignments.filter((item) => item.class_id !== ids.classA);
+  fixture.homeroomAssignments = [{
+    class_id: ids.classA,
+    teacher_user_id: ids.teacherA,
+    ended_at: null,
+  }];
+
+  try {
+    const current = await request(`/classes/${ids.classA}`, ids.teacherA);
+    assert.equal(current.status, 200);
+
+    fixture.homeroomAssignments[0].ended_at = new Date();
+    const ended = await request(`/classes/${ids.classA}`, ids.teacherA);
+    assert.equal(ended.status, 404);
+  } finally {
+    fixture.teacherAssignments = originalAssignments;
+    fixture.homeroomAssignments = originalHomeroomAssignments;
+  }
 });
 
 test('student sees only active memberships and cannot read ended or unrelated classes', async () => {

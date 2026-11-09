@@ -2085,10 +2085,10 @@ async function listClasses(auth, requestedSchoolId) {
               s.name AS school_name,
               EXISTS (
                 SELECT 1 FROM class_homeroom_assignments hra
-                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $1
+                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $1 AND hra.ended_at IS NULL
               ) AS is_homeroom,
               (SELECT hra.subject FROM class_homeroom_assignments hra
-                WHERE hra.class_id = c.id AND hra.teacher_user_id = $1) AS homeroom_subject,
+                WHERE hra.class_id = c.id AND hra.teacher_user_id = $1 AND hra.ended_at IS NULL) AS homeroom_subject,
               (SELECT count(*)::int
                  FROM class_memberships cm
                  JOIN users active_student
@@ -2180,7 +2180,7 @@ async function listClasses(auth, requestedSchoolId) {
             )
             OR EXISTS (
               SELECT 1 FROM class_homeroom_assignments hra
-               WHERE hra.class_id = c.id AND hra.teacher_user_id = $1
+               WHERE hra.class_id = c.id AND hra.teacher_user_id = $1 AND hra.ended_at IS NULL
             )
           )
         ORDER BY c.academic_year DESC, c.name`,
@@ -2225,10 +2225,10 @@ async function findAccessibleClass(auth, classId) {
               s.name AS school_name,
               EXISTS (
                 SELECT 1 FROM class_homeroom_assignments hra
-                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $2
+                 WHERE hra.class_id = c.id AND hra.teacher_user_id = $2 AND hra.ended_at IS NULL
               ) AS is_homeroom,
               (SELECT hra.subject FROM class_homeroom_assignments hra
-                WHERE hra.class_id = c.id AND hra.teacher_user_id = $2) AS homeroom_subject
+                WHERE hra.class_id = c.id AND hra.teacher_user_id = $2 AND hra.ended_at IS NULL) AS homeroom_subject
          FROM classes c
          JOIN schools s ON s.id = c.school_id
         WHERE c.id = $1 AND c.school_id = $3 AND c.status = 'active' AND s.status = 'active'
@@ -2239,7 +2239,7 @@ async function findAccessibleClass(auth, classId) {
             )
             OR EXISTS (
               SELECT 1 FROM class_homeroom_assignments hra
-               WHERE hra.class_id = c.id AND hra.teacher_user_id = $2
+               WHERE hra.class_id = c.id AND hra.teacher_user_id = $2 AND hra.ended_at IS NULL
             )
           )`,
       [classId, auth.userId, schoolId],
@@ -2269,7 +2269,7 @@ async function getHomeroomClassGradeSummary(auth, classId, { academicYear, semes
        FROM class_homeroom_assignments hra
        JOIN classes c ON c.id = hra.class_id AND c.school_id = hra.school_id
        JOIN schools s ON s.id = c.school_id AND s.status = 'active'
-      WHERE c.id = $1 AND hra.teacher_user_id = $2 AND c.school_id = $3
+      WHERE c.id = $1 AND hra.teacher_user_id = $2 AND hra.ended_at IS NULL AND c.school_id = $3
         AND c.status = 'active'`,
     [classId, auth.userId, schoolId],
   );

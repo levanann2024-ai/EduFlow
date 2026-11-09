@@ -20,14 +20,8 @@
     min-height: 100%;
   }
   .student-dashboard-scale {
-    width: 90.9091%;
+    width: 100%;
     margin-inline: auto;
-    zoom: 1.1;
-  }
-  @media (min-width: 1024px) {
-    .student-dashboard-scale {
-      width: 100%;
-    }
   }
   .student-schedule-scale {
     width: 100%;

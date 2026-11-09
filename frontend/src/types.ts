@@ -31,7 +31,12 @@ export type Page =
   | 'my-results'
   | 'leaderboard'
   | 'saved'
-  | 'feedback';
+  | 'feedback'
+  | 'admin-years'
+  | 'admin-classes'
+  | 'admin-subjects'
+  | 'admin-assignments'
+  | 'admin-storage';
 
 export interface ClassRoom {
   id: string;

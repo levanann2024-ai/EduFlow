@@ -74,6 +74,51 @@ async function insertSchoolMembership(client, userId, schoolId, role, status = '
   return id;
 }
 
+async function insertAcademicYear(client, schoolId, name = '2026-2027') {
+  const existing = await client.query(
+    `SELECT id FROM academic_years
+      WHERE school_id = $1 AND lower(trim(name)) = lower(trim($2))`,
+    [schoolId, name],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const id = randomUUID();
+  await client.query(
+    `INSERT INTO academic_years (id, school_id, name, status)
+     VALUES ($1, $2, $3, 'legacy')`,
+    [id, schoolId, name],
+  );
+  return id;
+}
+
+async function insertSchoolSubject(client, schoolId, name) {
+  const existing = await client.query(
+    `SELECT id FROM school_subjects
+      WHERE school_id = $1 AND lower(trim(name)) = lower(trim($2))`,
+    [schoolId, name],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const id = randomUUID();
+  await client.query(
+    'INSERT INTO school_subjects (id, school_id, name) VALUES ($1, $2, $3)',
+    [id, schoolId, name],
+  );
+  return id;
+}
+
+async function insertClass(client, schoolId, { code, name, grade = '10', academicYear = '2026-2027' }) {
+  const academicYearId = await insertAcademicYear(client, schoolId, academicYear);
+  const classId = randomUUID();
+  await client.query(
+    `INSERT INTO classes
+       (id, school_id, code, name, grade, academic_year, academic_year_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [classId, schoolId, code, name, grade, academicYear, academicYearId],
+  );
+  return { classId, academicYearId };
+}
+
 async function makeClassAndStudent(client) {
   const schoolId = await insertSchool(client);
   const studentId = await insertUser(client, 'student');
@@ -82,13 +127,11 @@ async function makeClassAndStudent(client) {
     'INSERT INTO student_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
     [studentId, membershipId, schoolId],
   );
-  const classId = randomUUID();
-  await client.query(
-    `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
-     VALUES ($1, $2, 'TEST', 'Integration class', '10', '2026-2027')`,
-    [classId, schoolId],
-  );
-  return { schoolId, studentId, classId };
+  const { classId, academicYearId } = await insertClass(client, schoolId, {
+    code: 'TEST',
+    name: 'Integration class',
+  });
+  return { schoolId, studentId, classId, academicYearId };
 }
 
 async function runConcurrentInserts(insertStatement, valuesA, valuesB) {
@@ -114,7 +157,8 @@ async function runConcurrentInserts(insertStatement, valuesA, valuesB) {
   }
 }
 
-before({ skip: !databaseUrl }, async () => {
+before(async () => {
+  if (!databaseUrl) return;
   pool = new Pool({ connectionString: databaseUrl, max: 5, connectionTimeoutMillis: 3000 });
   const client = await pool.connect();
   try {
@@ -150,8 +194,8 @@ before({ skip: !databaseUrl }, async () => {
   authService = require('../auth/service');
 });
 
-after({ skip: !databaseUrl }, async () => {
-  if (!pool) return;
+after(async () => {
+  if (!databaseUrl || !pool) return;
   if (schemaCreated) {
     const client = await pool.connect();
     try {
@@ -182,6 +226,238 @@ test('PostgreSQL integration tests use an isolated schema and apply the reposito
     );
     assert.equal(migrationRows.rows[0].count, migrationNames.length);
   } finally {
+    client.release();
+  }
+});
+
+test('migration 041 links legacy school data and preserves its snapshots', {
+  skip: !databaseUrl,
+}, async () => {
+  const legacySchema = `eduflow_legacy_${process.pid}_${crypto.randomBytes(6).toString('hex')}`;
+  const client = await pool.connect();
+  let schemaCreated = false;
+  try {
+    await client.query(`CREATE SCHEMA "${legacySchema}"`);
+    schemaCreated = true;
+    await applyMigrations(client, { schemaName: legacySchema, through: '038_saved_items' });
+    await client.query(`SET search_path TO "${legacySchema}"`);
+
+    const schoolId = await insertSchool(client);
+    const adminId = await insertUser(client, 'admin', 'system');
+    const teacherId = await insertUser(client, 'lecturer');
+    const studentId = await insertUser(client, 'student');
+    const teacherMembershipId = await insertSchoolMembership(client, teacherId, schoolId, 'lecturer');
+    const studentMembershipId = await insertSchoolMembership(client, studentId, schoolId, 'student');
+    await client.query(
+      'INSERT INTO teacher_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
+      [teacherId, teacherMembershipId, schoolId],
+    );
+    await client.query(
+      'INSERT INTO student_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
+      [studentId, studentMembershipId, schoolId],
+    );
+
+    const classId = randomUUID();
+    const membershipId = randomUUID();
+    const assignmentId = randomUUID();
+    await client.query(
+      `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
+       VALUES ($1, $2, 'LEGACY', 'Legacy class', '10', '2025-2026')`,
+      [classId, schoolId],
+    );
+    await client.query(
+      `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
+       VALUES ($1, $2, $3, $4)`,
+      [membershipId, classId, studentId, schoolId],
+    );
+    await client.query(
+      'INSERT INTO class_subjects (class_id, school_id, subject) VALUES ($1, $2, $3)',
+      [classId, schoolId, 'Hóa học'],
+    );
+    await client.query(
+      `INSERT INTO teacher_class_assignments
+         (id, class_id, teacher_user_id, school_id, subject, assigned_by)
+       VALUES ($1, $2, $3, $4, 'Hóa học', $5)`,
+      [assignmentId, classId, teacherId, schoolId, adminId],
+    );
+    await client.query(
+      `INSERT INTO class_homeroom_assignments
+         (class_id, school_id, teacher_user_id, subject, assigned_by)
+       VALUES ($1, $2, $3, 'Hóa học', $4)`,
+      [classId, schoolId, teacherId, adminId],
+    );
+
+    await applyMigrations(client, { schemaName: legacySchema });
+
+    const classroom = await client.query(
+      `SELECT c.academic_year, ay.name AS linked_year, ay.status AS linked_year_status
+         FROM classes c
+         JOIN academic_years ay ON ay.id = c.academic_year_id AND ay.school_id = c.school_id
+        WHERE c.id = $1`,
+      [classId],
+    );
+    assert.deepEqual(classroom.rows[0], {
+      academic_year: '2025-2026',
+      linked_year: '2025-2026',
+      linked_year_status: 'legacy',
+    });
+
+    const membership = await client.query(
+      `SELECT cm.academic_year_id, c.academic_year_id AS class_year_id
+         FROM class_memberships cm
+         JOIN classes c ON c.id = cm.class_id AND c.school_id = cm.school_id
+        WHERE cm.id = $1`,
+      [membershipId],
+    );
+    assert.equal(membership.rows[0].academic_year_id, membership.rows[0].class_year_id);
+
+    const subjectLink = await client.query(
+      `SELECT cs.subject, ss.name, cs.school_subject_id
+         FROM class_subjects cs
+         JOIN school_subjects ss ON ss.id = cs.school_subject_id AND ss.school_id = cs.school_id
+        WHERE cs.class_id = $1`,
+      [classId],
+    );
+    assert.equal(subjectLink.rows[0].subject, 'Hóa học');
+    assert.equal(subjectLink.rows[0].name, 'Hóa học');
+
+    const assignmentLink = await client.query(
+      `SELECT id, subject, school_subject_id
+         FROM teacher_class_assignments
+        WHERE id = $1`,
+      [assignmentId],
+    );
+    assert.equal(assignmentLink.rows[0].subject, 'Hóa học');
+    assert.equal(assignmentLink.rows[0].school_subject_id, subjectLink.rows[0].school_subject_id);
+
+    await assert.rejects(
+      client.query(
+        `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
+         VALUES ($1, $2, 'NOYEAR', 'Unlinked class', '10', '2025-2026')`,
+        [randomUUID(), schoolId],
+      ),
+      (error) => error.code === '23502',
+    );
+    await assert.rejects(
+      client.query(
+        `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
+         VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), classId, studentId, schoolId],
+      ),
+      (error) => error.code === '23502',
+    );
+    await assert.rejects(
+      client.query(
+        `INSERT INTO class_subjects (class_id, school_id, subject)
+         VALUES ($1, $2, 'Unlinked subject')`,
+        [classId, schoolId],
+      ),
+      (error) => error.code === '23502',
+    );
+    await assert.rejects(
+      client.query(
+        `INSERT INTO teacher_class_assignments
+           (id, class_id, teacher_user_id, school_id, subject, assigned_by)
+         VALUES ($1, $2, $3, $4, 'Unlinked subject', $5)`,
+        [randomUUID(), classId, teacherId, schoolId, adminId],
+      ),
+      (error) => error.code === '23502',
+    );
+
+    const homeroom = await client.query(
+      `SELECT id, subject, ended_at
+         FROM class_homeroom_assignments
+        WHERE class_id = $1`,
+      [classId],
+    );
+    assert.ok(homeroom.rows[0].id);
+    assert.equal(homeroom.rows[0].subject, 'Hóa học');
+    assert.equal(homeroom.rows[0].ended_at, null);
+
+    const newHomeroomTeacherId = await insertUser(client, 'lecturer');
+    const newHomeroomMembershipId = await insertSchoolMembership(
+      client,
+      newHomeroomTeacherId,
+      schoolId,
+      'lecturer',
+    );
+    await client.query(
+      'INSERT INTO teacher_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
+      [newHomeroomTeacherId, newHomeroomMembershipId, schoolId],
+    );
+    const { createAdminSchoolService } = require('../services/admin-school.service');
+    const adminAuth = { userId: adminId, role: 'admin', adminScope: 'system', schoolIds: [] };
+    const scopedPool = {
+      async connect() {
+        const scopedClient = await pool.connect();
+        await scopedClient.query(`SET search_path TO "${legacySchema}"`);
+        return scopedClient;
+      },
+    };
+    const service = createAdminSchoolService(() => scopedPool);
+    await service.setHomeroomTeacher(adminAuth, schoolId, classId, newHomeroomTeacherId);
+    const homeroomHistory = await client.query(
+      `SELECT teacher_user_id, subject, ended_at
+         FROM class_homeroom_assignments
+        WHERE class_id = $1
+        ORDER BY created_at`,
+      [classId],
+    );
+    assert.equal(homeroomHistory.rows.length, 2);
+    assert.equal(homeroomHistory.rows[0].teacher_user_id, teacherId);
+    assert.equal(homeroomHistory.rows[0].subject, 'Hóa học');
+    assert.ok(homeroomHistory.rows[0].ended_at);
+    assert.equal(homeroomHistory.rows[1].teacher_user_id, newHomeroomTeacherId);
+    assert.equal(homeroomHistory.rows[1].subject, 'Sinh hoạt');
+    assert.equal(homeroomHistory.rows[1].ended_at, null);
+
+    const linkedYearId = membership.rows[0].class_year_id;
+    const secondClassId = randomUUID();
+    await client.query(
+      `INSERT INTO classes
+         (id, school_id, code, name, grade, academic_year, academic_year_id)
+       VALUES ($1, $2, 'NEXT', 'Next class', '10', '2025-2026', $3)`,
+      [secondClassId, schoolId, linkedYearId],
+    );
+    await client.query(
+      `INSERT INTO student_term_grades
+         (id, class_id, school_id, student_user_id, subject, academic_year, semester,
+          regular_1, midterm, final, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, 'Hóa học', '2025-2026', 'Kỳ 1', 8, 9, 10, $5, $5)`,
+      [randomUUID(), classId, schoolId, studentId, teacherId],
+    );
+    await service.changeStudentMembership(
+      adminAuth,
+      schoolId,
+      secondClassId,
+      studentId,
+    );
+    const movedMemberships = await client.query(
+      `SELECT class_id, academic_year_id, status
+         FROM class_memberships
+        WHERE student_user_id = $1
+        ORDER BY joined_at`,
+      [studentId],
+    );
+    assert.equal(movedMemberships.rows.length, 2);
+    assert.equal(movedMemberships.rows[0].class_id, classId);
+    assert.equal(movedMemberships.rows[0].academic_year_id, linkedYearId);
+    assert.equal(movedMemberships.rows[0].status, 'ended');
+    assert.equal(movedMemberships.rows[1].class_id, secondClassId);
+    assert.equal(movedMemberships.rows[1].academic_year_id, linkedYearId);
+    assert.equal(movedMemberships.rows[1].status, 'active');
+    const preservedGrade = await client.query(
+      `SELECT count(*)::int AS count
+         FROM student_term_grades
+        WHERE class_id = $1 AND student_user_id = $2 AND subject = 'Hóa học'`,
+      [classId, studentId],
+    );
+    assert.equal(preservedGrade.rows[0].count, 1);
+  } finally {
+    if (schemaCreated) {
+      await client.query('SET search_path TO public');
+      await client.query(`DROP SCHEMA "${legacySchema}" CASCADE`);
+    }
     client.release();
   }
 });
@@ -255,17 +531,18 @@ test('class membership rows preserve ended periods and allow one active rejoin',
 }, async () => {
   const client = await connectToSchema();
   try {
-    const { classId, studentId, schoolId } = await makeClassAndStudent(client);
+    const { classId, studentId, schoolId, academicYearId } = await makeClassAndStudent(client);
     await client.query(
       `INSERT INTO class_memberships
-         (id, class_id, student_user_id, school_id, status, ended_at)
-       VALUES ($1, $2, $3, $4, 'ended', now())`,
-      [randomUUID(), classId, studentId, schoolId],
+         (id, class_id, student_user_id, school_id, academic_year_id, status, ended_at)
+       VALUES ($1, $2, $3, $4, $5, 'ended', now())`,
+      [randomUUID(), classId, studentId, schoolId, academicYearId],
     );
     await client.query(
-      `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
-       VALUES ($1, $2, $3, $4)`,
-      [randomUUID(), classId, studentId, schoolId],
+      `INSERT INTO class_memberships
+         (id, class_id, student_user_id, school_id, academic_year_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [randomUUID(), classId, studentId, schoolId, academicYearId],
     );
     const history = await client.query(
       `SELECT count(*)::int AS count
@@ -276,18 +553,19 @@ test('class membership rows preserve ended periods and allow one active rejoin',
     assert.equal(history.rows[0].count, 2);
     await assert.rejects(
       client.query(
-        `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
-         VALUES ($1, $2, $3, $4)`,
-        [randomUUID(), classId, studentId, schoolId],
+        `INSERT INTO class_memberships
+           (id, class_id, student_user_id, school_id, academic_year_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), classId, studentId, schoolId, academicYearId],
       ),
       (error) => error.code === '23505',
     );
     await assert.rejects(
       client.query(
         `INSERT INTO class_memberships
-           (id, class_id, student_user_id, school_id, status, ended_at)
-         VALUES ($1, $2, $3, $4, 'active', now())`,
-        [randomUUID(), classId, studentId, schoolId],
+           (id, class_id, student_user_id, school_id, academic_year_id, status, ended_at)
+           VALUES ($1, $2, $3, $4, $5, 'active', now())`,
+        [randomUUID(), classId, studentId, schoolId, academicYearId],
       ),
       (error) => error.code === '23514',
     );
@@ -307,10 +585,11 @@ test('concurrent class rejoin requests create at most one active period', {
     setup.release();
   }
   const outcomes = await runConcurrentInserts(
-    `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
-     VALUES ($1, $2, $3, $4)`,
-    [randomUUID(), ids.classId, ids.studentId, ids.schoolId],
-    [randomUUID(), ids.classId, ids.studentId, ids.schoolId],
+    `INSERT INTO class_memberships
+       (id, class_id, student_user_id, school_id, academic_year_id)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [randomUUID(), ids.classId, ids.studentId, ids.schoolId, ids.academicYearId],
+    [randomUUID(), ids.classId, ids.studentId, ids.schoolId, ids.academicYearId],
   );
   assert.equal(outcomes.filter((error) => error === null).length, 1);
   assert.equal(outcomes.filter((error) => error?.code === '23505').length, 1);
@@ -329,40 +608,46 @@ test('teacher assignment history allows regrant and normalizes active subject un
       [teacherId, membershipId, schoolId],
     );
     const assignedBy = await insertUser(client, 'admin', 'system');
-    const classId = randomUUID();
+    const { classId } = await insertClass(client, schoolId, {
+      code: 'TCH',
+      name: 'Teacher class',
+    });
+    const mathSubjectId = await insertSchoolSubject(client, schoolId, 'Math');
     await client.query(
-      `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
-       VALUES ($1, $2, 'TCH', 'Teacher class', '10', '2026-2027')`,
-      [classId, schoolId],
+      `INSERT INTO class_subjects (class_id, school_id, subject, school_subject_id)
+       VALUES ($1, $2, 'Math', $3)`,
+      [classId, schoolId, mathSubjectId],
     );
     await client.query(
       `INSERT INTO teacher_class_assignments
-         (id, class_id, teacher_user_id, school_id, subject, assigned_by, revoked_at)
-       VALUES ($1, $2, $3, $4, '  Math  ', $5, now())`,
-      [randomUUID(), classId, teacherId, schoolId, assignedBy],
+         (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by, revoked_at)
+       VALUES ($1, $2, $3, $4, '  Math  ', $5, $6, now())`,
+      [randomUUID(), classId, teacherId, schoolId, mathSubjectId, assignedBy],
     );
     await client.query(
       `INSERT INTO teacher_class_assignments
-         (id, class_id, teacher_user_id, school_id, subject, assigned_by)
-       VALUES ($1, $2, $3, $4, 'Math', $5)`,
-      [randomUUID(), classId, teacherId, schoolId, assignedBy],
+         (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+       VALUES ($1, $2, $3, $4, 'Math', $5, $6)`,
+      [randomUUID(), classId, teacherId, schoolId, mathSubjectId, assignedBy],
     );
     await assert.rejects(
       client.query(
         `INSERT INTO teacher_class_assignments
-           (id, class_id, teacher_user_id, school_id, subject, assigned_by)
-         VALUES ($1, $2, $3, $4, ' math ', $5)`,
-        [randomUUID(), classId, teacherId, schoolId, assignedBy],
+           (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+         VALUES ($1, $2, $3, $4, ' math ', $5, $6)`,
+        [randomUUID(), classId, teacherId, schoolId, mathSubjectId, assignedBy],
       ),
       (error) => error.code === '23505',
     );
     const history = await client.query(
-      `SELECT count(*)::int AS count
+      `SELECT count(*)::int AS count,
+              count(*) FILTER (WHERE revoked_at IS NULL)::int AS active_count,
+              count(*) FILTER (WHERE revoked_at IS NOT NULL)::int AS ended_count
          FROM teacher_class_assignments
         WHERE class_id = $1 AND teacher_user_id = $2`,
       [classId, teacherId],
     );
-    assert.equal(history.rows[0].count, 3);
+    assert.deepEqual(history.rows[0], { count: 2, active_count: 1, ended_count: 1 });
   } finally {
     client.release();
   }
@@ -381,22 +666,23 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
       [teacherId, teacherMembershipId, schoolId],
     );
     const assignedBy = await insertUser(client, 'admin', 'system');
-    const classId = randomUUID();
-    await client.query(
-      `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
-       VALUES ($1, $2, '11A2', '11A2', '11', '2026-2027')`,
-      [classId, schoolId],
-    );
+    const { classId, academicYearId } = await insertClass(client, schoolId, {
+      code: '11A2',
+      name: '11A2',
+      grade: '11',
+    });
+    const chemistrySubjectId = await insertSchoolSubject(client, schoolId, 'Hóa học');
+    const mathSubjectId = await insertSchoolSubject(client, schoolId, 'Toán học');
     await client.query(
       `INSERT INTO teacher_class_assignments
-         (id, class_id, teacher_user_id, school_id, subject, assigned_by)
-       VALUES ($1, $2, $3, $4, 'Hóa học', $5)`,
-      [randomUUID(), classId, teacherId, schoolId, assignedBy],
+         (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+       VALUES ($1, $2, $3, $4, 'Hóa học', $5, $6)`,
+      [randomUUID(), classId, teacherId, schoolId, chemistrySubjectId, assignedBy],
     );
     await client.query(
-      `INSERT INTO class_subjects (class_id, school_id, subject)
-       VALUES ($1, $2, 'Hóa học'), ($1, $2, 'Toán học')`,
-      [classId, schoolId],
+      `INSERT INTO class_subjects (class_id, school_id, subject, school_subject_id)
+       VALUES ($1, $2, 'Hóa học', $3), ($1, $2, 'Toán học', $4)`,
+      [classId, schoolId, chemistrySubjectId, mathSubjectId],
     );
     await client.query(
       `INSERT INTO class_homeroom_assignments
@@ -415,9 +701,10 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
         [studentId, membershipId, schoolId, '11'],
       );
       await client.query(
-        `INSERT INTO class_memberships (id, class_id, student_user_id, school_id)
-         VALUES ($1, $2, $3, $4)`,
-        [randomUUID(), classId, studentId, schoolId],
+        `INSERT INTO class_memberships
+           (id, class_id, student_user_id, school_id, academic_year_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), classId, studentId, schoolId, academicYearId],
       );
       studentIds.push(studentId);
     }
@@ -586,11 +873,16 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
     assert.equal(uploadedFile.mediaType, 'application/pdf');
     assert.deepEqual(uploadedFile.content, replacementFile);
     const gradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
-    assert.deepEqual(gradebook.map((student) => student.fullName), studentNames);
-    assert.deepEqual(gradebook[0].grades.regular, [10, 9, 8, 1]);
-    assert.equal(gradebook[0].assignments.total, 1);
-    assert.equal(gradebook[0].assignments.submitted, 0);
-    assert.equal(gradebook[0].assignments.overdueMissing, 0);
+    assert.deepEqual(
+      gradebook.map((student) => student.fullName).sort(),
+      [...studentNames].sort(),
+    );
+    const firstGradebookStudent = gradebook.find((student) => student.id === studentIds[0]);
+    assert.ok(firstGradebookStudent);
+    assert.deepEqual(firstGradebookStudent.grades.regular, [10, 9, 8, 1]);
+    assert.equal(firstGradebookStudent.assignments.total, 1);
+    assert.equal(firstGradebookStudent.assignments.submitted, 0);
+    assert.equal(firstGradebookStudent.assignments.overdueMissing, 0);
 
     const firstStudentAuth = { userId: studentIds[0], role: 'student', schoolIds: [schoolId] };
     const studentClasses = await classroomService.listClasses(firstStudentAuth);
@@ -760,8 +1052,14 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
     assert.equal(filesAfterRejectedUpload.submissions.find((submission) => submission.studentId === studentIds[0]).files.length, 2);
 
     const updatedGradebook = await classroomService.getClassGradebook(teacherAuth, classId, input);
-    assert.equal(updatedGradebook[0].assignments.submitted, 1);
-    assert.equal(updatedGradebook[1].assignments.submitted, 0);
+    assert.equal(
+      updatedGradebook.find((student) => student.id === studentIds[0]).assignments.submitted,
+      1,
+    );
+    assert.equal(
+      updatedGradebook.find((student) => student.id === studentIds[1]).assignments.submitted,
+      0,
+    );
     const teacherAssignments = await classroomService.listClassAssignments(teacherAuth, classId, input);
     assert.equal(teacherAssignments[0].students.length, studentNames.length);
     assert.equal(teacherAssignments[0].students.filter((student) => student.submittedAt).length, 1);
@@ -981,26 +1279,82 @@ test('concurrent teacher assignments cannot duplicate a normalized active subjec
       'INSERT INTO teacher_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
       [teacherId, membershipId, schoolId],
     );
-    const assignedBy = await insertUser(client, 'admin', 'system');
-    const classId = randomUUID();
+    const secondTeacherId = await insertUser(client, 'lecturer');
+    const secondTeacherMembershipId = await insertSchoolMembership(client, secondTeacherId, schoolId, 'lecturer');
     await client.query(
-      `INSERT INTO classes (id, school_id, code, name, grade, academic_year)
-       VALUES ($1, $2, 'RACE', 'Race test class', '10', '2026-2027')`,
-      [classId, schoolId],
+      'INSERT INTO teacher_profiles (user_id, membership_id, school_id) VALUES ($1, $2, $3)',
+      [secondTeacherId, secondTeacherMembershipId, schoolId],
     );
-    ids = { schoolId, teacherId, assignedBy, classId };
+    const assignedBy = await insertUser(client, 'admin', 'system');
+    const { classId } = await insertClass(client, schoolId, {
+      code: 'RACE',
+      name: 'Race test class',
+    });
+    const mathSubjectId = await insertSchoolSubject(client, schoolId, 'Math');
+    await client.query(
+      `INSERT INTO class_subjects (class_id, school_id, subject, school_subject_id)
+       VALUES ($1, $2, 'Math', $3)`,
+      [classId, schoolId, mathSubjectId],
+    );
+    ids = { schoolId, teacherId, secondTeacherId, assignedBy, classId, mathSubjectId };
   } finally {
     client.release();
   }
   const outcomes = await runConcurrentInserts(
     `INSERT INTO teacher_class_assignments
-       (id, class_id, teacher_user_id, school_id, subject, assigned_by)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [randomUUID(), ids.classId, ids.teacherId, ids.schoolId, 'Math', ids.assignedBy],
-    [randomUUID(), ids.classId, ids.teacherId, ids.schoolId, ' math ', ids.assignedBy],
+       (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [randomUUID(), ids.classId, ids.teacherId, ids.schoolId, 'Math', ids.mathSubjectId, ids.assignedBy],
+    [randomUUID(), ids.classId, ids.secondTeacherId, ids.schoolId, 'Math', ids.mathSubjectId, ids.assignedBy],
   );
   assert.equal(outcomes.filter((error) => error === null).length, 1);
   assert.equal(outcomes.filter((error) => error?.code === '23505').length, 1);
+
+  const verifyClient = await connectToSchema();
+  try {
+    const activeAssignment = await verifyClient.query(
+      `SELECT teacher_user_id FROM teacher_class_assignments
+        WHERE class_id = $1 AND school_subject_id = $2 AND revoked_at IS NULL`,
+      [ids.classId, ids.mathSubjectId],
+    );
+    const assignedTeacherId = activeAssignment.rows[0].teacher_user_id;
+    const { classId: secondClassId } = await insertClass(verifyClient, ids.schoolId, {
+      code: 'RACE2',
+      name: 'Second race test class',
+    });
+    const scienceSubjectId = await insertSchoolSubject(verifyClient, ids.schoolId, 'Science');
+    await verifyClient.query(
+      `INSERT INTO class_subjects (class_id, school_id, subject, school_subject_id)
+       VALUES ($1, $2, 'Science', $3), ($4, $5, 'Math', $6)`,
+      [ids.classId, ids.schoolId, scienceSubjectId, secondClassId, ids.schoolId, ids.mathSubjectId],
+    );
+    await verifyClient.query(
+      `INSERT INTO teacher_class_assignments
+         (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+       VALUES ($1, $2, $3, $4, 'Science', $5, $6),
+              ($7, $8, $3, $4, 'Math', $9, $6)`,
+      [
+        randomUUID(),
+        ids.classId,
+        assignedTeacherId,
+        ids.schoolId,
+        scienceSubjectId,
+        ids.assignedBy,
+        randomUUID(),
+        secondClassId,
+        ids.mathSubjectId,
+      ],
+    );
+    const teacherAssignments = await verifyClient.query(
+      `SELECT count(*)::int AS count
+         FROM teacher_class_assignments
+        WHERE teacher_user_id = $1 AND revoked_at IS NULL`,
+      [assignedTeacherId],
+    );
+    assert.equal(teacherAssignments.rows[0].count, 3);
+  } finally {
+    verifyClient.release();
+  }
 });
 
 test('student and lecturer active-school constraint is role-aware and concurrency-safe', {

@@ -792,13 +792,14 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
         </div>
 
         <aside className="flex flex-col gap-3">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="flex h-[15rem] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="flex items-center gap-2 border-b border-slate-100 pb-3 text-sm font-bold text-slate-900">
               <Clock3 className="h-4 w-4 text-blue-600" /> Cần chú ý
             </h2>
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 flex min-h-0 flex-1 flex-col">
               {attentionItems.length > 0 ? (
                 <div
+                  className="flex min-h-0 flex-1 flex-col"
                   onMouseEnter={() => attentionCycle.setPaused(true)}
                   onMouseLeave={() => attentionCycle.setPaused(false)}
                   onFocus={() => attentionCycle.setPaused(true)}
@@ -806,11 +807,11 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                     if (!event.currentTarget.contains(event.relatedTarget)) attentionCycle.setPaused(false);
                   }}
                 >
-                  <div key={attentionCycle.page} className="dashboard-cycle-enter space-y-2">
+                  <div key={attentionCycle.page} className="dashboard-cycle-enter min-h-28 space-y-2">
                     {attentionItems.slice(attentionCycle.page * 2, attentionCycle.page * 2 + 2).map((item) => {
                       const Icon = item.Icon;
                       return (
-                        <button key={item.id} type="button" onClick={item.onClick} className={`flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${item.cardClass}`}>
+                        <button key={item.id} type="button" onClick={item.onClick} className={`flex min-h-[3.25rem] w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${item.cardClass}`}>
                           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white ${item.iconClass}`}><Icon className="h-4 w-4" /></span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[0.6875rem] font-bold text-slate-900">{item.title}</span>
@@ -822,7 +823,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                     })}
                   </div>
                   {attentionCycle.pageCount > 1 && (
-                    <div className="mt-2 flex justify-center gap-1">
+                    <div className="mt-auto flex h-6 shrink-0 items-end justify-center gap-1">
                       {Array.from({ length: attentionCycle.pageCount }, (_, index) => (
                         <button
                           key={index}
@@ -839,22 +840,23 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                   )}
                 </div>
               ) : (
-                <p className="py-3 text-xs text-slate-500">{loadingLiveData ? 'Đang tải dữ liệu cần chú ý…' : liveDataError || 'Chưa có mục nào cần chú ý.'}</p>
+                <p className="flex min-h-28 flex-1 items-center text-xs text-slate-500">{loadingLiveData ? 'Đang tải dữ liệu cần chú ý…' : liveDataError || 'Chưa có mục nào cần chú ý.'}</p>
               )}
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="flex h-[17rem] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" />Lịch ngày mai - {tomorrow.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</h2>
               <button type="button" onClick={() => onNavigate('schedule')} className="shrink-0 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
                 Thời khóa biểu <ArrowRight className="ml-0.5 inline h-3 w-3" />
               </button>
             </div>
-            <div>
+            <div className="mt-2 flex min-h-0 flex-1 flex-col">
               {loadingLiveData ? <p className="py-4 text-xs leading-5 text-slate-500">Đang tải thời khóa biểu…</p>
                 : tomorrowEntries.length > 0 ? (
                   <div
+                    className="flex min-h-0 flex-1 flex-col"
                     onMouseEnter={() => tomorrowCycle.setPaused(true)}
                     onMouseLeave={() => tomorrowCycle.setPaused(false)}
                     onFocus={() => tomorrowCycle.setPaused(true)}
@@ -862,7 +864,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                       if (!event.currentTarget.contains(event.relatedTarget)) tomorrowCycle.setPaused(false);
                     }}
                   >
-                    <div className="student-dashboard-cycle-viewport">
+                    <div className="student-dashboard-cycle-viewport min-h-0 flex-1">
                       <div
                         className="student-dashboard-cycle-track"
                         style={{
@@ -874,7 +876,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                           <div
                             key={page}
                             aria-hidden={page !== tomorrowCycle.page}
-                            className="student-dashboard-cycle-page min-h-[160px] divide-y divide-slate-100"
+                            className="student-dashboard-cycle-page h-full min-h-[10rem] divide-y divide-slate-100"
                             style={{ flexBasis: `${100 / tomorrowCycle.pageCount}%` }}
                           >
                             {tomorrowEntries.slice(page * 2, page * 2 + 2).map((entry, index) => (
@@ -896,7 +898,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                       </div>
                     </div>
                     {tomorrowCycle.pageCount > 1 && (
-                      <div className="mt-2 flex justify-center gap-1">
+                      <div className="mt-auto flex h-6 shrink-0 items-end justify-center gap-1">
                         {Array.from({ length: tomorrowCycle.pageCount }, (_, index) => (
                           <button
                             key={index}

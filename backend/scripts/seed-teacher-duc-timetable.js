@@ -88,7 +88,7 @@ async function seedTeacherTimetable(client) {
     const teacherResult = await client.query(
       `SELECT hra.teacher_user_id, u.full_name
          FROM classes c
-         JOIN class_homeroom_assignments hra ON hra.class_id = c.id
+         JOIN class_homeroom_assignments hra ON hra.class_id = c.id AND hra.ended_at IS NULL
          JOIN users u ON u.id = hra.teacher_user_id AND u.role = 'lecturer' AND u.status = 'active'
         WHERE c.school_id = $1 AND c.code = '11A2'
           AND c.academic_year = $2 AND c.status = 'active'`,

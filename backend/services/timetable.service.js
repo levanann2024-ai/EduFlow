@@ -315,6 +315,27 @@ async function getActiveSchoolId(auth, expectedRole) {
   return result.rows[0].school_id;
 }
 
+const HOMEROOM_SUBJECT = 'Sinh hoạt';
+
+function mapTeacherClass(row) {
+  const isHomeroom = Boolean(row.is_homeroom);
+  const subjects = [...(row.subjects ?? [])];
+  if (isHomeroom && !subjects.some((subject) => (
+    subject.trim().toLocaleLowerCase('vi') === HOMEROOM_SUBJECT.toLocaleLowerCase('vi')
+  ))) {
+    subjects.push(HOMEROOM_SUBJECT);
+  }
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    grade: row.grade,
+    academicYear: row.academic_year,
+    isHomeroom,
+    subjects,
+  };
+}
+
 async function getTeacherClasses(auth, schoolId) {
   const result = await getPool().query(
     `SELECT c.id, c.code, c.name, c.grade, c.academic_year,
@@ -324,21 +345,13 @@ async function getTeacherClasses(auth, schoolId) {
        JOIN classes c ON c.id = tca.class_id AND c.school_id = $2 AND c.status = 'active'
        JOIN schools s ON s.id = c.school_id AND s.status = 'active'
        LEFT JOIN class_homeroom_assignments hra
-         ON hra.class_id = c.id AND hra.teacher_user_id = $1
+         ON hra.class_id = c.id AND hra.teacher_user_id = $1 AND hra.ended_at IS NULL
       WHERE tca.teacher_user_id = $1 AND tca.school_id = $2 AND tca.revoked_at IS NULL
       GROUP BY c.id, c.code, c.name, c.grade, c.academic_year
       ORDER BY c.academic_year DESC, c.code`,
     [auth.userId, schoolId],
   );
-  return result.rows.map((row) => ({
-    id: row.id,
-    code: row.code,
-    name: row.name,
-    grade: row.grade,
-    academicYear: row.academic_year,
-    isHomeroom: row.is_homeroom,
-    subjects: row.subjects ?? [],
-  }));
+  return result.rows.map(mapTeacherClass);
 }
 
 async function listTeacherWork(auth, schoolId, weekStart, academicYear) {
@@ -486,7 +499,7 @@ async function getTeacherTimetable(auth, filters) {
             e.subject, e.exam_title, c.code AS class_code, c.name AS class_name,
             EXISTS (
               SELECT 1 FROM class_homeroom_assignments hra
-               WHERE hra.class_id = e.class_id AND hra.teacher_user_id = $1
+               WHERE hra.class_id = e.class_id AND hra.teacher_user_id = $1 AND hra.ended_at IS NULL
             ) AS is_homeroom
        FROM class_timetable_events e
        JOIN classes c ON c.id = e.class_id AND c.school_id = e.school_id
@@ -514,7 +527,7 @@ async function getTeacherTimetable(auth, filters) {
             c.code AS class_code, c.name AS class_name,
             EXISTS (
               SELECT 1 FROM class_homeroom_assignments hra
-               WHERE hra.class_id = c.id AND hra.teacher_user_id = $2
+               WHERE hra.class_id = c.id AND hra.teacher_user_id = $2 AND hra.ended_at IS NULL
             ) AS is_homeroom
        FROM teacher_weekly_timetable_entries e
        JOIN classes c ON c.id = e.class_id AND c.school_id = $3
@@ -865,6 +878,7 @@ module.exports = {
   generateStudentTimetableSuggestion,
   generateTeacherTimetableSuggestion,
   getTeacherTimetable,
+  mapTeacherClass,
   mergeTeacherExamRoomNotes,
   mapTeacherTimetableEntries,
   saveTeacherTimetable,

@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const aiRoutes = require('./routes/ai.routes');
+const adminSchoolRoutes = require('./routes/adminSchool.routes');
 const schoolRoutes = require('./routes/school.routes');
 const savedItemsRoutes = require('./routes/savedItems.routes');
 const { router: authRoutes } = require('./auth/routes');
@@ -58,6 +59,7 @@ app.use((error, req, res, next) => {
   return next(error);
 });
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminSchoolRoutes);
 app.use('/api/saved-items', savedItemsRoutes);
 app.use('/api', schoolRoutes);
 app.use('/api/ai', requireAuth, requireAccountReady, aiRoutes);

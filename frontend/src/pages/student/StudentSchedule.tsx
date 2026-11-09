@@ -560,6 +560,9 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
             <span></span>
             <span className="rounded-full bg-white/70 px-2.5 py-1 font-medium text-slate-500">{availability.length}/4000</span>
           </div>
+          {storageError && (
+            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">{storageError}</p>
+          )}
           {error && scheduleData && (
             <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{error}</p>
           )}

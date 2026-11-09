@@ -64,7 +64,7 @@ async function findTarget(client) {
     `SELECT hra.teacher_user_id, hra.assigned_by, u.full_name, u.role
        FROM class_homeroom_assignments hra
        JOIN users u ON u.id = hra.teacher_user_id
-      WHERE hra.class_id = $1 AND hra.school_id = $2
+      WHERE hra.class_id = $1 AND hra.school_id = $2 AND hra.ended_at IS NULL
       FOR UPDATE OF hra`,
     [classroom.id, school.id],
   );
@@ -153,10 +153,43 @@ async function ensureTeacher(client, teacher, schoolId) {
   return user.id;
 }
 
+async function ensureSchoolSubject(client, schoolId, subject, createdBy) {
+  const findSubject = () => client.query(
+    `SELECT id, name
+       FROM school_subjects
+      WHERE school_id = $1
+        AND lower(regexp_replace(name, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+          = lower(regexp_replace($2, '^[[:space:]]+|[[:space:]]+$', '', 'g'))
+      FOR UPDATE`,
+    [schoolId, subject],
+  );
+  let result = await findSubject();
+  if (result.rows[0]) return result.rows[0];
+
+  await client.query(
+    `INSERT INTO school_subjects (id, school_id, name, created_by)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT DO NOTHING`,
+    [randomUUID(), schoolId, subject, createdBy],
+  );
+  result = await findSubject();
+  if (!result.rows[0]) {
+    throw new Error(`Could not link subject ${subject} to the school catalog.`);
+  }
+  return result.rows[0];
+}
+
 async function seedClassTeachers(client) {
   await client.query('BEGIN');
   try {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('eduflow-placeholder-11a2-teachers'))");
+    const migrationResult = await client.query(
+      'SELECT name FROM eduflow_schema_migrations WHERE name = $1',
+      ['041_school_management'],
+    );
+    if (!migrationResult.rowCount) {
+      throw new Error('Migration 041 must be applied before seeding class subjects or teachers.');
+    }
     const { school, classroom, homeroom } = await findTarget(client);
     await client.query(
       `UPDATE teacher_profiles SET gender = 'male' WHERE user_id = $1 AND school_id = $2`,
@@ -164,58 +197,88 @@ async function seedClassTeachers(client) {
     );
 
     const classSubjects = await client.query(
-      'SELECT subject FROM class_subjects WHERE class_id = $1 AND school_id = $2',
+      'SELECT subject, school_subject_id FROM class_subjects WHERE class_id = $1 AND school_id = $2',
       [classroom.id, school.id],
     );
     for (const teacher of teachers) {
       const subject = classSubjects.rows.find(
         (row) => row.subject.trim().toLocaleLowerCase('vi') === teacher.subject.toLocaleLowerCase('vi'),
       )?.subject ?? teacher.subject;
+      const schoolSubject = await ensureSchoolSubject(client, school.id, subject, homeroom.assigned_by);
       if (!classSubjects.rows.some((row) => row.subject === subject)) {
         await client.query(
-          'INSERT INTO class_subjects (class_id, school_id, subject) VALUES ($1, $2, $3)',
-          [classroom.id, school.id, subject],
+          `INSERT INTO class_subjects (class_id, school_id, subject, school_subject_id)
+           VALUES ($1, $2, $3, $4)`,
+          [classroom.id, school.id, subject, schoolSubject.id],
         );
-        classSubjects.rows.push({ subject });
+        classSubjects.rows.push({ subject, school_subject_id: schoolSubject.id });
       }
 
       const teacherId = await ensureTeacher(client, teacher, school.id);
       const existingAssignment = await client.query(
-        `SELECT id
+        `SELECT id, teacher_user_id
            FROM teacher_class_assignments
-          WHERE class_id = $1 AND teacher_user_id = $2
-            AND lower(trim(subject)) = lower(trim($3)) AND revoked_at IS NULL`,
-        [classroom.id, teacherId, subject],
+          WHERE class_id = $1 AND school_id = $2
+            AND school_subject_id = $3 AND revoked_at IS NULL
+          FOR UPDATE`,
+        [classroom.id, school.id, schoolSubject.id],
       );
-      if (existingAssignment.rowCount) continue;
+      if (existingAssignment.rowCount) {
+        if (existingAssignment.rows[0].teacher_user_id !== teacherId) {
+          throw new Error(`Subject ${subject} is already assigned to a different teacher.`);
+        }
+        continue;
+      }
       await client.query(
-        `INSERT INTO teacher_class_assignments (id, class_id, teacher_user_id, school_id, subject, assigned_by)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [randomUUID(), classroom.id, teacherId, school.id, subject, homeroom.assigned_by],
+        `INSERT INTO teacher_class_assignments
+           (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [randomUUID(), classroom.id, teacherId, school.id, subject, schoolSubject.id, homeroom.assigned_by],
       );
     }
 
     const chemistrySubject = classSubjects.rows.find(
       (row) => row.subject.trim().toLocaleLowerCase('vi') === 'hóa học',
     )?.subject ?? 'Hóa học';
+    const chemistryCatalogSubject = await ensureSchoolSubject(
+      client,
+      school.id,
+      chemistrySubject,
+      homeroom.assigned_by,
+    );
     if (!classSubjects.rows.some((row) => row.subject === chemistrySubject)) {
       await client.query(
-        'INSERT INTO class_subjects (class_id, school_id, subject) VALUES ($1, $2, $3)',
-        [classroom.id, school.id, chemistrySubject],
+        `INSERT INTO class_subjects (class_id, school_id, subject, school_subject_id)
+         VALUES ($1, $2, $3, $4)`,
+        [classroom.id, school.id, chemistrySubject, chemistryCatalogSubject.id],
       );
     }
     const chemistryAssignment = await client.query(
-      `SELECT id
+      `SELECT id, teacher_user_id
          FROM teacher_class_assignments
-        WHERE class_id = $1 AND teacher_user_id = $2
-          AND lower(trim(subject)) = lower(trim($3)) AND revoked_at IS NULL`,
-      [classroom.id, homeroom.teacher_user_id, chemistrySubject],
+        WHERE class_id = $1 AND school_id = $2
+          AND school_subject_id = $3 AND revoked_at IS NULL
+        FOR UPDATE`,
+      [classroom.id, school.id, chemistryCatalogSubject.id],
     );
+    if (chemistryAssignment.rowCount
+      && chemistryAssignment.rows[0].teacher_user_id !== homeroom.teacher_user_id) {
+      throw new Error(`Subject ${chemistrySubject} is already assigned to a different teacher.`);
+    }
     if (!chemistryAssignment.rowCount) {
       await client.query(
-        `INSERT INTO teacher_class_assignments (id, class_id, teacher_user_id, school_id, subject, assigned_by)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [randomUUID(), classroom.id, homeroom.teacher_user_id, school.id, chemistrySubject, homeroom.assigned_by],
+        `INSERT INTO teacher_class_assignments
+           (id, class_id, teacher_user_id, school_id, subject, school_subject_id, assigned_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          randomUUID(),
+          classroom.id,
+          homeroom.teacher_user_id,
+          school.id,
+          chemistrySubject,
+          chemistryCatalogSubject.id,
+          homeroom.assigned_by,
+        ],
       );
     }
     await client.query('COMMIT');

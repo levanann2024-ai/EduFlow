@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { 
-  Sparkles, Send, ClipboardCheck, Clock, BookOpen, ShieldCheck, Activity, BarChart2, ChevronRight, Award, CheckCircle2, FileText, ArrowRight,
+  Sparkles, Send, BookOpen, ShieldCheck, Activity, BarChart2, ChevronRight, CheckCircle2, FileText, ArrowRight,
 } from 'lucide-react';
-import { mockSchedule, mockClasses } from '@/data';
+import { mockClasses } from '@/data';
 import type { Page, Role } from '@/types';
 
 interface DashboardProps {

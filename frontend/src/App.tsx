@@ -38,6 +38,7 @@ import {
 import type { SavedQuiz } from '@/pages/student/savedItems';
 import type { SavedExam } from '@/pages/teacher/assessmentStorage';
 import { Users } from '@/pages/staff/Users';
+import { AdminDashboard } from '@/pages/staff/AdminDashboard';
 import { Settings } from '@/pages/Settings';
 import {
   DEFAULT_USER_SETTINGS,
@@ -54,7 +55,7 @@ import type { Page, Role } from '@/types';
 const allowedPages: Record<Role, Page[]> = {
   lecturer: ['dashboard', 'classes', 'schedule', 'lessons', 'lesson-builder', 'question-bank', 'saved-assignments', 'exams', 'exam-monitor', 'ai-grading', 'ai-chat', 'analytics', 'saved', 'feedback', 'profile', 'settings'],
   student: ['dashboard', 'schedule', 'my-classes', 'assignments', 'ai-learning', 'ai-chat', 'ai-practice', 'my-results', 'leaderboard', 'saved', 'feedback', 'profile', 'online-exams', 'settings'],
-  admin: ['dashboard', 'users', 'lectures', 'analytics', 'settings'],
+  admin: ['dashboard', 'admin-years', 'admin-classes', 'admin-subjects', 'admin-assignments', 'users', 'admin-storage', 'analytics', 'settings'],
 };
 
 const teacherPageByPath: Record<string, Page> = {
@@ -77,6 +78,7 @@ const teacherPageByPath: Record<string, Page> = {
 function App() {
   const [role, setRole] = useState<Role | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [adminSchoolId, setAdminSchoolId] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -548,7 +550,9 @@ function App() {
             <>
               {activePage === 'dashboard' && (role === 'lecturer'
                 ? <TeacherDashboard userName={authUser.fullName} userGender={authUser.gender} onNavigate={navigateToPage} onAskAI={askTeacherAI} />
-                : <Dashboard onNavigate={navigateToPage} role={role} />)}
+                : role === 'admin'
+                  ? <AdminDashboard page="dashboard" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />
+                  : <Dashboard onNavigate={navigateToPage} role={role} />)}
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
               {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} initialConversationId={initialChatConversationId ?? undefined} />}
@@ -597,8 +601,14 @@ function App() {
                   onInitialExamConsumed={() => setRoomExamSeed(null)}
                 />
               )}
-              {activePage === 'analytics' && role !== 'lecturer' && <Analytics role={role} />}
-              {activePage === 'lectures' && <Lectures role={role} />}
+              {activePage === 'analytics' && role === 'admin' && <AdminDashboard page="analytics" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {activePage === 'analytics' && role === 'student' && <Analytics role={role} />}
+              {activePage === 'lectures' && <Lectures />}
+              {role === 'admin' && activePage === 'admin-years' && <AdminDashboard page="admin-years" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {role === 'admin' && activePage === 'admin-classes' && <AdminDashboard page="admin-classes" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {role === 'admin' && activePage === 'admin-subjects' && <AdminDashboard page="admin-subjects" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {role === 'admin' && activePage === 'admin-assignments' && <AdminDashboard page="admin-assignments" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {role === 'admin' && activePage === 'admin-storage' && <AdminDashboard page="admin-storage" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
               {activePage === 'my-classes' && (
                 <MyClasses
                   studentUserId={authUser.id}
@@ -697,7 +707,8 @@ function App() {
                   isDemo={authUser.isDemo}
                 />
               )}
-              {activePage === 'users' && <Users currentUser={authUser} />}
+              {activePage === 'users' && role === 'admin' && <AdminDashboard page="users" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {activePage === 'users' && role !== 'admin' && <Users currentUser={authUser} />}
               {activePage === 'settings' && (
                 <Settings
                   user={authUser}

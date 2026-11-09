@@ -14,11 +14,14 @@ import {
   CircleAlert,
   FileText,
   Eye,
+  HardDrive,
   GraduationCap,
   CircleHelp,
   History,
   LayoutDashboard,
   LogOut,
+  Maximize,
+  Minimize,
   Menu as MenuIcon,
   MessageSquare,
   MessageSquareText,
@@ -70,6 +73,16 @@ function formatNotificationTime(value: string, language: AppLanguage) {
   return formatter.format(Math.round(hours / 24), 'day');
 }
 
+function getMobileDisplayName(value: string) {
+  const nameParts = value.trim().split(/\s+/).filter(Boolean);
+  if (nameParts.length === 0) return 'Người dùng';
+  const lastName = nameParts[nameParts.length - 1];
+  if (lastName.toLocaleLowerCase('vi') === 'anh' && nameParts.length > 1) {
+    return nameParts.slice(-2).join(' ');
+  }
+  return lastName;
+}
+
 interface SidebarProps {
   current: Page;
   onNavigate: (page: Page) => void;
@@ -117,6 +130,11 @@ const menuIcons: Record<Page, LucideIcon> = {
   profile: UserRound,
   'practice-history': History,
   'online-exams': DoorOpen,
+  'admin-years': CalendarDays,
+  'admin-classes': GraduationCap,
+  'admin-subjects': BookOpen,
+  'admin-assignments': ClipboardList,
+  'admin-storage': HardDrive,
 };
 
 interface MenuItem {
@@ -178,10 +196,20 @@ const menus: Record<Role, MenuSection[]> = {
     ] },
   ],
   admin: [
-    { label: 'Điều hướng', items: [
+    { label: 'Tổng quan', items: [
       { id: 'dashboard', label: 'Tổng quan' },
-      { id: 'users', label: 'Quản lý người dùng' },
-      { id: 'lectures', label: 'Quản lý lưu trữ hệ thống' },
+    ] },
+    { label: 'Quản lý trường học', items: [
+      { id: 'admin-years', label: 'Năm học' },
+      { id: 'admin-classes', label: 'Lớp học' },
+      { id: 'admin-subjects', label: 'Môn học' },
+      { id: 'admin-assignments', label: 'Phân công giảng dạy' },
+    ] },
+    { label: 'Quản lý tài khoản', items: [
+      { id: 'users', label: 'Người dùng' },
+    ] },
+    { label: 'Hệ thống', items: [
+      { id: 'admin-storage', label: 'Lưu trữ hệ thống' },
       { id: 'analytics', label: 'Thống kê hệ thống' },
     ] },
   ],
@@ -217,6 +245,11 @@ const englishMenuLabels: Partial<Record<Page, string>> = {
   profile: 'Profile',
   'practice-history': 'Practice History',
   'online-exams': 'Exam Rooms',
+  'admin-years': 'Academic Years',
+  'admin-classes': 'Classes',
+  'admin-subjects': 'Subjects',
+  'admin-assignments': 'Teaching Assignments',
+  'admin-storage': 'System Storage',
 };
 
 const englishSectionLabels: Record<string, string> = {
@@ -230,6 +263,9 @@ const englishSectionLabels: Record<string, string> = {
   'Kết quả': 'Results',
   'Tiện ích': 'Tools',
   'Điều hướng': 'Navigation',
+  'Quản lý trường học': 'School Management',
+  'Quản lý tài khoản': 'Account Management',
+  'Hệ thống': 'System',
 };
 
 function menuLabel(language: AppLanguage, page: Page, fallback: string) {
@@ -442,7 +478,7 @@ export function MobileNav({ current, onNavigate, role, userId, language = 'vi' }
   const [menuOpen, setMenuOpen] = useState(false);
   const newMenuBadges = useNewMenuBadges(role, userId, current);
   const mobilePageIds: Record<Role, Page[]> = {
-    admin: ['dashboard', 'users', 'lectures', 'analytics'],
+    admin: ['dashboard', 'admin-classes', 'users', 'analytics'],
     lecturer: ['dashboard', 'schedule', 'classes', 'lesson-builder', 'exams'],
     student: ['dashboard', 'schedule', 'my-classes', 'ai-learning'],
   };
@@ -555,10 +591,41 @@ export function TopBar({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const isStudent = role === 'student';
   const isLecturer = role === 'lecturer';
   const isFullWidthBar = isStudent || isLecturer;
   const displayName = userName || (language === 'en' ? 'User' : 'Người dùng');
+
+  useEffect(() => {
+    const updateFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        showToast(
+          language === 'en'
+            ? 'Fullscreen is unavailable in this browser. Open EduFlow in Chrome or Safari.'
+            : 'Trình duyệt này không hỗ trợ toàn màn hình. Hãy mở EduFlow bằng Chrome hoặc Safari.',
+          'info',
+        );
+      }
+    } catch {
+      showToast(
+        language === 'en'
+          ? 'Could not change fullscreen mode. Try opening EduFlow in Chrome or Safari.'
+          : 'Không thể đổi chế độ toàn màn hình. Hãy thử mở EduFlow bằng Chrome hoặc Safari.',
+        'info',
+      );
+    }
+  };
   const studentSearchItems: { label: string; detail: string; page?: Page; subjectCode?: string; action?: 'resources' | 'assignments' }[] = [
     ...[
       ['Toán học', 'TOAN10'],
@@ -689,8 +756,25 @@ export function TopBar({
             <CircleHelp className="h-5 w-5" aria-hidden="true" />
           </button>
         )}
+        {isFullWidthBar && (
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            aria-label={language === 'en'
+              ? isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'
+              : isFullscreen ? 'Thoát toàn màn hình' : 'Bật toàn màn hình'}
+            title={language === 'en'
+              ? isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'
+              : isFullscreen ? 'Thoát toàn màn hình' : 'Bật toàn màn hình'}
+            className="rounded-lg p-1.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:hidden"
+          >
+            {isFullscreen
+              ? <Minimize className="h-5 w-5" aria-hidden="true" />
+              : <Maximize className="h-5 w-5" aria-hidden="true" />}
+          </button>
+        )}
         <div className="group relative">
-          <button type="button" aria-haspopup="menu" className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+          <button type="button" aria-haspopup="menu" className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             {avatarUrl ? (
               <img src={avatarUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
             ) : (
@@ -699,7 +783,9 @@ export function TopBar({
               </span>
             )}
             <span className="hidden max-w-[120px] truncate text-sm font-semibold text-slate-700 sm:inline">{displayName}</span>
-            <span className="text-xs font-semibold text-slate-400 sm:hidden">{roleInitials[role]}</span>
+            <span className="max-w-[5rem] truncate text-xs font-semibold text-slate-600 sm:hidden">
+              {isStudent ? getMobileDisplayName(displayName) : roleInitials[role]}
+            </span>
             <span aria-hidden="true" className="text-xs text-slate-400">⌄</span>
           </button>
           <div role="menu" className="invisible absolute right-0 top-full z-50 mt-1 w-52 translate-y-1 rounded-xl border border-slate-200 bg-white p-1.5 opacity-0 shadow-lg transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
