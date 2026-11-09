@@ -584,8 +584,8 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
   };
 
   return (
-    <div className="student-dashboard-scale space-y-3 pb-4">
-      <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,2.1fr)_minmax(300px,1fr)]">
+    <div className="student-dashboard-scale w-full min-w-0 max-w-full space-y-3 overflow-x-clip pb-4">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-3 lg:grid-cols-[minmax(0,2.1fr)_minmax(300px,1fr)]">
         <div className="min-w-0 space-y-3">
           <section className="relative isolate min-h-[310px] overflow-hidden rounded-2xl border border-blue-300 bg-blue-700 p-4 text-white shadow-lg shadow-blue-900/20 sm:min-h-[326px] sm:p-5">
             <img
@@ -643,7 +643,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
             </div>
           </section>
 
-          <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.85fr)]">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.85fr)]">
             <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-blue-600" />Bài tập &amp; kiểm tra sắp tới</h2>
@@ -791,15 +791,15 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
           </div>
         </div>
 
-        <aside className="flex flex-col gap-3">
-          <section className="flex h-[15rem] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <aside className="flex min-w-0 flex-col gap-3">
+          <section className="flex h-[15rem] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="flex items-center gap-2 border-b border-slate-100 pb-3 text-sm font-bold text-slate-900">
               <Clock3 className="h-4 w-4 text-blue-600" /> Cần chú ý
             </h2>
             <div className="mt-3 flex min-h-0 flex-1 flex-col">
               {attentionItems.length > 0 ? (
                 <div
-                  className="flex min-h-0 flex-1 flex-col"
+                  className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
                   onMouseEnter={() => attentionCycle.setPaused(true)}
                   onMouseLeave={() => attentionCycle.setPaused(false)}
                   onFocus={() => attentionCycle.setPaused(true)}
@@ -807,11 +807,11 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                     if (!event.currentTarget.contains(event.relatedTarget)) attentionCycle.setPaused(false);
                   }}
                 >
-                  <div key={attentionCycle.page} className="dashboard-cycle-enter min-h-28 space-y-2">
+                  <div key={attentionCycle.page} className="dashboard-cycle-enter min-h-28 w-full min-w-0 space-y-2">
                     {attentionItems.slice(attentionCycle.page * 2, attentionCycle.page * 2 + 2).map((item) => {
                       const Icon = item.Icon;
                       return (
-                        <button key={item.id} type="button" onClick={item.onClick} className={`flex min-h-[3.25rem] w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition ${item.cardClass}`}>
+                        <button key={item.id} type="button" onClick={item.onClick} className={`flex min-h-[3.25rem] w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl border p-2.5 text-left transition ${item.cardClass}`}>
                           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white ${item.iconClass}`}><Icon className="h-4 w-4" /></span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[0.6875rem] font-bold text-slate-900">{item.title}</span>
@@ -845,7 +845,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
             </div>
           </section>
 
-          <section className="flex h-[17rem] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="flex h-[17rem] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" />Lịch ngày mai - {tomorrow.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</h2>
               <button type="button" onClick={() => onNavigate('schedule')} className="shrink-0 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
