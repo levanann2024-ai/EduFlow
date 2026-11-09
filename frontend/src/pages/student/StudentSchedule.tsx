@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Sparkles } from 'lucide-react';
+import { BookOpen, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Pencil, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -158,10 +158,10 @@ function noteKey(studentId: string, weekStart: string) {
 function loadSavedPlan(key: string) {
   try {
     const stored = localStorage.getItem(key);
-    if (!stored) return { freeTime: '', busyTime: '', suggestion: '', completedPriorities: [], error: '' };
+    if (!stored) return { freeTime: '', busyTime: '', suggestion: '', completedPriorities: [], remainingTimeIsFree: false, error: '' };
     const parsed: unknown = JSON.parse(stored);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { freeTime: '', busyTime: '', suggestion: '', completedPriorities: [], error: 'Ghi chú đã lưu không đúng định dạng.' };
+      return { freeTime: '', busyTime: '', suggestion: '', completedPriorities: [], remainingTimeIsFree: false, error: 'Ghi chú đã lưu không đúng định dạng.' };
     }
     const value = parsed as {
       availability?: unknown;
@@ -169,6 +169,7 @@ function loadSavedPlan(key: string) {
       busyTime?: unknown;
       suggestion?: unknown;
       completedPriorities?: unknown;
+      remainingTimeIsFree?: unknown;
     };
     return {
       freeTime: typeof value.freeTime === 'string'
@@ -181,6 +182,7 @@ function loadSavedPlan(key: string) {
           typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 3
         ))
         : [],
+      remainingTimeIsFree: value.remainingTimeIsFree === true,
       error: '',
     };
   } catch {
@@ -189,6 +191,7 @@ function loadSavedPlan(key: string) {
       busyTime: '',
       suggestion: '',
       completedPriorities: [],
+      remainingTimeIsFree: false,
       error: 'Không thể đọc kế hoạch đã lưu trên thiết bị này.',
     };
   }
@@ -200,8 +203,12 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
   const [scheduleData, setScheduleData] = useState<StudentTimetableResponse | null>(null);
   const [freeTime, setFreeTime] = useState('');
   const [busyTime, setBusyTime] = useState('');
+  const [remainingTimeIsFree, setRemainingTimeIsFree] = useState(false);
   const [suggestion, setSuggestion] = useState('');
   const [completedPriorities, setCompletedPriorities] = useState<number[]>([]);
+  const [editingPlanSection, setEditingPlanSection] = useState<'priorities' | 'timeline' | null>(null);
+  const [priorityDraft, setPriorityDraft] = useState<StudentSchedulePlan['priorities'] | null>(null);
+  const [timelineDraft, setTimelineDraft] = useState<StudentSchedulePlan['timeline'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [planning, setPlanning] = useState(false);
   const [exportingCalendar, setExportingCalendar] = useState(false);
@@ -226,8 +233,12 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     const saved = loadSavedPlan(storageKey);
     setFreeTime(saved.freeTime);
     setBusyTime(saved.busyTime);
+    setRemainingTimeIsFree(saved.remainingTimeIsFree);
     setSuggestion(saved.suggestion);
     setCompletedPriorities(saved.completedPriorities);
+    setEditingPlanSection(null);
+    setPriorityDraft(null);
+    setTimelineDraft(null);
     setStorageError(saved.error);
   }, [storageKey]);
 
@@ -276,6 +287,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     nextBusyTime: string,
     nextSuggestion = suggestion,
     nextCompletedPriorities = completedPriorities,
+    nextRemainingTimeIsFree = remainingTimeIsFree,
   ) => {
     setStorageError('');
     try {
@@ -284,10 +296,71 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
         busyTime: nextBusyTime,
         suggestion: nextSuggestion,
         completedPriorities: nextCompletedPriorities,
+        remainingTimeIsFree: nextRemainingTimeIsFree,
       }));
     } catch {
       setStorageError('Không thể lưu ghi chú trên thiết bị này. Nội dung vẫn được giữ trong phiên hiện tại.');
     }
+  };
+  const cancelPlanSectionEdit = () => {
+    setEditingPlanSection(null);
+    setPriorityDraft(null);
+    setTimelineDraft(null);
+  };
+  const saveEditedPlan = (nextPlan: StudentSchedulePlan) => {
+    const nextSuggestion = JSON.stringify(nextPlan);
+    if (!parseStudentSchedulePlan(nextSuggestion)) {
+      setError('Nội dung chỉnh sửa chưa hợp lệ. Hãy kiểm tra lại rồi lưu.');
+      return;
+    }
+    setSuggestion(nextSuggestion);
+    savePlan(freeTime, busyTime, nextSuggestion, completedPriorities);
+    setError('');
+    cancelPlanSectionEdit();
+  };
+  const startEditingPriorities = () => {
+    if (!plan) return;
+    setPriorityDraft(plan.priorities.map((priority) => ({ ...priority })));
+    setTimelineDraft(null);
+    setEditingPlanSection('priorities');
+  };
+  const startEditingTimeline = () => {
+    if (!plan) return;
+    setTimelineDraft(plan.timeline.map((item) => ({ ...item })));
+    setPriorityDraft(null);
+    setEditingPlanSection('timeline');
+  };
+  const savePriorityDraft = () => {
+    if (!plan || !priorityDraft) return;
+    const priorities = priorityDraft.map((priority) => ({
+      ...priority,
+      task: priority.task.trim(),
+      reason: priority.reason.trim(),
+    }));
+    if (priorities.some((priority) => (
+      !priority.task || !Number.isInteger(priority.durationMinutes) || priority.durationMinutes < 1 || priority.durationMinutes > 600
+    ))) {
+      setError('Hãy nhập nội dung cho cả 3 ưu tiên và thời lượng từ 1 đến 600 phút.');
+      return;
+    }
+    saveEditedPlan({ ...plan, priorities });
+  };
+  const saveTimelineDraft = () => {
+    if (!plan || !timelineDraft) return;
+    if (timelineDraft.length > 28 || timelineDraft.some((item) => (
+      item.weekday < 1 || item.weekday > 7
+      || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.startTime)
+      || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.endTime)
+      || item.startTime >= item.endTime
+      || !item.activity.trim()
+    ))) {
+      setError('Hãy kiểm tra ngày, giờ và nội dung hoạt động; mỗi khung giờ cần kết thúc sau giờ bắt đầu.');
+      return;
+    }
+    saveEditedPlan({
+      ...plan,
+      timeline: timelineDraft.map((item) => ({ ...item, activity: item.activity.trim() })),
+    });
   };
   const updateAvailability = (field: 'free' | 'busy', value: string) => {
     const nextFreeTime = field === 'free' ? value : freeTime;
@@ -296,7 +369,13 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     setBusyTime(nextBusyTime);
     setSuggestion('');
     setCompletedPriorities([]);
-    savePlan(nextFreeTime, nextBusyTime, '', []);
+    savePlan(nextFreeTime, nextBusyTime, '', [], remainingTimeIsFree);
+  };
+  const updateRemainingTimeRule = (checked: boolean) => {
+    setRemainingTimeIsFree(checked);
+    setSuggestion('');
+    setCompletedPriorities([]);
+    savePlan(freeTime, busyTime, '', [], checked);
   };
   const moveWeek = (direction: -1 | 1) => {
     setWeekStart((current) => addDays(current, direction * 7));
@@ -318,13 +397,14 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
         weekStart: weekStartKey,
         tomorrowWeekday,
         availability,
+        remainingTimeIsFree,
       });
       if (!parseStudentSchedulePlan(result)) {
         throw new Error('AI chưa tạo được kế hoạch đúng định dạng. Bạn thử tạo lại nhé.');
       }
       setSuggestion(result);
       setCompletedPriorities([]);
-      savePlan(freeTime, busyTime, result, []);
+      savePlan(freeTime, busyTime, result, [], remainingTimeIsFree);
     } catch (requestError: unknown) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể tạo kế hoạch học tập.');
     } finally {
@@ -556,6 +636,20 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               />
             </label>
           </div>
+          <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-blue-100 bg-white/80 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={remainingTimeIsFree}
+              onChange={(event) => updateRemainingTimeRule(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-800">Thời gian chưa ghi là rảnh</span>
+              <span className="mt-0.5 block text-xs leading-5 text-slate-500">
+                Khi bật, AI sẽ xét cả tuần, trừ khung bận và giờ học đã biết.
+              </span>
+            </span>
+          </label>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <span></span>
             <span className="rounded-full bg-white/70 px-2.5 py-1 font-medium text-slate-500">{availability.length}/4000</span>
@@ -571,23 +665,8 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               <div aria-hidden="true" className="h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 via-violet-500 to-fuchsia-400" />
               <div className="relative overflow-hidden p-4 sm:p-6">
                 <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-violet-100/70 blur-2xl" />
-                <div className="relative flex flex-wrap items-center justify-between gap-3 border-b border-indigo-100/80 pb-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-amber-100 to-fuchsia-100 text-indigo-700">
-                      <BookOpen className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <h3 className="text-lg font-bold tracking-tight text-slate-900">Lộ trình tuần của bạn</h3>
-                      <p className="mt-0.5 text-xs text-slate-500">Chia nhỏ việc cần làm để mỗi ngày đều vừa sức</p>
-                    </div>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-indigo-50 to-fuchsia-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
-                    <Sparkles className="h-3.5 w-3.5 text-fuchsia-500" />
-                    Gợi ý dành riêng cho bạn
-                  </span>
-                </div>
                 {plan ? (
-                  <div className="relative mt-5 space-y-6">
+                  <div className="relative space-y-6">
                     <p className="rounded-2xl bg-gradient-to-r from-indigo-50 via-sky-50 to-fuchsia-50 px-4 py-3 text-sm leading-6 text-indigo-900 ring-1 ring-indigo-100">
                       {plan.overview}
                     </p>
@@ -632,59 +711,197 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                           {completedPriorities.length}/3 hoàn thành
                         </span>
                       </div>
-                      <div className="grid gap-3 md:grid-cols-3">
-                        {plan.priorities.map((priority, index) => {
-                          const category = priorityCards[index];
-                          const isComplete = completedPriorities.includes(index);
-                          return (
-                            <article
-                              key={`${index}-${priority.task}`}
-                              className={`rounded-2xl border p-4 shadow-sm transition ${category.cardStyle} ${isComplete ? 'opacity-75' : 'hover:-translate-y-0.5 hover:shadow-md'}`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                                  <span className={`grid h-6 w-6 place-items-center rounded-full text-xs ${category.numberStyle}`}>{index + 1}</span>
-                                  {category.label}
-                                </span>
-                                <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600">
-                                  <input
-                                    type="checkbox"
-                                    checked={isComplete}
-                                    onChange={() => togglePriority(index)}
-                                    aria-label={`Đánh dấu hoàn thành: ${priority.task}`}
-                                    className="h-4 w-4 accent-indigo-600"
-                                  />
-                                  <span>{isComplete ? 'Đã xong' : 'Hoàn thành'}</span>
-                                </label>
-                              </div>
-                              <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[0.6875rem] font-bold ${category.badgeStyle}`}>
-                                {category.badge}
-                              </span>
-                              <h5 className={`mt-2 font-bold leading-6 text-slate-900 ${isComplete ? 'line-through decoration-slate-400' : ''}`}>
-                                {priority.task}
-                              </h5>
-                              <p className="mt-1 text-xs leading-5 text-slate-600">{priority.reason}</p>
-                              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                                <Clock3 className="h-3.5 w-3.5 text-indigo-500" />
-                                {priority.durationMinutes} phút dự kiến
-                              </div>
+                      {editingPlanSection === 'priorities' && priorityDraft ? (
+                        <div className="grid gap-3 md:grid-cols-3">
+                          {priorityDraft.map((priority, index) => (
+                            <article key={index} className={`space-y-3 rounded-2xl border p-4 ${priorityCards[index].cardStyle}`}>
+                              <p className="text-xs font-bold text-slate-700">{priorityCards[index].label}</p>
+                              <label className="block text-xs font-semibold text-slate-600">
+                                Việc cần làm
+                                <input
+                                  value={priority.task}
+                                  onChange={(event) => setPriorityDraft((current) => current?.map((item, itemIndex) => (
+                                    itemIndex === index ? { ...item, task: event.target.value } : item
+                                  )) ?? null)}
+                                  maxLength={240}
+                                  className="input-field mt-1 text-sm font-normal"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-slate-600">
+                                Ghi chú
+                                <textarea
+                                  value={priority.reason}
+                                  onChange={(event) => setPriorityDraft((current) => current?.map((item, itemIndex) => (
+                                    itemIndex === index ? { ...item, reason: event.target.value } : item
+                                  )) ?? null)}
+                                  maxLength={500}
+                                  rows={3}
+                                  className="input-field mt-1 resize-y text-sm font-normal"
+                                />
+                              </label>
+                              <label className="block text-xs font-semibold text-slate-600">
+                                Thời lượng (phút)
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={600}
+                                  step={5}
+                                  value={priority.durationMinutes}
+                                  onChange={(event) => setPriorityDraft((current) => current?.map((item, itemIndex) => (
+                                    itemIndex === index ? { ...item, durationMinutes: Number(event.target.value) } : item
+                                  )) ?? null)}
+                                  className="input-field mt-1 text-sm font-normal"
+                                />
+                              </label>
                             </article>
-                          );
-                        })}
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-3">
+                          {plan.priorities.map((priority, index) => {
+                            const category = priorityCards[index];
+                            const isComplete = completedPriorities.includes(index);
+                            return (
+                              <article
+                                key={`${index}-${priority.task}`}
+                                className={`rounded-2xl border p-4 shadow-sm transition ${category.cardStyle} ${isComplete ? 'opacity-75' : 'hover:-translate-y-0.5 hover:shadow-md'}`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                                    <span className={`grid h-6 w-6 place-items-center rounded-full text-xs ${category.numberStyle}`}>{index + 1}</span>
+                                    {category.label}
+                                  </span>
+                                  <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600">
+                                    <input
+                                      type="checkbox"
+                                      checked={isComplete}
+                                      onChange={() => togglePriority(index)}
+                                      aria-label={`Đánh dấu hoàn thành: ${priority.task}`}
+                                      className="h-4 w-4 accent-indigo-600"
+                                    />
+                                    <span>{isComplete ? 'Đã xong' : 'Hoàn thành'}</span>
+                                  </label>
+                                </div>
+                                <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[0.6875rem] font-bold ${category.badgeStyle}`}>
+                                  {category.badge}
+                                </span>
+                                <h5 className={`mt-2 font-bold leading-6 text-slate-900 ${isComplete ? 'line-through decoration-slate-400' : ''}`}>
+                                  {priority.task}
+                                </h5>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">{priority.reason}</p>
+                                <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                  <Clock3 className="h-3.5 w-3.5 text-indigo-500" />
+                                  {priority.durationMinutes} phút dự kiến
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="mt-3 flex justify-end gap-2">
+                        {editingPlanSection === 'priorities' ? (
+                          <>
+                            <button type="button" onClick={cancelPlanSectionEdit} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                              <X className="h-4 w-4" /> Hủy
+                            </button>
+                            <button type="button" onClick={savePriorityDraft} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700">
+                              <Save className="h-4 w-4" /> Lưu
+                            </button>
+                          </>
+                        ) : editingPlanSection === null ? (
+                          <button type="button" onClick={startEditingPriorities} aria-label="Sửa kế hoạch học tập ưu tiên" title="Sửa kế hoạch học tập ưu tiên" className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        ) : null}
                       </div>
                     </section>
 
                     <section>
-                      <div className="mb-3 flex items-center gap-2">
-                        <span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-100 text-indigo-700">
-                          <CalendarDays className="h-4 w-4" />
-                        </span>
-                        <div>
-                          <h4 className="font-bold text-slate-900">Lịch cá nhân</h4>
-                          <p className="text-xs text-slate-500">Các khung giờ và hoạt động theo ngày</p>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-100 text-indigo-700">
+                            <CalendarDays className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <h4 className="font-bold text-slate-900">Lịch cá nhân</h4>
+                            <p className="text-xs text-slate-500">Các khung giờ và hoạt động theo ngày</p>
+                          </div>
                         </div>
                       </div>
-                      {plan.timeline.length ? (
+                      {editingPlanSection === 'timeline' && timelineDraft ? (
+                        <div className="space-y-3">
+                          {timelineDraft.map((item, index) => (
+                            <article key={`${index}-${item.weekday}`} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(120px,0.7fr)_minmax(110px,0.6fr)_minmax(110px,0.6fr)_minmax(200px,1.5fr)_auto]">
+                                <label className="text-xs font-semibold text-slate-600">
+                                  Ngày
+                                  <select
+                                    value={item.weekday}
+                                    onChange={(event) => setTimelineDraft((current) => current?.map((entry, entryIndex) => (
+                                      entryIndex === index ? { ...entry, weekday: Number(event.target.value) } : entry
+                                    )) ?? null)}
+                                    className="input-field mt-1 text-sm font-normal"
+                                  >
+                                    {planWeekdays.slice(1).map((day, dayIndex) => <option key={day} value={dayIndex + 1}>{day}</option>)}
+                                  </select>
+                                </label>
+                                <label className="text-xs font-semibold text-slate-600">
+                                  Bắt đầu
+                                  <input
+                                    type="time"
+                                    value={item.startTime}
+                                    onChange={(event) => setTimelineDraft((current) => current?.map((entry, entryIndex) => (
+                                      entryIndex === index ? { ...entry, startTime: event.target.value } : entry
+                                    )) ?? null)}
+                                    className="input-field mt-1 text-sm font-normal"
+                                  />
+                                </label>
+                                <label className="text-xs font-semibold text-slate-600">
+                                  Kết thúc
+                                  <input
+                                    type="time"
+                                    value={item.endTime}
+                                    onChange={(event) => setTimelineDraft((current) => current?.map((entry, entryIndex) => (
+                                      entryIndex === index ? { ...entry, endTime: event.target.value } : entry
+                                    )) ?? null)}
+                                    className="input-field mt-1 text-sm font-normal"
+                                  />
+                                </label>
+                                <label className="text-xs font-semibold text-slate-600">
+                                  Hoạt động
+                                  <input
+                                    value={item.activity}
+                                    onChange={(event) => setTimelineDraft((current) => current?.map((entry, entryIndex) => (
+                                      entryIndex === index ? { ...entry, activity: event.target.value } : entry
+                                    )) ?? null)}
+                                    maxLength={240}
+                                    className="input-field mt-1 text-sm font-normal"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => setTimelineDraft((current) => current?.filter((_, entryIndex) => entryIndex !== index) ?? null)}
+                                  aria-label={`Xóa khung giờ ${index + 1}`}
+                                  title="Xóa khung giờ"
+                                  className="mt-1 grid h-10 w-10 place-items-center self-end rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setTimelineDraft((current) => current && current.length < 28
+                              ? [...current, { weekday: 1, startTime: '19:00', endTime: '19:45', activity: '', kind: 'study' }]
+                              : current)}
+                            disabled={timelineDraft.length >= 28}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Plus className="h-4 w-4" /> Thêm khung giờ
+                          </button>
+                        </div>
+                      ) : plan.timeline.length ? (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           {[...new Set(plan.timeline.map((item) => item.weekday))]
                             .sort((left, right) => left - right)
@@ -725,6 +942,22 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                           Chưa có khung giờ rảnh cụ thể để xếp timeline. Bạn thêm giờ rảnh vào ghi chú phía trên nhé.
                         </p>
                       )}
+                      <div className="mt-3 flex justify-end gap-2">
+                        {editingPlanSection === 'timeline' ? (
+                          <>
+                            <button type="button" onClick={cancelPlanSectionEdit} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                              <X className="h-4 w-4" /> Hủy
+                            </button>
+                            <button type="button" onClick={saveTimelineDraft} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700">
+                              <Save className="h-4 w-4" /> Lưu
+                            </button>
+                          </>
+                        ) : editingPlanSection === null ? (
+                          <button type="button" onClick={startEditingTimeline} aria-label="Sửa lịch cá nhân" title="Sửa lịch cá nhân" className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
                     </section>
                   </div>
                 ) : (

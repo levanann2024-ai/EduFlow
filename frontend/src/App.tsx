@@ -98,6 +98,7 @@ function App() {
   const [userSettingsError, setUserSettingsError] = useState('');
   const [studentChatSeed, setStudentChatSeed] = useState<{ subject: string; prompt: string } | null>(null);
   const [teacherChatPrompt, setTeacherChatPrompt] = useState('');
+  const [initialChatImage, setInitialChatImage] = useState<File | null>(null);
   const [practiceSeed, setPracticeSeed] = useState<SavedQuiz | null>(null);
   const [practiceTopicSeed, setPracticeTopicSeed] = useState<{ subject: string; topic: string } | null>(null);
   const [resourceSubjectSeed, setResourceSubjectSeed] = useState<string | null>(null);
@@ -201,6 +202,7 @@ function App() {
     if (nextPage !== 'ai-chat') {
       setStudentChatSeed(null);
       setTeacherChatPrompt('');
+      setInitialChatImage(null);
     }
     if (nextPage === 'ai-practice') setPracticeSeed(null);
     else setPracticeTopicSeed(null);
@@ -289,8 +291,15 @@ function App() {
     navigateToPage('ai-chat');
   };
 
-  const askTeacherAI = (prompt: string) => {
+  const askStudentDashboardAI = (prompt: string, image?: File) => {
+    setStudentChatSeed({ subject: '', prompt });
+    setInitialChatImage(image ?? null);
+    navigateToPage('ai-chat');
+  };
+
+  const askTeacherDashboardAI = (prompt: string, image?: File) => {
     setTeacherChatPrompt(prompt);
+    setInitialChatImage(image ?? null);
     navigateToPage('ai-chat');
   };
 
@@ -544,18 +553,18 @@ function App() {
               onNavigate={navigateToPage}
               onOpenResources={openSubjectResources}
               onOpenAssignments={openSubjectAssignments}
-              onAskAI={askStudentAI}
+              onAskAI={askStudentDashboardAI}
             />
           ) : (
             <>
               {activePage === 'dashboard' && (role === 'lecturer'
-                ? <TeacherDashboard userName={authUser.fullName} userGender={authUser.gender} onNavigate={navigateToPage} onAskAI={askTeacherAI} />
+                ? <TeacherDashboard userName={authUser.fullName} userGender={authUser.gender} onNavigate={navigateToPage} onAskAI={askTeacherDashboardAI} />
                 : role === 'admin'
                   ? <AdminDashboard page="dashboard" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />
                   : <Dashboard onNavigate={navigateToPage} role={role} />)}
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
-              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} initialConversationId={initialChatConversationId ?? undefined} />}
+              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} avatarUrl={userSettings.avatar} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} initialImage={initialChatImage} onInitialImageConsumed={() => setInitialChatImage(null)} initialConversationId={initialChatConversationId ?? undefined} />}
               {role === 'lecturer' && lessonsWorkspaceVisited && (
                 <div className={activePage === 'lessons' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
                   <LessonRepository initialDraft={lessonRepositoryDraft} />
@@ -579,6 +588,7 @@ function App() {
                 <ExamQuestionWorkspace
                   currentPage={activePage}
                   onNavigate={navigateToPage}
+                  questionBankOwnerEmail={authUser.email}
                   onCreateExamRoom={(exam) => {
                     setRoomExamSeed(exam);
                     navigateToPage('exam-monitor');

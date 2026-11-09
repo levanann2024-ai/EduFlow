@@ -3,6 +3,7 @@ const { test } = require('node:test');
 const {
   getTeacherTimetable,
   generateStudentTimetableSuggestion,
+  getStudentAvailabilityInstructions,
   mapTeacherClass,
   mergeTeacherExamRoomNotes,
   mapTeacherTimetableEntries,
@@ -261,6 +262,27 @@ test('teacher and student timetable operations reject cross-role access before d
     }),
     { code: 'SCHOOL_INVALID_STUDENT_PLAN' },
   );
+  await assert.rejects(
+    generateStudentTimetableSuggestion({ userId: 'student', role: 'student' }, {
+      semester: 'Kỳ 1',
+      weekStart: '2026-10-26',
+      tomorrowWeekday: 1,
+      availability: 'Thời gian bận: Thứ 3, 18:00-20:00',
+      remainingTimeIsFree: 'yes',
+    }),
+    { code: 'SCHOOL_INVALID_STUDENT_PLAN' },
+  );
+});
+
+test('student schedule availability instructions follow the selected remaining-time rule', () => {
+  const enabledInstructions = getStudentAvailabilityInstructions(true).join(' ');
+  assert.match(enabledInstructions, /kể cả ngày không được nhắc trong phần thời gian rảnh/);
+  assert.match(enabledInstructions, /khung bận đã ghi/);
+  assert.match(enabledInstructions, /07:00 đến 21:00/);
+
+  const disabledInstructions = getStudentAvailabilityInstructions(false).join(' ');
+  assert.match(disabledInstructions, /khung giờ rảnh được học sinh ghi rõ/);
+  assert.match(disabledInstructions, /không tự tạo khung giờ/);
 });
 
 test('student schedule plan validates and trims structured priorities and timeline items', () => {

@@ -2142,9 +2142,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                           <Edit3 className="h-4 w-4" /> Chỉnh sửa
                         </button>
                       </div>
-                      <div className="mt-6 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-base leading-7 text-slate-700">
-                        {selectedReviewAssignment.description}
-                      </div>
+                      <MathText
+                        text={selectedReviewAssignment.description}
+                        className="mt-6 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-base leading-7 text-slate-700"
+                      />
                     </>
                   )}
                 </div>
@@ -2315,7 +2316,12 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                     </div>
                   ) : (
                     <>
-                      {selectedReviewResource.note && <p className="mb-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-900">{selectedReviewResource.note}</p>}
+                      {selectedReviewResource.note && (
+                        <MathText
+                          text={selectedReviewResource.note}
+                          className="mb-5 rounded-xl bg-blue-50 p-4 text-sm text-blue-900"
+                        />
+                      )}
                       {selectedReviewResource.files[0] && (
                         <section className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <h2 className="break-all text-sm font-semibold text-slate-800">{selectedReviewResource.files[0].name}</h2>
@@ -2335,7 +2341,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                         </section>
                       )}
                       {selectedReviewResource.content
-                        ? <section className="whitespace-pre-wrap text-base leading-7 text-slate-700">{selectedReviewResource.content}</section>
+                        ? <MathText text={selectedReviewResource.content} className="whitespace-pre-wrap text-base leading-7 text-slate-700" />
                         : !selectedReviewResource.files.length && <p className="text-sm text-slate-500">Bài giảng chưa có nội dung.</p>}
                     </>
                   )}

@@ -73,11 +73,13 @@ export function ExamQuestionWorkspace({
   onNavigate,
   onAssignAssignment,
   onCreateExamRoom,
+  questionBankOwnerEmail,
 }: {
   currentPage: Page;
   onNavigate: (page: Page) => void;
   onAssignAssignment: (draft: { title: string; subject: string; content: string }) => void;
   onCreateExamRoom: (exam: SavedExam) => void;
+  questionBankOwnerEmail: string;
 }) {
   return (
     <div className="space-y-4">
@@ -94,7 +96,7 @@ export function ExamQuestionWorkspace({
         {(activePage) => (
           <>
             {activePage === 'question-bank'
-              ? <QuestionBank />
+              ? <QuestionBank ownerEmail={questionBankOwnerEmail} />
               : activePage === 'saved-assignments'
                 ? <AssignmentManagement onAssignToClass={onAssignAssignment} />
                 : <ExamManagement onCreateExamRoom={onCreateExamRoom} />}

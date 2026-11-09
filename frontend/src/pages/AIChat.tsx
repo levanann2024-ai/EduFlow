@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ArrowLeft, Camera, Star, Mic, MicOff, PanelLeftClose, PanelLeftOpen, Paperclip, Plus, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-react';
 import type { ChatMessage, Role } from '@/types';
 import { useSavedItems } from '@/pages/student/savedItems';
@@ -7,7 +7,7 @@ import { authenticatedFetch } from '@/auth/authApi';
 import type { AuthUser } from '@/auth/authApi';
 import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
-import { readExplanationStyle } from '@/settings/userSettings';
+import { readExplanationStyle, readUserSettings, saveUserSettings, type ExplanationStyle } from '@/settings/userSettings';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
 import 'katex/dist/katex.min.css';
 
@@ -406,6 +406,7 @@ function ChatImageAttachment({ imagePath, previewUrl, imageName }: {
 function ChatMessageList({
   messages,
   role,
+  userAvatar,
   userInitials,
   thinking,
   savedAnswerIds,
@@ -415,6 +416,7 @@ function ChatMessageList({
 }: {
   messages: ChatMessage[];
   role: Role;
+  userAvatar: string;
   userInitials: string;
   thinking: boolean;
   savedAnswerIds: Set<string>;
@@ -437,9 +439,7 @@ function ChatMessageList({
           </p>
         )}
         <div className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${message.role === 'user' ? 'bg-slate-700' : 'bg-blue-600'}`}>
-            {message.role === 'user' ? <span className="text-xs font-semibold text-white">{userInitials}</span> : <Sparkles className="h-4 w-4 text-white" />}
-          </div>
+          <ChatAvatar role={message.role} userAvatar={userAvatar} userInitials={userInitials} />
           <div className={`relative max-w-[85%] sm:max-w-[75%] ${message.role === 'user' ? 'text-right' : ''}`}>
             <div className={`inline-block rounded-2xl px-4 py-3 text-left text-sm leading-relaxed ${message.role === 'user' ? 'bg-blue-600 text-white chat-user-markdown' : 'border border-slate-200 bg-slate-50 text-slate-700 markdown-body'}`}>
               {role === 'student' && message.role === 'assistant' && messageIndex > 0 && (
@@ -480,9 +480,7 @@ function ChatMessageList({
       })}
       {thinking && (
         <div className="flex gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600">
-            <Sparkles className="h-4 w-4 animate-pulse text-white" />
-          </div>
+          <ChatAvatar role="assistant" userAvatar={userAvatar} userInitials={userInitials} animate />
           <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" aria-label="EduBot đang trả lời">
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
             <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
@@ -495,7 +493,46 @@ function ChatMessageList({
   );
 }
 
-export function AIChat({ role, userName, userId, studentId, gender, initialSubject, initialPrompt, initialConversationId, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; initialConversationId?: string; onExit?: () => void; isDemo?: boolean }) {
+function ChatAvatar({
+  role,
+  userAvatar,
+  userInitials,
+  animate = false,
+}: {
+  role: ChatMessage['role'];
+  userAvatar: string;
+  userInitials: string;
+  animate?: boolean;
+}) {
+  const imageUrl = role === 'user' ? userAvatar : '/eduflow-mark.png';
+  const [failedImageUrl, setFailedImageUrl] = useState('');
+  const isUser = role === 'user';
+
+  return (
+    <div
+      role="img"
+      aria-label={isUser ? 'Ảnh đại diện người dùng' : 'EduBot'}
+      className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl ${
+        isUser ? 'bg-blue-100 text-blue-700' : 'border border-blue-100 bg-white'
+      }`}
+    >
+      {imageUrl && failedImageUrl !== imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          onError={() => setFailedImageUrl(imageUrl)}
+          className="h-full w-full object-cover"
+        />
+      ) : isUser ? (
+        <span className="text-xs font-bold">{userInitials}</span>
+      ) : (
+        <Sparkles className={`h-4 w-4 text-blue-600 ${animate ? 'animate-pulse' : ''}`} aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gender, initialSubject, initialPrompt, initialImage, onInitialImageConsumed, initialConversationId, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; avatarUrl?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; initialImage?: File | null; onInitialImageConsumed?: () => void; initialConversationId?: string; onExit?: () => void; isDemo?: boolean }) {
   const userInitials = userName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase('vi');
   const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages(role, gender));
   const [input, setInput] = useState(initialPrompt ?? '');
@@ -505,6 +542,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
   const cancelSpeech = speech.cancel;
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState('');
+  const [explanationStyle, setExplanationStyle] = useState<ExplanationStyle>('concise');
   const [subject, setSubject] = useState(initialSubject ?? '');
   const [conversations, setConversations] = useState<ChatConversationSummary[]>([]);
   const [historyError, setHistoryError] = useState('');
@@ -526,13 +564,23 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
   }, [role, cancelSpeech]);
 
   useEffect(() => {
+    if (role !== 'student' || !userId) return;
+    const result = readExplanationStyle(userId, role);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setExplanationStyle(result.style);
+  }, [role, userId]);
+
+  useEffect(() => {
     const desktopViewport = window.matchMedia('(min-width: 768px)');
     const syncHistoryVisibility = () => setHistoryOpen(desktopViewport.matches);
     desktopViewport.addEventListener('change', syncHistoryVisibility);
     return () => desktopViewport.removeEventListener('change', syncHistoryVisibility);
   }, []);
 
-  const handleImageSelection = (file?: File) => {
+  const handleImageSelection = useCallback((file?: File) => {
     if (!file) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
       setError('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.');
@@ -553,7 +601,13 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
     };
     reader.onerror = () => setError('Không thể đọc ảnh đã chọn.');
     reader.readAsDataURL(file);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!initialImage) return;
+    handleImageSelection(initialImage);
+    onInitialImageConsumed?.();
+  }, [handleImageSelection, initialImage, onInitialImageConsumed]);
 
   const handlePasteImage = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const imageItem = Array.from(event.clipboardData.items)
@@ -761,6 +815,25 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
     }
   };
 
+  const updateExplanationStyle = (style: ExplanationStyle) => {
+    if (!userId) {
+      setError('Không thể xác định tài khoản để lưu thiết lập AI.');
+      return;
+    }
+    const result = readUserSettings(userId, role);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    try {
+      saveUserSettings(userId, { ...result.settings, explanationStyle: style }, role);
+      setExplanationStyle(style);
+      setError('');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không thể lưu thiết lập AI trên thiết bị này.');
+    }
+  };
+
   const handleToggleBookmark = async (message: ChatMessage, messageIndex: number) => {
     const id = `answer-${message.id}`;
     setBookmarkBusy(true);
@@ -861,7 +934,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
             </button>
           </header>
 
-          <ChatMessageList messages={messages} role={role} userInitials={userInitials} thinking={thinking} savedAnswerIds={savedAnswerIds} bookmarkDisabled={bookmarkBusy || saved.loading || Boolean(saved.error)} onBookmark={handleToggleBookmark} endRef={endRef} />
+          <ChatMessageList messages={messages} role={role} userAvatar={avatarUrl} userInitials={userInitials} thinking={thinking} savedAnswerIds={savedAnswerIds} bookmarkDisabled={bookmarkBusy || saved.loading || Boolean(saved.error)} onBookmark={handleToggleBookmark} endRef={endRef} />
 
           {error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{error}</p>}
           {saved.error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{saved.error}</p>}
@@ -876,28 +949,43 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
                 </button>
               </div>
             )}
-            <div className="flex items-end gap-2">
-              <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
-              <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
-              <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label="Đính kèm ảnh" title="Chọn ảnh hoặc dán ảnh" className="shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
-                <Paperclip className="h-5 w-5" />
-              </button>
-              <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
-                <Camera className="h-5 w-5" />
-              </button>
-              <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onPaste={handlePasteImage}
-                onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleSend(); } }}
-                placeholder="Nhập câu hỏi hoặc dán ảnh..."
-                rows={1}
-                className="max-h-32 min-w-0 flex-1 resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-              />
-              <SpeechButton speech={speech} disabled={thinking} />
-              <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-                Gửi <Send className="h-4 w-4" />
-              </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex min-w-0 items-end gap-2 sm:flex-1">
+                <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
+                <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
+                <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label="Đính kèm ảnh" title="Chọn ảnh hoặc dán ảnh" className="shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+                  <Paperclip className="h-5 w-5" />
+                </button>
+                <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+                  <Camera className="h-5 w-5" />
+                </button>
+                <textarea
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onPaste={handlePasteImage}
+                  onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleSend(); } }}
+                  placeholder="Nhập câu hỏi hoặc dán ảnh..."
+                  rows={1}
+                  className="max-h-32 min-w-0 flex-1 resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div className="flex shrink-0 items-center justify-end gap-2">
+                <select
+                  aria-label="Chế độ trả lời của EduBot"
+                  title="Chọn phong cách trả lời"
+                  value={explanationStyle}
+                  onChange={(event) => updateExplanationStyle(event.target.value as ExplanationStyle)}
+                  disabled={thinking}
+                  className="h-11 w-[106px] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 sm:w-[128px] sm:px-3 sm:text-sm"
+                >
+                  <option value="concise">Ngắn gọn</option>
+                  <option value="detailed">Chi tiết</option>
+                </select>
+                <SpeechButton speech={speech} disabled={thinking} />
+                <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  Gửi <Send className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </form>
         </section>
@@ -945,9 +1033,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
             <button type="button" onClick={() => setHistoryOpen((open) => !open)} aria-label={historyOpen ? 'Thu gọn lịch sử chat' : 'Mở lịch sử chat'} className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50">
               {historyOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
             </button>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
+            <img src="/eduflow-mark.png" alt="" className="h-8 w-8 rounded-xl object-cover" />
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Trợ lý AI EduFlow</h2>
               <p className="text-xs text-slate-500">{activeConversationId ? 'Cuộc trò chuyện đã lưu' : 'Bắt đầu một cuộc trò chuyện mới'}</p>
@@ -970,9 +1056,7 @@ export function AIChat({ role, userName, userId, studentId, gender, initialSubje
               <p className="py-2 text-center text-xs font-medium text-slate-500">{formatChatTimestamp(msg.timestamp)}</p>
             )}
             <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${msg.role === 'user' ? 'bg-slate-700' : 'bg-blue-600'}`}>
-                {msg.role === 'user' ? <span className="text-xs font-medium text-white">{role === 'lecturer' ? 'GV' : 'AD'}</span> : <Sparkles className="h-4 w-4 text-white" />}
-              </div>
+              <ChatAvatar role={msg.role} userAvatar={avatarUrl} userInitials={userInitials} />
               <div className={`max-w-[75%] ${msg.role === 'user' ? 'text-right' : ''}`}>
                 <div className={`inline-block rounded-2xl px-4 py-3 text-left text-sm leading-relaxed ${msg.role === 'user' ? 'bg-blue-600 text-white chat-user-markdown' : 'border border-slate-200 bg-slate-50 text-slate-700 markdown-body'}`}>
                   {msg.imagePath || msg.imagePreviewUrl ? (

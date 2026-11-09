@@ -134,8 +134,13 @@ export function normalizeAssessmentSections(
 }
 
 export const questionBankStorageKey = 'eduflow.teacher.question-bank';
+const mathQuestionBankOwnerEmail = 'nhung.toan.11a2@seed.eduflow.invalid';
 export const savedExamsStorageKey = 'eduflow.teacher.saved-exams';
 export const savedAssignmentsStorageKey = 'eduflow.teacher.saved-assignments';
+
+function getQuestionBankStorageKey(ownerEmail: string) {
+  return `${questionBankStorageKey}:${ownerEmail.trim().toLowerCase()}`;
+}
 
 function normalizeQuizQuestion(value: unknown, index: number): QuizQuestion {
   if (!value || typeof value !== 'object') throw new Error(`Câu hỏi ${index + 1} không đúng định dạng.`);
@@ -189,9 +194,7 @@ function normalizeExamQuestion(value: unknown, index: number): ExamQuestion {
   };
 }
 
-export function readQuestionSets(): QuestionSet[] {
-  const stored = localStorage.getItem(questionBankStorageKey);
-  if (stored === null) return [];
+function parseQuestionSets(stored: string): QuestionSet[] {
   const parsed: unknown = JSON.parse(stored);
   if (!Array.isArray(parsed)) throw new Error('Dữ liệu lưu trên trình duyệt không đúng định dạng.');
   return parsed.map((item, setIndex): QuestionSet => {
@@ -210,6 +213,36 @@ export function readQuestionSets(): QuestionSet[] {
       questions: set.questions.map(normalizeQuizQuestion),
     };
   });
+}
+
+function isMathQuestionSet(set: QuestionSet) {
+  const subject = set.subject.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  return subject === 'toan' || subject === 'toan hoc';
+}
+
+export function readQuestionSets(ownerEmail: string): QuestionSet[] {
+  const legacyStored = localStorage.getItem(questionBankStorageKey);
+  if (legacyStored !== null) {
+    const legacySets = parseQuestionSets(legacyStored);
+    const mathSets = legacySets.filter(isMathQuestionSet);
+    if (mathSets.length > 0) {
+      const ownerStorageKey = getQuestionBankStorageKey(mathQuestionBankOwnerEmail);
+      const existingOwnerSets = localStorage.getItem(ownerStorageKey);
+      const ownerSets = existingOwnerSets === null ? [] : parseQuestionSets(existingOwnerSets);
+      const existingSetIds = new Set(ownerSets.map((set) => set.id));
+      localStorage.setItem(ownerStorageKey, JSON.stringify([
+        ...ownerSets,
+        ...mathSets.filter((set) => !existingSetIds.has(set.id)),
+      ]));
+      localStorage.setItem(
+        questionBankStorageKey,
+        JSON.stringify(legacySets.filter((set) => !isMathQuestionSet(set))),
+      );
+    }
+  }
+
+  const stored = localStorage.getItem(getQuestionBankStorageKey(ownerEmail));
+  return stored === null ? [] : parseQuestionSets(stored);
 }
 
 function readAssessments(storageKey: string, label: string): SavedExam[] {
@@ -275,8 +308,8 @@ export async function loadTeacherAssessments(kind: 'exam' | 'assignment'): Promi
   return [...migrated, ...savedAssessments];
 }
 
-export function writeQuestionSets(questionSets: QuestionSet[]): void {
-  localStorage.setItem(questionBankStorageKey, JSON.stringify(questionSets));
+export function writeQuestionSets(ownerEmail: string, questionSets: QuestionSet[]): void {
+  localStorage.setItem(getQuestionBankStorageKey(ownerEmail), JSON.stringify(questionSets));
 }
 
 export function writeSavedExams(exams: SavedExam[]): void {

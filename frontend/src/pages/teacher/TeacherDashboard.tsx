@@ -35,6 +35,7 @@ import {
   type TeacherTimetableResponse,
 } from '@/api/schoolApi';
 import type { Page } from '@/types';
+import { AiImageAttachment } from '@/components/AiImageAttachment';
 import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
@@ -44,7 +45,7 @@ interface TeacherDashboardProps {
   userName: string;
   userGender?: 'female' | 'male' | 'other' | 'unspecified' | null;
   onNavigate: (page: Page) => void;
-  onAskAI: (prompt: string) => void;
+  onAskAI: (prompt: string, image?: File) => void;
 }
 
 interface StudentConcern {
@@ -311,6 +312,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
   const [error, setError] = useState('');
   const [retryToken, setRetryToken] = useState(0);
   const [chatPrompt, setChatPrompt] = useState('');
+  const [chatImage, setChatImage] = useState<File | null>(null);
   const [progressFilter, setProgressFilter] = useState('');
   const now = useMemo(() => new Date(), []);
   const tomorrow = useMemo(() => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1), [now]);
@@ -522,8 +524,8 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
   const submitChatPrompt = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const prompt = chatPrompt.trim();
-    if (!prompt) return;
-    onAskAI(prompt);
+    if (!prompt && !chatImage) return;
+    onAskAI(prompt, chatImage ?? undefined);
   };
 
   const attentionItems = [
@@ -607,19 +609,22 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
           <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight sm:text-3xl">
             Dạy đúng trọng tâm.<br className="hidden sm:block" /> Tiến bộ <span className="text-amber-300">từng ngày.</span>
           </h1>
-          <form onSubmit={submitChatPrompt} className="mt-4 flex w-full items-center gap-2 rounded-full border border-white/70 bg-white p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.2)] ring-4 ring-white/15 focus-within:ring-cyan-200/50">
-            <Sparkles aria-hidden="true" className="ml-2 h-5 w-5 shrink-0 text-blue-500" />
-            <label htmlFor="teacher-dashboard-ai-prompt" className="sr-only">Hỏi trợ lý AI EduFlow</label>
-            <input
-              id="teacher-dashboard-ai-prompt"
-              value={chatPrompt}
-              onChange={(event) => setChatPrompt(event.target.value)}
-              placeholder={honorific === 'thầy' ? 'Thầy muốn chuẩn bị gì hôm nay?' : honorific === 'cô' ? 'Cô muốn chuẩn bị gì hôm nay?' : 'Muốn chuẩn bị gì hôm nay?'}
-              className="min-w-0 flex-1 bg-transparent px-1 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            />
-            <button type="submit" aria-label="Gửi câu hỏi cho AI" disabled={!chatPrompt.trim()} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-              <Send className="h-4 w-4" />
-            </button>
+          <form onSubmit={submitChatPrompt} className="mt-4 w-full">
+            <div className="flex items-center gap-2 rounded-full border border-white/70 bg-white p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.2)] ring-4 ring-white/15 focus-within:ring-cyan-200/50">
+              <Sparkles aria-hidden="true" className="ml-2 h-5 w-5 shrink-0 text-blue-500" />
+              <label htmlFor="teacher-dashboard-ai-prompt" className="sr-only">Hỏi trợ lý AI EduFlow</label>
+              <input
+                id="teacher-dashboard-ai-prompt"
+                value={chatPrompt}
+                onChange={(event) => setChatPrompt(event.target.value)}
+                placeholder={honorific === 'thầy' ? 'Thầy muốn chuẩn bị gì hôm nay?' : honorific === 'cô' ? 'Cô muốn chuẩn bị gì hôm nay?' : 'Muốn chuẩn bị gì hôm nay?'}
+                className="min-w-0 flex-1 bg-transparent px-1 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              />
+              <button type="submit" aria-label="Gửi câu hỏi cho AI" disabled={!chatPrompt.trim() && !chatImage} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+            <AiImageAttachment file={chatImage} onChange={setChatImage} />
           </form>
           <nav aria-label="Lối tắt công cụ AI giáo viên" className="mt-3 flex flex-wrap gap-2">
             {([

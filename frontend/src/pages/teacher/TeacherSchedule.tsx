@@ -921,9 +921,14 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
 
       <section className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-violet-50 p-4 shadow-sm shadow-blue-100 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Kế hoạch tuần này</h2>
-            <p className="mt-1 text-sm text-slate-600">Ghi rõ khung giờ rảnh và bận để AI xếp công việc phù hợp với thời khóa biểu.</p>
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-violet-600 text-white shadow-md shadow-blue-200">
+              <Sparkles className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Kế hoạch tuần này</h2>
+              <p className="mt-1 text-sm text-slate-600">Ghi rõ khung giờ rảnh và bận để AI xếp công việc phù hợp với thời khóa biểu.</p>
+            </div>
           </div>
           <button
             type="button"
@@ -1010,20 +1015,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
 
       {plan && (
         <section className="overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-lg shadow-indigo-100/70">
-          <div className="border-b border-indigo-100 bg-gradient-to-r from-blue-100 via-violet-100 to-fuchsia-100 p-4 sm:p-5">
-            <div className="flex items-start gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200">
-                <Sparkles className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Kế hoạch tuần
-                </p>
-                <h2 className="mt-1 text-lg font-bold text-indigo-950">Gợi ý sắp xếp công việc</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">{plan.overview}</p>
-              </div>
-            </div>
-          </div>
+          <p className="px-4 pt-4 text-sm leading-6 text-slate-600 sm:px-5 sm:pt-5">{plan.overview}</p>
 
           {plan.dataNotes.length > 0 && (
             <div className="mx-4 mt-4 flex gap-2 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3 text-sm text-amber-950 sm:mx-5">

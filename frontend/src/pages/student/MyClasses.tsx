@@ -23,12 +23,9 @@ import {
   X,
 } from 'lucide-react';
 import { AssignmentSubmissionFiles } from '@/components/AssignmentSubmissionFiles';
+import { MathText } from '@/components/MathText';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { authenticatedFetch } from '@/auth/authApi';
-import ReactMarkdown from 'react-markdown';
-import rehypeKatex from 'rehype-katex';
-import remarkMath from 'remark-math';
-import 'katex/dist/katex.min.css';
 import { useSavedItems } from './savedItems';
 import {
   distributeAssignmentPoints,
@@ -67,20 +64,6 @@ interface MyClassesProps {
   initialAssignmentId?: string | null;
   onExitGroup: () => void;
   onAskAI: (prompt: string, subject?: string) => void;
-}
-
-function MathText({ text }: { text: string }) {
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
-        p: ({ children }) => <p className="my-0 whitespace-pre-wrap">{children}</p>,
-      }}
-    >
-      {text.replace(/\r\n?/g, '\n')}
-    </ReactMarkdown>
-  );
 }
 
 function resizeAnswerTextarea(textarea: HTMLTextAreaElement) {

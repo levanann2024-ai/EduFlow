@@ -32,7 +32,7 @@ function questionTypeLabel(type?: QuizQuestion['type']) {
   }
 }
 
-export function QuestionBank() {
+export function QuestionBank({ ownerEmail }: { ownerEmail: string }) {
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [query, setQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState('');
@@ -48,14 +48,14 @@ export function QuestionBank() {
 
   useEffect(() => {
     try {
-      setSets(readQuestionSets());
+      setSets(readQuestionSets(ownerEmail));
     } catch (loadError) {
       console.error('Không thể đọc ngân hàng câu hỏi trên thiết bị.', loadError);
       setError('Không đọc được dữ liệu ngân hàng câu hỏi trong trình duyệt.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [ownerEmail]);
 
   const entries = useMemo(() => sets.flatMap((set) => set.questions.map((question, index) => ({ set, question, index }))), [sets]);
   const grades = useMemo(() => [...new Set(sets.map((set) => set.grade))].sort(), [sets]);
@@ -73,7 +73,7 @@ export function QuestionBank() {
 
   const persist = (next: QuestionSet[], successMessage: string) => {
     try {
-      writeQuestionSets(next);
+      writeQuestionSets(ownerEmail, next);
       setSets(next);
       setError('');
       showToast(successMessage);

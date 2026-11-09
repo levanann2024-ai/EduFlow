@@ -26,7 +26,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   animationsEnabled: true,
   language: 'vi',
   fontScalePercent: 100,
-  explanationStyle: 'detailed',
+  explanationStyle: 'concise',
 };
 
 const STUDY_PREFERENCES_KEY = 'eduflow.student.preferences';

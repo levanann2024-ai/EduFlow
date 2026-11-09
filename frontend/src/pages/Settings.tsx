@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { changePassword, type AuthUser } from '@/auth/authApi';
 import { AccountProfileSection } from '@/components/AccountProfileSection';
+import { PasswordInput } from '@/components/PasswordInput';
 import { showToast } from '@/components/toast';
 import {
   FONT_SCALE_STEP_PERCENT,
@@ -340,20 +341,50 @@ export function Settings({
           <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">{text.demoAccount}</p>
         ) : (
           <form onSubmit={handlePasswordChange} className="mt-5 space-y-4">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">{text.currentPassword}</span>
-              <input type="password" autoComplete="current-password" required maxLength={128} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="input-field mt-1.5" />
-            </label>
+            <PasswordInput
+              id="settings-current-password"
+              label={text.currentPassword}
+              value={currentPassword}
+              onChange={setCurrentPassword}
+              autoComplete="current-password"
+              required
+              maxLength={128}
+              fieldClassName="block"
+              labelClassName="text-sm font-medium text-slate-700"
+              inputWrapperClassName="relative mt-1.5"
+              inputClassName="input-field"
+            />
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">{text.newPassword}</span>
-                <input type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="input-field mt-1.5" />
+              <div>
+                <PasswordInput
+                  id="settings-new-password"
+                  label={text.newPassword}
+                  value={newPassword}
+                  onChange={setNewPassword}
+                  autoComplete="new-password"
+                  required
+                  minLength={12}
+                  maxLength={128}
+                  fieldClassName="block"
+                  labelClassName="text-sm font-medium text-slate-700"
+                  inputWrapperClassName="relative mt-1.5"
+                  inputClassName="input-field"
+                />
                 <span className="mt-1 block text-xs text-slate-500">{text.passwordLength}</span>
-              </label>
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">{text.confirmPassword}</span>
-                <input type="password" autoComplete="new-password" required maxLength={128} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="input-field mt-1.5" />
-              </label>
+              </div>
+              <PasswordInput
+                id="settings-confirm-password"
+                label={text.confirmPassword}
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                autoComplete="new-password"
+                required
+                maxLength={128}
+                fieldClassName="block"
+                labelClassName="text-sm font-medium text-slate-700"
+                inputWrapperClassName="relative mt-1.5"
+                inputClassName="input-field"
+              />
             </div>
             {passwordError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{passwordError}</p>}
             <div className="flex justify-end border-t border-slate-100 pt-4">

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { changePassword, completeProfile, type AuthUser } from './authApi';
+import { PasswordInput } from '@/components/PasswordInput';
 
 interface FirstLoginSetupProps {
   user: AuthUser;
@@ -59,18 +60,34 @@ export function FirstLoginSetup({ user, onComplete }: FirstLoginSetupProps) {
         {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         {!passwordChanged ? (
           <>
-            <label className="block text-sm font-medium text-slate-700">
-              Mật khẩu hiện tại
-              <input required type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Mật khẩu mới (ít nhất 12 ký tự, kết hợp 3 nhóm ký tự)
-              <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Nhập lại mật khẩu mới
-              <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" />
-            </label>
+            <PasswordInput
+              id="first-login-current-password"
+              label="Mật khẩu hiện tại"
+              value={currentPassword}
+              onChange={setCurrentPassword}
+              autoComplete="current-password"
+              required
+            />
+            <PasswordInput
+              id="first-login-new-password"
+              label="Mật khẩu mới (ít nhất 12 ký tự, kết hợp 3 nhóm ký tự)"
+              value={newPassword}
+              onChange={setNewPassword}
+              autoComplete="new-password"
+              required
+              minLength={12}
+              maxLength={128}
+            />
+            <PasswordInput
+              id="first-login-confirm-password"
+              label="Nhập lại mật khẩu mới"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              autoComplete="new-password"
+              required
+              minLength={12}
+              maxLength={128}
+            />
           </>
         ) : (
           <>

@@ -29,6 +29,16 @@
     zoom: 1;
   }
 
+  .dashboard-camera-control {
+    display: none;
+  }
+
+  @media (pointer: coarse) {
+    .dashboard-camera-control {
+      display: inline-flex;
+    }
+  }
+
 }
 
 @layer components {

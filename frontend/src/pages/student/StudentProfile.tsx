@@ -69,7 +69,7 @@ export function StudentProfile({
   onNavigate: (page: 'classes' | 'ai-grading' | 'exams') => void;
 }) {
   const [preferences, setPreferences] = useState<StudyPreferences>({
-    explanationStyle: 'detailed',
+    explanationStyle: 'concise',
   });
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');

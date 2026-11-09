@@ -2269,6 +2269,7 @@ export async function generateStudentTimetableSuggestion(input: {
   weekStart: string;
   tomorrowWeekday: number;
   availability: string;
+  remainingTimeIsFree: boolean;
 }): Promise<string> {
   const response = await authenticatedFetch('/api/student/timetable/suggestions', {
     method: 'POST',
