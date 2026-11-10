@@ -30,13 +30,6 @@ interface ApiResult<T> {
   invitationToken?: string;
 }
 
-const demoUsers = [
-  { name: 'Giáo viên mẫu 01', email: 'teacher01@example.invalid', role: 'Giáo viên', status: 'Đang hoạt động' },
-  { name: 'Giáo viên mẫu 02', email: 'teacher02@example.invalid', role: 'Giáo viên', status: 'Đang hoạt động' },
-  { name: 'Học sinh mẫu 01', email: 'student01@example.invalid', role: 'Học sinh', status: 'Đang hoạt động' },
-  { name: 'Học sinh mẫu 02', email: 'student02@example.invalid', role: 'Học sinh', status: 'Tạm khóa' },
-];
-
 async function requestJson<T>(path: string, method = 'GET', body?: unknown): Promise<ApiResult<T>> {
   const response = await authenticatedFetch(path, {
     method,
@@ -57,6 +50,7 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | Role>('all');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'student' | 'lecturer' | 'admin'>('student');
   const [schoolId, setSchoolId] = useState(currentUser.schoolIds.length === 1 ? currentUser.schoolIds[0] : '');
@@ -88,8 +82,15 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   }, [currentUser.isDemo, loadData]);
 
   const filteredUsers = useMemo(
-    () => users.filter((user) => `${user.full_name} ${user.email}`.toLowerCase().includes(query.toLowerCase())),
-    [users, query],
+    () => users.filter((user) => (
+      (roleFilter === 'all' || user.role === roleFilter)
+      && `${user.full_name} ${user.email}`.toLowerCase().includes(query.toLowerCase())
+    )),
+    [users, query, roleFilter],
+  );
+  const schoolNames = useMemo(
+    () => new Map(schools.map((school) => [school.id, school.name])),
+    [schools],
   );
 
   const createSchool = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -161,15 +162,10 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   };
 
   if (currentUser.isDemo) {
-    const visibleDemoUsers = demoUsers.filter((user) => `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase()));
     return (
       <div className="space-y-5">
         <header><h1 className="text-xl font-semibold">Quản lý người dùng</h1><p className="mt-1 text-sm text-slate-500">Quản lý tài khoản giáo viên và học sinh</p></header>
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Đang xem dữ liệu minh họa trong chế độ demo. Tài khoản demo không thể tạo lời mời thật.</p>
-        <section className="card overflow-hidden">
-          <div className="border-b border-slate-100 p-4"><div className="relative max-w-sm"><Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" /><input className="input-field pl-9" placeholder="Tìm người dùng..." value={query} onChange={(event) => setQuery(event.target.value)} /></div></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Trạng thái</th></tr></thead><tbody className="divide-y divide-slate-100">{visibleDemoUsers.map((user) => <tr key={user.email}><td className="px-4 py-3"><p className="font-medium">{user.name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role}</td><td className="px-4 py-3">{user.status}</td></tr>)}</tbody></table></div>
-        </section>
+        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Phiên demo không được phép xem hoặc thay đổi tài khoản thật. Hãy đăng nhập bằng tài khoản quản trị thật để sử dụng nghiệp vụ này.</p>
       </div>
     );
   }
@@ -202,9 +198,29 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
       </form>
 
       <section className="card overflow-hidden">
-        <div className="border-b border-slate-100 p-4"><div className="relative max-w-sm"><Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" /><input className="input-field pl-9" placeholder="Tìm người dùng..." value={query} onChange={(event) => setQuery(event.target.value)} /></div></div>
-        <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Mã trường</th><th className="px-4 py-3">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-100">
-          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Đang tải…</td></tr> : filteredUsers.map((user) => <tr key={user.id}><td className="px-4 py-3"><p className="font-medium">{user.full_name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role === 'lecturer' ? 'Giáo viên' : user.role === 'student' ? 'Học sinh' : user.admin_scope === 'system' ? 'Quản trị viên hệ thống' : 'Quản trị viên trường'}</td><td className="px-4 py-3">{user.status === 'active' ? 'Đang hoạt động' : 'Tạm khóa'}</td><td className="px-4 py-3 font-mono text-xs text-slate-500">{user.school_ids?.join(', ') || 'Toàn hệ thống'}</td><td className="px-4 py-3">{user.role === 'admin' ? <span className="text-xs text-slate-400">—</span> : <button type="button" disabled={statusBusyId === user.id || user.id === currentUser.id} onClick={() => void changeUserStatus(user)} className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50">{statusBusyId === user.id ? 'Đang cập nhật…' : user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa'}</button>}</td></tr>)}
+        <div className="flex flex-wrap gap-2 border-b border-slate-100 p-4">
+          <div className="relative min-w-[220px] max-w-sm flex-1"><Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" /><input className="input-field pl-9" placeholder="Tìm người dùng..." value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+          <label className="sr-only" htmlFor="admin-user-role-filter">Lọc theo vai trò</label>
+          <select
+            id="admin-user-role-filter"
+            aria-label="Lọc theo vai trò"
+            value={roleFilter}
+            onChange={(event) => {
+              const { value } = event.target;
+              if (value === 'all' || value === 'student' || value === 'lecturer' || value === 'admin') {
+                setRoleFilter(value);
+              }
+            }}
+            className="input-field w-auto min-w-40"
+          >
+            <option value="all">Tất cả vai trò</option>
+            <option value="student">Học sinh</option>
+            <option value="lecturer">Giáo viên</option>
+            <option value="admin">Quản trị viên</option>
+          </select>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Trường</th><th className="px-4 py-3">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-100">
+          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Đang tải…</td></tr> : filteredUsers.map((user) => <tr key={user.id}><td className="px-4 py-3"><p className="font-medium">{user.full_name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role === 'lecturer' ? 'Giáo viên' : user.role === 'student' ? 'Học sinh' : user.admin_scope === 'system' ? 'Quản trị viên hệ thống' : 'Quản trị viên trường'}</td><td className="px-4 py-3">{user.status === 'active' ? 'Đang hoạt động' : 'Tạm khóa'}</td><td className="px-4 py-3 text-xs text-slate-500">{user.school_ids?.length ? user.school_ids.map((id) => schoolNames.get(id) ?? 'Trường không hoạt động').join(', ') : user.admin_scope === 'system' ? 'Toàn hệ thống' : 'Chưa gắn trường'}</td><td className="px-4 py-3">{user.role === 'admin' ? <span className="text-xs text-slate-400">—</span> : <button type="button" disabled={statusBusyId === user.id || user.id === currentUser.id} onClick={() => void changeUserStatus(user)} className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50">{statusBusyId === user.id ? 'Đang cập nhật…' : user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa'}</button>}</td></tr>)}
           {!loading && filteredUsers.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Không tìm thấy người dùng.</td></tr>}
         </tbody></table></div>
       </section>

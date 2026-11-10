@@ -1,4 +1,5 @@
 import { authenticatedFetch } from '@/auth/authApi';
+import { isLessonEditorDocument, type LessonEditorDocument } from '@/types/lessonEditor';
 
 export interface SchoolClass {
   id: string;
@@ -213,6 +214,7 @@ export interface ClassLearningResource {
   period: string | null;
   title: string;
   content: string;
+  editorDocument: LessonEditorDocument | null;
   note: string;
   createdAt: string;
   files: LearningResourceFile[];
@@ -1859,6 +1861,7 @@ interface RawClassLearningResource {
   period: string | null;
   title: string;
   content: string;
+  editor_document: LessonEditorDocument | null;
   note: string;
   created_at: string;
   files: LearningResourceFile[];
@@ -1884,6 +1887,7 @@ function isClassLearningResource(value: unknown): value is RawClassLearningResou
     && (value.period === null || typeof value.period === 'string')
     && typeof value.title === 'string'
     && typeof value.content === 'string'
+    && (value.editor_document === null || isLessonEditorDocument(value.editor_document))
     && typeof value.note === 'string'
     && typeof value.created_at === 'string'
     && Array.isArray(value.files)
@@ -1902,6 +1906,7 @@ function mapClassLearningResource(value: RawClassLearningResource): ClassLearnin
     period: value.period,
     title: value.title,
     content: value.content,
+    editorDocument: value.editor_document,
     note: value.note,
     createdAt: value.created_at,
     files: value.files,
@@ -1915,6 +1920,42 @@ export async function listClassLearningResources(classId: string): Promise<Class
     throw new Error('Phản hồi tài liệu lớp không đúng định dạng.');
   }
   return body.resources.map(mapClassLearningResource);
+}
+
+export async function listClassLearningResourceChapters(
+  classId: string,
+  input: { academicYear: string; semester: string; subject: string },
+): Promise<string[]> {
+  const query = new URLSearchParams(input);
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resource-chapters?${query.toString()}`,
+    { method: 'GET' },
+  );
+  const body = await readResponse(response);
+  if (!Array.isArray(body.chapters)
+    || !body.chapters.every((chapter) => typeof chapter === 'string' && chapter.trim())) {
+    throw new Error('Phản hồi danh sách chương lớp không đúng định dạng.');
+  }
+  return body.chapters;
+}
+
+export async function createClassLearningResourceChapter(
+  classId: string,
+  input: { academicYear: string; semester: string; subject: string; chapter: string },
+): Promise<string> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resource-chapters`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  const body = await readResponse(response);
+  if (typeof body.chapter !== 'string' || !body.chapter.trim()) {
+    throw new Error('Phản hồi lưu chương lớp không đúng định dạng.');
+  }
+  return body.chapter;
 }
 
 export async function renameClassLearningResourceChapter(
@@ -2013,6 +2054,7 @@ export async function createClassLearningResource(
     title: string;
     content: string;
     note: string;
+    editorDraftId?: string;
   },
 ): Promise<void> {
   const response = await authenticatedFetch(`/api/classes/${encodeURIComponent(classId)}/resources`, {
@@ -2021,6 +2063,87 @@ export async function createClassLearningResource(
     body: JSON.stringify(input),
   });
   await readResponse(response);
+}
+
+export interface TeacherLessonDraft {
+  id: string;
+  title: string;
+  editor_document: LessonEditorDocument;
+  updated_at: string;
+}
+
+function isTeacherLessonDraft(value: unknown): value is TeacherLessonDraft {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.title === 'string'
+    && isLessonEditorDocument(value.editor_document)
+    && typeof value.updated_at === 'string';
+}
+
+export async function getTeacherLessonDraft(draftId: string): Promise<TeacherLessonDraft> {
+  const response = await authenticatedFetch(`/api/teacher/lesson-drafts/${encodeURIComponent(draftId)}`, {
+    method: 'GET',
+  });
+  const body = await readResponse(response);
+  if (!isTeacherLessonDraft(body.draft)) throw new Error('Phản hồi tải bản nháp bài giảng không đúng định dạng.');
+  return body.draft;
+}
+
+export async function createTeacherLessonDraft(input: {
+  title: string;
+  editorDocument: LessonEditorDocument;
+}): Promise<TeacherLessonDraft> {
+  const response = await authenticatedFetch('/api/teacher/lesson-drafts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await readResponse(response);
+  if (!isTeacherLessonDraft(body.draft)) throw new Error('Phản hồi lưu bản nháp bài giảng không đúng định dạng.');
+  return body.draft;
+}
+
+export async function updateTeacherLessonDraft(
+  draftId: string,
+  input: { title: string; editorDocument: LessonEditorDocument },
+): Promise<TeacherLessonDraft> {
+  const response = await authenticatedFetch(`/api/teacher/lesson-drafts/${encodeURIComponent(draftId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await readResponse(response);
+  if (!isTeacherLessonDraft(body.draft)) throw new Error('Phản hồi cập nhật bản nháp bài giảng không đúng định dạng.');
+  return body.draft;
+}
+
+export async function uploadTeacherLessonDraftImage(
+  draftId: string,
+  file: File,
+): Promise<{ id: string; src: string; name: string; mediaType: string; sizeBytes: number }> {
+  const formData = new FormData();
+  formData.set('file', file);
+  const response = await authenticatedFetch(
+    `/api/teacher/lesson-drafts/${encodeURIComponent(draftId)}/assets`,
+    { method: 'POST', body: formData },
+  );
+  const body = await readResponse(response);
+  const asset = body.asset;
+  if (!isRecord(asset)
+    || typeof asset.id !== 'string'
+    || typeof asset.src !== 'string'
+    || typeof asset.name !== 'string'
+    || typeof asset.mediaType !== 'string'
+    || typeof asset.sizeBytes !== 'number') {
+    throw new Error('Phản hồi tải ảnh bài giảng không đúng định dạng.');
+  }
+  return {
+    id: asset.id,
+    src: asset.src,
+    name: asset.name,
+    mediaType: asset.mediaType,
+    sizeBytes: asset.sizeBytes,
+  };
 }
 
 export async function updateClassLearningResource(
@@ -2038,6 +2161,7 @@ export async function updateClassLearningResource(
     note: string;
     fileName?: string;
     file?: File;
+    editorDocument?: LessonEditorDocument;
   },
 ): Promise<void> {
   const formData = new FormData();
@@ -2050,6 +2174,7 @@ export async function updateClassLearningResource(
   formData.set('title', input.title);
   formData.set('content', input.content);
   formData.set('note', input.note);
+  if (input.editorDocument) formData.set('editorDocument', JSON.stringify(input.editorDocument));
   if (input.fileName !== undefined) formData.set('fileName', input.fileName);
   if (input.file) formData.set('file', input.file, input.file.name);
   const response = await authenticatedFetch(
@@ -2060,6 +2185,36 @@ export async function updateClassLearningResource(
     },
   );
   await readResponse(response);
+}
+
+export async function uploadClassLearningResourceImage(
+  classId: string,
+  resourceId: string,
+  file: File,
+): Promise<{ id: string; src: string; name: string; mediaType: string; sizeBytes: number }> {
+  const formData = new FormData();
+  formData.set('file', file);
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resources/${encodeURIComponent(resourceId)}/assets`,
+    { method: 'POST', body: formData },
+  );
+  const body = await readResponse(response);
+  const asset = body.asset;
+  if (!isRecord(asset)
+    || typeof asset.id !== 'string'
+    || typeof asset.src !== 'string'
+    || typeof asset.name !== 'string'
+    || typeof asset.mediaType !== 'string'
+    || typeof asset.sizeBytes !== 'number') {
+    throw new Error('Phản hồi tải ảnh bài giảng không đúng định dạng.');
+  }
+  return {
+    id: asset.id,
+    src: asset.src,
+    name: asset.name,
+    mediaType: asset.mediaType,
+    sizeBytes: asset.sizeBytes,
+  };
 }
 
 export async function uploadClassLearningResource(
@@ -2179,6 +2334,7 @@ function isStudentLearningResource(value: unknown): value is StudentLearningReso
     && (value.period === null || typeof value.period === 'string')
     && typeof value.title === 'string'
     && typeof value.content === 'string'
+    && (value.editorDocument === null || isLessonEditorDocument(value.editorDocument))
     && typeof value.note === 'string'
     && typeof value.createdAt === 'string'
     && typeof value.teacherName === 'string'

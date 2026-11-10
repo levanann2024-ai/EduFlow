@@ -14,7 +14,13 @@ type BuilderMode = 'lesson' | 'lecture' | 'assessment';
 type AssessmentType = 'practice' | 'official';
 
 type InitialBuilderMode = BuilderMode | 'slides' | 'assignment' | 'exam';
-type AssignableLessonDraft = { title: string; subject: string; grade: string; content: string };
+type AssignableLessonDraft = {
+  title: string;
+  subject: string;
+  grade: string;
+  content: string;
+  editorDraftId?: string;
+};
 
 function getBuilderMode(initialMode: InitialBuilderMode): BuilderMode {
   if (initialMode === 'exam' || initialMode === 'assignment') return 'assessment';

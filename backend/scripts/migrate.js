@@ -407,6 +407,16 @@ const MIGRATIONS = [
     lockTables: ['classes', 'class_memberships', 'class_subjects', 'teacher_class_assignments', 'class_homeroom_assignments'],
     preflight: preflightSchoolManagement,
   },
+  {
+    name: '042_class_learning_resource_chapters',
+    file: path.join(__dirname, '..', 'db', 'migrations', '042_class_learning_resource_chapters.sql'),
+    preflight: null,
+  },
+  {
+    name: '043_teacher_lesson_editor',
+    file: path.join(__dirname, '..', 'db', 'migrations', '043_teacher_lesson_editor.sql'),
+    preflight: null,
+  },
 ];
 
 const CORE_TABLES = [
@@ -433,6 +443,10 @@ const APPLICATION_TABLES = [
   'class_assignment_submission_files',
   'class_learning_resources',
   'class_learning_resource_files',
+  'class_learning_resource_chapters',
+  'class_learning_resource_assets',
+  'teacher_lesson_drafts',
+  'teacher_lesson_draft_assets',
   'class_subjects',
   'class_homeroom_assignments',
   'teacher_assessments',

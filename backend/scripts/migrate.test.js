@@ -94,6 +94,28 @@ test('migration 041 preserves legacy snapshots and adds school-scoped year and s
   assert.doesNotThrow(() => assertMigrationStatements(sql, '041_school_management'));
 });
 
+test('migration 042 stores class learning resource chapter options', () => {
+  const sql = fs.readFileSync(
+    path.join(migrationsDirectory, '042_class_learning_resource_chapters.sql'),
+    'utf8',
+  );
+  assert.match(sql, /CREATE TABLE class_learning_resource_chapters/i);
+  assert.match(sql, /class_id, school_id, academic_year, semester, subject, chapter/i);
+  assert.match(sql, /lower\(trim\(chapter\)\)/i);
+});
+
+test('migration 043 stores editable lesson drafts and published editor content', () => {
+  const sql = fs.readFileSync(
+    path.join(migrationsDirectory, '043_teacher_lesson_editor.sql'),
+    'utf8',
+  );
+  assert.match(sql, /ADD COLUMN editor_document jsonb/i);
+  assert.match(sql, /CREATE TABLE teacher_lesson_drafts/i);
+  assert.match(sql, /CREATE TABLE teacher_lesson_draft_assets/i);
+  assert.match(sql, /CREATE TABLE class_learning_resource_assets/i);
+  assert.doesNotThrow(() => assertMigrationStatements(sql, '043_teacher_lesson_editor'));
+});
+
 test('migration 041 preflight accepts complete legacy data without writing', async () => {
   const queries = [];
   const conflicts = await preflightSchoolManagement({

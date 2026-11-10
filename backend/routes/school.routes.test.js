@@ -1332,6 +1332,19 @@ test('student progress endpoints reject non-student accounts', async () => {
   assert.equal(analysisResponse.status, 403);
 });
 
+test('lesson draft routes require a lecturer and validate draft IDs', async () => {
+  const studentResponse = await request('/teacher/lesson-drafts', ids.studentA, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  assert.equal(studentResponse.status, 403);
+
+  const invalidDraftResponse = await request('/teacher/lesson-drafts/not-a-uuid', ids.teacherA);
+  assert.equal(invalidDraftResponse.status, 400);
+  assert.equal(invalidDraftResponse.body.code, 'SCHOOL_INVALID_ID');
+});
+
 test('student timetable endpoint enforces student access and a valid semester', async () => {
   const teacherResponse = await request('/student/timetable?semester=Kỳ%201', ids.teacherA);
   assert.equal(teacherResponse.status, 403);

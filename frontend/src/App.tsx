@@ -717,7 +717,7 @@ function App() {
                   isDemo={authUser.isDemo}
                 />
               )}
-              {activePage === 'users' && role === 'admin' && <AdminDashboard page="users" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} />}
+              {activePage === 'users' && role === 'admin' && <AdminDashboard page="users" schoolId={adminSchoolId} onSchoolIdChange={setAdminSchoolId} onNavigate={navigateToPage} currentUser={authUser} />}
               {activePage === 'users' && role !== 'admin' && <Users currentUser={authUser} />}
               {activePage === 'settings' && (
                 <Settings

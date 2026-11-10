@@ -1,12 +1,18 @@
-import { useState } from 'react';
-import { Wand2, RefreshCw, Download, FileText, BookOpen, GraduationCap, Target, Clock, ListChecks, Edit3, Save, Send } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Wand2, RefreshCw, Download, FileText, BookOpen, GraduationCap, Target, Clock, ListChecks, Edit3, Pencil, Save, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { authenticatedFetch } from '@/auth/authApi';
+import { MathText } from '@/components/MathText';
+import { LessonEditor } from '@/components/LessonEditor';
+import { RichLessonContent } from '@/components/LessonEditorContent';
+import { createTeacherLessonDraft, updateTeacherLessonDraft, uploadTeacherLessonDraftImage } from '@/api/schoolApi';
+import { isLessonEditorDocument, type LessonEditorDocument } from '@/types/lessonEditor';
 import { LessonFormatSelector, type LessonFormat } from '@/pages/teacher/LessonFormatSelector';
+import { normalizeLessonMaterialMarkdown } from '@/utils/lessonMaterialMarkdown';
 import { textbookSeries } from './textbookOptions';
 const methods = ['Thuyết trình', 'Thảo luận nhóm', 'Khám phá', 'Dự án', 'Luyện tập'];
 
@@ -30,7 +36,13 @@ export function LessonPlan({
 }: {
   format?: LessonFormat;
   onFormatChange?: (format: LessonFormat) => void;
-  onAssignToStudents?: (draft: { title: string; subject: string; grade: string; content: string }) => void;
+  onAssignToStudents?: (draft: {
+    title: string;
+    subject: string;
+    grade: string;
+    content: string;
+    editorDraftId?: string;
+  }) => void;
 } = {}) {
   const [textbook, setTextbook] = useState('');
   const [volume, setVolume] = useState('Tập 1');
@@ -46,9 +58,72 @@ export function LessonPlan({
   const [error, setError] = useState('');
   const [editingSection, setEditingSection] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
+  const [editorDocument, setEditorDocument] = useState<LessonEditorDocument | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [draftSaveError, setDraftSaveError] = useState('');
+  const draftIdRef = useRef<string | null>(null);
+  const editorDocumentRef = useRef<LessonEditorDocument | null>(null);
+  const draftGenerationRef = useRef(0);
+  const saveSequenceRef = useRef(0);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const saveDraftSnapshot = useCallback((document: LessonEditorDocument, title: string) => {
+    const generation = draftGenerationRef.current;
+    const sequence = ++saveSequenceRef.current;
+    setDraftSaveState('saving');
+    setDraftSaveError('');
+    const request = saveQueueRef.current.then(async () => {
+      if (generation !== draftGenerationRef.current) throw new Error('Bản nháp đã được thay thế bằng nội dung mới.');
+      const saved = draftIdRef.current
+        ? await updateTeacherLessonDraft(draftIdRef.current, { title, editorDocument: document })
+        : await createTeacherLessonDraft({ title, editorDocument: document });
+      if (generation === draftGenerationRef.current) {
+        draftIdRef.current = saved.id;
+        if (sequence === saveSequenceRef.current) {
+          setDraftSaveState('saved');
+          setDraftSaveError('');
+        }
+      }
+      return saved.id;
+    }).catch((saveError: unknown) => {
+      if (generation === draftGenerationRef.current && sequence === saveSequenceRef.current) {
+        setDraftSaveState('error');
+        setDraftSaveError(saveError instanceof Error ? saveError.message : 'Không thể lưu bản nháp bài giảng.');
+      }
+      throw saveError;
+    });
+    saveQueueRef.current = request.then(() => undefined, () => undefined);
+    return request;
+  }, []);
+
+  const handleEditorDocumentChange = (document: LessonEditorDocument) => {
+    editorDocumentRef.current = document;
+    setEditorDocument(document);
+    setDraftSaveState('saving');
+    setDraftSaveError('');
+  };
+
+  useEffect(() => {
+    if (!format || !editorDocument) return undefined;
+    const timer = window.setTimeout(() => {
+      void saveDraftSnapshot(editorDocument, topic.trim()).catch((saveError: unknown) => {
+        console.error('Không thể tự động lưu bản nháp bài giảng.', saveError);
+      });
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [editorDocument, format, saveDraftSnapshot, topic]);
 
   const handleGenerate = async () => {
     if (!topic.trim() || !textbook.trim()) return;
+    draftGenerationRef.current += 1;
+    saveSequenceRef.current += 1;
+    draftIdRef.current = null;
+    editorDocumentRef.current = null;
+    setEditorDocument(null);
+    setEditorOpen(false);
+    setDraftSaveState('idle');
+    setDraftSaveError('');
     setGenerating(true);
     setPlan(null);
     setError('');
@@ -77,7 +152,9 @@ export function LessonPlan({
             '3. Trong mỗi phần La Mã, chia kiến thức thành các mục nhỏ có tiêu đề Markdown cấp 3 và số thứ tự: ### 1. ..., ### 2. ..., ### 3. ...; giải thích khái niệm, quy tắc, công thức và mối liên hệ giữa các ý.',
             '4. Khi phù hợp với môn học, thêm ví dụ minh họa hoặc bài giải từng bước ngay trong mục liên quan. Dùng ký hiệu và công thức chính xác.',
             '5. Viết trực tiếp cho học sinh như một tài liệu học tập độc lập; không nhắc đến prompt, giáo viên hay quá trình tạo bằng AI.',
-            '6. Chỉ trả về nội dung bài giảng, không thêm lời dẫn hoặc kết luận chung ngoài các phần kiến thức.',
+            '6. Trình bày bằng Markdown có dòng trống trước/sau mỗi tiêu đề; nội dung giải thích ở đoạn văn ngắn. Chỉ dùng "- " cho các ý liệt kê và "+) " cho ý bổ sung; không biến mọi câu thành danh sách.',
+            '7. Giữ nguyên nội dung, thứ tự kiến thức và định dạng phù hợp của công thức, ví dụ, bảng biểu; không tự thêm hoặc lược bỏ kiến thức.',
+            '8. Chỉ trả về nội dung bài giảng, không thêm lời dẫn hoặc kết luận chung ngoài các phần kiến thức.',
           ].join('\n'),
         }
         : { grade, topic, duration, method, textbook: textbook.trim(), volume };
@@ -93,7 +170,7 @@ export function LessonPlan({
       }
 
       setPlan(format
-        ? [{ title: 'Nội dung bài giảng', content: result.data }]
+        ? [{ title: 'Nội dung bài giảng', content: normalizeLessonMaterialMarkdown(result.data) }]
         : parseLessonPlan(result.data));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể kết nối tới backend AI.');
@@ -102,27 +179,49 @@ export function LessonPlan({
     }
   };
 
-  const assignToStudents = () => {
+  const assignToStudents = async () => {
     if (!format || !onAssignToStudents || !plan) return;
     const content = plan
-      .map((section, index) => index === editingSection ? editText : section.content)
+      .map((section, index) => normalizeLessonMaterialMarkdown(index === editingSection ? editText : section.content))
       .join('\n\n');
     if (editingSection !== null) {
       setPlan((current) => current?.map((section, index) => (
-        index === editingSection ? { ...section, content: editText } : section
+        index === editingSection ? { ...section, content: normalizeLessonMaterialMarkdown(editText) } : section
       )) ?? null);
       setEditingSection(null);
+    }
+    const currentDocument = editorDocumentRef.current;
+    if (currentDocument) {
+      try {
+        const editorDraftId = await saveDraftSnapshot(currentDocument, topic.trim());
+        onAssignToStudents({ title: topic.trim(), subject: '', grade, content: '', editorDraftId });
+      } catch (saveError) {
+        console.error('Không thể lưu bài giảng trước khi giao cho học sinh.', saveError);
+        setDraftSaveError(saveError instanceof Error ? saveError.message : 'Không thể lưu bài giảng trước khi giao.');
+      }
+      return;
     }
     onAssignToStudents({ title: topic.trim(), subject: '', grade, content });
   };
 
+  const uploadEditorImage = async (file: File) => {
+    const document = editorDocumentRef.current;
+    if (!document) throw new Error('Đang khởi tạo nội dung bài giảng. Vui lòng thử chèn ảnh lại.');
+    const draftId = await saveDraftSnapshot(document, topic.trim());
+    const asset = await uploadTeacherLessonDraftImage(draftId, file);
+    return asset.src;
+  };
+
   const handleEdit = (idx: number) => {
     if (editingSection === idx) {
-      setPlan((p) => p ? p.map((s, i) => i === idx ? { ...s, content: editText } : s) : p);
+      setPlan((p) => p ? p.map((s, i) => i === idx
+        ? { ...s, content: format ? normalizeLessonMaterialMarkdown(editText) : editText }
+        : s) : p);
       setEditingSection(null);
     } else {
       setEditingSection(idx);
-      setEditText(plan?.[idx].content || '');
+      const content = plan?.[idx].content || '';
+      setEditText(format ? normalizeLessonMaterialMarkdown(content) : content);
     }
   };
 
@@ -255,9 +354,20 @@ export function LessonPlan({
                   </p>
                 </div>
                 {format && onAssignToStudents ? (
-                  <button type="button" onClick={assignToStudents} className="btn-primary shrink-0">
-                    <Send className="w-3.5 h-3.5" /> Giao cho học sinh
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditorOpen(true)}
+                      title="Mở trình soạn thảo bài giảng"
+                      aria-label="Mở trình soạn thảo bài giảng"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button type="button" onClick={() => { void assignToStudents(); }} className="btn-primary">
+                      <Send className="w-3.5 h-3.5" /> Giao cho học sinh
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex gap-1.5">
                     <button className="btn-outline"><Download className="w-3.5 h-3.5" /> Xuất PDF</button>
@@ -273,9 +383,11 @@ export function LessonPlan({
                       <span className="w-5 h-5 rounded-md bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-500">{idx + 1}</span>
                       {section.title}
                     </h4>
-                    <button onClick={() => handleEdit(idx)} className="p-1.5 rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600 transition-colors">
-                      {editingSection === idx ? <Save className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
-                    </button>
+                    {!format && (
+                      <button onClick={() => handleEdit(idx)} className="p-1.5 rounded-md text-slate-400 hover:bg-slate-100 hover:text-blue-600 transition-colors">
+                        {editingSection === idx ? <Save className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                   </div>
                   {editingSection === idx ? (
                     <textarea
@@ -284,15 +396,23 @@ export function LessonPlan({
                       rows={format ? Math.max(20, Math.min(36, editText.split('\n').length + 4)) : 4}
                       className={`input-field w-full resize-y text-sm ${format ? 'min-h-[480px]' : ''}`}
                     />
+                  ) : format ? (
+                    editorDocument && isLessonEditorDocument(editorDocument)
+                      ? <RichLessonContent document={editorDocument} className="text-sm leading-relaxed" />
+                      : <MathText
+                        text={section.content}
+                        className="text-sm leading-relaxed"
+                        variant="lesson"
+                      />
                   ) : (
-                    <div className={`text-sm text-slate-600 leading-relaxed space-y-2 ${format ? '' : 'pl-7'}`}>
+                    <div className="space-y-2 pl-7 text-sm leading-relaxed text-slate-600">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
                         rehypePlugins={[rehypeKatex]}
                         components={{
                           p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
-                          ul: ({ children }) => <ul className="list-disc pl-5 space-y-1">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1">{children}</ol>,
+                          ul: ({ children }) => <ul className="list-disc pl-5">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-5">{children}</ol>,
                           h1: ({ children }) => <h4 className="text-lg font-bold text-slate-900">{children}</h4>,
                           h2: ({ children }) => <h5 className="text-base font-bold text-slate-900">{children}</h5>,
                           h3: ({ children }) => <h6 className="text-sm font-semibold text-slate-800">{children}</h6>,
@@ -323,6 +443,27 @@ export function LessonPlan({
           )}
         </div>
       </div>
+      {draftSaveError && !editorOpen && (
+        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          Không thể tự động lưu bản nháp: {draftSaveError}
+        </p>
+      )}
+      {editorOpen && format && plan && (
+        <LessonEditor
+          title={topic}
+          initialMarkdown={plan.map((section) => section.content).join('\n\n')}
+          document={editorDocument}
+          saveState={draftSaveState}
+          saveError={draftSaveError}
+          onTitleChange={(nextTitle) => {
+            setTopic(nextTitle);
+            if (editorDocumentRef.current) setDraftSaveState('saving');
+          }}
+          onDocumentChange={handleEditorDocumentChange}
+          onClose={() => setEditorOpen(false)}
+          onUploadImage={uploadEditorImage}
+        />
+      )}
     </div>
   );
 }

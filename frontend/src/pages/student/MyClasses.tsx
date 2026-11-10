@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { AssignmentSubmissionFiles } from '@/components/AssignmentSubmissionFiles';
 import { MathText } from '@/components/MathText';
+import { RichLessonContent } from '@/components/LessonEditorContent';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { authenticatedFetch } from '@/auth/authApi';
 import { useSavedItems } from './savedItems';
@@ -1512,9 +1513,21 @@ export function MyClasses(props: MyClassesProps) {
                     )}
                   </section>
                 )}
-                {selectedResource.content && (
-                  <section className="mt-7 whitespace-pre-wrap text-base leading-7 text-slate-700">{selectedResource.content}</section>
+                {(selectedResource.editorDocument || selectedResource.content) && (
+                  <section className="mt-7 text-base leading-7 text-slate-700">
+                    {selectedResource.editorDocument
+                      ? <RichLessonContent document={selectedResource.editorDocument} />
+                      : <MathText text={selectedResource.content} variant="lesson" />}
+                  </section>
                 )}
+                {!selectedResource.editorDocument
+                  && !selectedResource.content
+                  && selectedResource.files.length === 0
+                  && (
+                    <p role="status" className="mt-7 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                      Bài giảng chưa có nội dung để hiển thị. Vui lòng báo giáo viên kiểm tra lại nội dung đã gửi.
+                    </p>
+                  )}
                 {submitError && <p role="alert" className="mt-4 text-sm text-rose-700">{submitError}</p>}
                 {saved.error && <p role="alert" className="mt-4 text-sm text-rose-700">{saved.error}</p>}
               </article>

@@ -1,24 +1,32 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import {
   BookOpen, Check, ChevronDown, ChevronRight, Clock3, CloudUpload, Download, Edit3, Eye, FileImage,
-  FileSpreadsheet, FileText, FileVideo2, FolderOpen, Presentation, Save, Search, Send,
+  FileSpreadsheet, FileText, FileVideo2, FolderOpen, Pencil, Presentation, Save, Search, Send,
   Sparkles, Trash2, Undo2, Upload, WandSparkles, X,
 } from 'lucide-react';
-import { authenticatedFetch } from '@/auth/authApi';
+import { LessonEditor } from '@/components/LessonEditor';
 import { MathText } from '@/components/MathText';
+import { RichLessonContent } from '@/components/LessonEditorContent';
 import { showToast } from '@/components/toast';
 import { parseAssignmentContent } from '@/pages/student/assignmentQuestions';
 import {
+  runLessonDocumentAssistant,
+  type LessonDocumentAssistantAction,
+} from '@/utils/lessonDocumentAssistant';
+import {
   createClassAssignment,
+  createClassLearningResource,
+  createClassLearningResourceChapter,
   deleteClassAssignment,
   deleteClassAssignmentChapter,
   deleteClassAssignmentLesson,
-  createClassLearningResource,
   deleteClassLearningResource,
   deleteClassLearningResourceChapter,
   deleteClassLearningResourceLesson,
   downloadClassLearningResourceFile,
+  getTeacherLessonDraft,
   listClassAssignments,
+  listClassLearningResourceChapters,
   listClassLearningResources,
   listClassSubjects,
   listClasses,
@@ -29,10 +37,15 @@ import {
   type ClassAssignment,
   type ClassLearningResource,
   type SchoolClass,
+  createTeacherLessonDraft,
   updateClassLearningResource,
+  updateTeacherLessonDraft,
   updateClassAssignment,
+  uploadClassLearningResourceImage,
   uploadClassLearningResource,
+  uploadTeacherLessonDraftImage,
 } from '@/api/schoolApi';
+import type { LessonEditorDocument } from '@/types/lessonEditor';
 
 type LessonFile = {
   id: string;
@@ -52,6 +65,20 @@ type LessonFile = {
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xlsx,.xls,.mp4,.jpg,.jpeg,.png,.gif,.webp';
 const maxFileSize = 50 * 1024 * 1024;
 const acceptedExtensions = new Set(acceptedTypes.split(',').map((extension) => extension.slice(1)));
+
+function hasLessonEditorContent(document: LessonEditorDocument | null) {
+  const hasContent = (node: LessonEditorDocument['content'][number]): boolean => {
+    if (node.type === 'text') return Boolean(node.text?.trim());
+    if (node.type === 'inlineMath' || node.type === 'blockMath') {
+      return typeof node.attrs?.latex === 'string' && Boolean(node.attrs.latex.trim());
+    }
+    if (node.type === 'image') {
+      return typeof node.attrs?.src === 'string' && Boolean(node.attrs.src);
+    }
+    return node.content?.some(hasContent) ?? false;
+  };
+  return document?.content.some(hasContent) ?? false;
+}
 
 type ReviewDraft = {
   title: string;
@@ -83,6 +110,7 @@ export interface LessonRepositoryDraft {
   title: string;
   subject: string;
   content: string;
+  editorDraftId?: string;
   contentType?: 'lesson' | 'assignment';
 }
 
@@ -141,7 +169,9 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   const [reviewResources, setReviewResources] = useState<ClassLearningResource[]>([]);
   const [reviewAssignments, setReviewAssignments] = useState<ClassAssignment[]>([]);
   const [assignmentChapters, setAssignmentChapters] = useState<string[]>([]);
+  const [savedResourceChapters, setSavedResourceChapters] = useState<string[]>([]);
   const [creatingChapter, setCreatingChapter] = useState(false);
+  const [savingChapter, setSavingChapter] = useState(false);
   const [editingChapterName, setEditingChapterName] = useState<string | null>(null);
   const [chapterNameDraft, setChapterNameDraft] = useState('');
   const [editingLesson, setEditingLesson] = useState<{ chapter: string; lesson: string } | null>(null);
@@ -157,6 +187,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({
     title: '', chapter: '', lesson: '', period: '', content: '', note: '', fileName: '',
   });
+  const [reviewEditorDocument, setReviewEditorDocument] = useState<LessonEditorDocument | null>(null);
+  const [reviewEditorOpen, setReviewEditorOpen] = useState(false);
+  const [reviewEditorSaveState, setReviewEditorSaveState] = useState<'idle' | 'unsaved' | 'saving' | 'saved' | 'error'>('saved');
+  const [reviewEditorSaveError, setReviewEditorSaveError] = useState('');
   const [editingReview, setEditingReview] = useState(false);
   const [editingReviewAssignment, setEditingReviewAssignment] = useState(false);
   const [reviewAssignmentDraft, setReviewAssignmentDraft] = useState<ReviewAssignmentDraft>({
@@ -190,15 +224,27 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [documentContent, setDocumentContent] = useState('');
+  const [initialEditorDocument, setInitialEditorDocument] = useState<LessonEditorDocument | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorDraftLoading, setEditorDraftLoading] = useState(false);
+  const [editorSaveState, setEditorSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [editorSaveError, setEditorSaveError] = useState('');
   const [previousLatexContent, setPreviousLatexContent] = useState<string | null>(null);
   const [editingDocumentContent, setEditingDocumentContent] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [advancedActionsOpen, setAdvancedActionsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const editorDraftIdRef = useRef<string | null>(initialDraft?.editorDraftId ?? null);
+  const editorDocumentRef = useRef<LessonEditorDocument | null>(null);
+  const editorDraftGenerationRef = useRef(0);
+  const editorSaveSequenceRef = useRef(0);
+  const editorSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const selectedFile = files[0]?.file;
+  const hasComposedLessonContent = contentType === 'lesson' && hasLessonEditorContent(initialEditorDocument);
   const preferredSubject = initialDraft?.subject ?? '';
   const parsedAssignmentContent = useMemo(
     () => contentType === 'assignment' ? parseAssignmentContent(documentContent) : null,
@@ -210,6 +256,102 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   }, [editingDocumentContent]);
 
   useEffect(() => {
+    if (!documentContent.trim()) setAdvancedActionsOpen(false);
+  }, [documentContent]);
+
+  const saveEditorDraft = useCallback((editorDocument: LessonEditorDocument, draftTitle: string) => {
+    const generation = editorDraftGenerationRef.current;
+    const sequence = ++editorSaveSequenceRef.current;
+    setEditorSaveState('saving');
+    setEditorSaveError('');
+    const request = editorSaveQueueRef.current.then(async () => {
+      if (generation !== editorDraftGenerationRef.current) {
+        throw new Error('Bản nháp đã được thay thế bằng nội dung mới.');
+      }
+      const saved = editorDraftIdRef.current
+        ? await updateTeacherLessonDraft(editorDraftIdRef.current, { title: draftTitle, editorDocument })
+        : await createTeacherLessonDraft({ title: draftTitle, editorDocument });
+      if (generation === editorDraftGenerationRef.current) {
+        editorDraftIdRef.current = saved.id;
+        if (sequence === editorSaveSequenceRef.current) {
+          setEditorSaveState('saved');
+          setEditorSaveError('');
+        }
+      }
+      return saved.id;
+    }).catch((saveError: unknown) => {
+      if (generation === editorDraftGenerationRef.current && sequence === editorSaveSequenceRef.current) {
+        setEditorSaveState('error');
+        setEditorSaveError(saveError instanceof Error ? saveError.message : 'Không thể lưu bản nháp bài giảng.');
+      }
+      throw saveError;
+    });
+    editorSaveQueueRef.current = request.then(() => undefined, () => undefined);
+    return request;
+  }, []);
+
+  const handleEditorDocumentChange = (editorDocument: LessonEditorDocument) => {
+    editorDocumentRef.current = editorDocument;
+    setInitialEditorDocument(editorDocument);
+    setEditorSaveState('saving');
+    setEditorSaveError('');
+  };
+
+  useEffect(() => {
+    if (!editorOpen || !initialEditorDocument) return undefined;
+    const timer = window.setTimeout(() => {
+      void saveEditorDraft(initialEditorDocument, title.trim() || 'Bản nháp bài giảng').catch((saveError: unknown) => {
+        console.error('Không thể tự động lưu bản nháp bài giảng.', saveError);
+      });
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [editorOpen, initialEditorDocument, saveEditorDraft, title]);
+
+  const closeLessonEditor = async () => {
+    const currentDocument = editorDocumentRef.current;
+    if (!currentDocument) {
+      setEditorOpen(false);
+      return;
+    }
+    try {
+      await saveEditorDraft(currentDocument, title.trim() || 'Bản nháp bài giảng');
+    } catch (saveError) {
+      console.error('Không thể lưu bản nháp trước khi đóng trình soạn thảo.', saveError);
+    } finally {
+      setEditorOpen(false);
+    }
+  };
+
+  const uploadEditorImage = async (file: File) => {
+    const currentDocument = editorDocumentRef.current;
+    if (!currentDocument) throw new Error('Nội dung bài giảng chưa sẵn sàng. Vui lòng thử chèn ảnh lại.');
+    const draftId = await saveEditorDraft(currentDocument, title.trim() || 'Bản nháp bài giảng');
+    const asset = await uploadTeacherLessonDraftImage(draftId, file);
+    return asset.src;
+  };
+
+  const handleDocumentContentChange = (content: string) => {
+    if (initialEditorDocument || editorDraftIdRef.current) {
+      editorDraftGenerationRef.current += 1;
+      editorSaveSequenceRef.current += 1;
+      editorDraftIdRef.current = null;
+      editorDocumentRef.current = null;
+      setInitialEditorDocument(null);
+      setEditorSaveState('idle');
+      setEditorSaveError('');
+    }
+    setDocumentContent(content);
+  };
+
+  useEffect(() => {
+    editorDraftGenerationRef.current += 1;
+    editorSaveSequenceRef.current += 1;
+    editorDraftIdRef.current = initialDraft?.editorDraftId ?? null;
+    editorDocumentRef.current = null;
+    setInitialEditorDocument(null);
+    setEditorOpen(false);
+    setEditorSaveState('idle');
+    setEditorSaveError('');
     if (!initialDraft) return;
     setActiveTab('create');
     setContentType(initialDraft.contentType ?? 'lesson');
@@ -222,6 +364,36 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       ? 'Bài tập đã được đưa vào nội dung. Chọn lớp và hạn nộp để giao cho học sinh.'
       : 'Bài giảng AI đã được đưa vào nội dung. Chọn lớp, chương và bài để giao cho học sinh.');
   }, [initialDraft]);
+
+  useEffect(() => {
+    let active = true;
+    if (!initialDraft?.editorDraftId) {
+      setInitialEditorDocument(null);
+      editorDocumentRef.current = null;
+      setEditorDraftLoading(false);
+      return () => { active = false; };
+    }
+    setEditorDraftLoading(true);
+    getTeacherLessonDraft(initialDraft.editorDraftId)
+      .then((draft) => {
+        if (active) {
+          editorDocumentRef.current = draft.editor_document;
+          setInitialEditorDocument(draft.editor_document);
+          setEditorSaveState('saved');
+        }
+      })
+      .catch((loadError: unknown) => {
+        console.error('Không thể tải bản nháp bài giảng đã lưu.', loadError);
+        if (active) {
+          setInitialEditorDocument(null);
+          setFeedback(loadError instanceof Error ? loadError.message : 'Không thể tải bản nháp bài giảng.');
+        }
+      })
+      .finally(() => {
+        if (active) setEditorDraftLoading(false);
+      });
+    return () => { active = false; };
+  }, [initialDraft?.editorDraftId]);
 
   useEffect(() => {
     if (!selectedFile?.type.startsWith('image/')) {
@@ -308,6 +480,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setReviewResources([]);
       setReviewAssignments([]);
       setAssignmentChapters([]);
+      setSavedResourceChapters([]);
       setRecentEntries([]);
       return;
     }
@@ -318,12 +491,18 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
     Promise.all([
       listClassLearningResources(classId),
       listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
+      listClassLearningResourceChapters(classId, {
+        academicYear: classroom.academic_year,
+        semester,
+        subject: selectedSubject,
+      }),
     ])
-      .then(([resources, assignments]) => {
+      .then(([resources, assignments, chapters]) => {
         if (!active) return;
         setReviewResources(resources.filter((resource) => resource.subject === selectedSubject));
         setReviewAssignments(assignments);
         setAssignmentChapters(assignments.map((assignment) => assignment.chapter).filter(Boolean));
+        setSavedResourceChapters(chapters);
         setRecentEntries([
           ...resources.filter((resource) => resource.subject === selectedSubject).map((resource) => ({
             id: resource.id,
@@ -372,9 +551,37 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
     () => Array.from(new Set([
       ...visibleReviewResources.map((resource) => resource.chapter),
       ...assignmentChapters,
+      ...savedResourceChapters,
     ])).sort((first, second) => first.localeCompare(second, 'vi', { numeric: true })),
-    [assignmentChapters, visibleReviewResources],
+    [assignmentChapters, savedResourceChapters, visibleReviewResources],
   );
+  const confirmNewChapter = async () => {
+    const newChapter = chapter.trim();
+    if (!newChapter || !selectedClass || !selectedSubject) return;
+
+    setSavingChapter(true);
+    setFeedback('');
+    try {
+      const savedChapter = await createClassLearningResourceChapter(selectedClass.id, {
+        academicYear: selectedClass.academic_year,
+        semester,
+        subject: selectedSubject,
+        chapter: newChapter,
+      });
+      setSavedResourceChapters((current) => (
+        current.some((item) => item.toLocaleLowerCase('vi') === savedChapter.toLocaleLowerCase('vi'))
+          ? current
+          : [...current, savedChapter]
+      ));
+      setChapter(savedChapter);
+      setCreatingChapter(false);
+      setFeedback('Đã lưu chương vào danh sách lớp và môn học.');
+    } catch (saveError) {
+      setFeedback(saveError instanceof Error ? saveError.message : 'Không thể lưu chương vào cơ sở dữ liệu.');
+    } finally {
+      setSavingChapter(false);
+    }
+  };
   const selectedReviewResource = visibleReviewResources.find((resource) => resource.id === selectedReviewId)
     ?? visibleReviewResources[0]
     ?? null;
@@ -445,10 +652,18 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
   useEffect(() => {
     if (!selectedReviewResource) {
       setReplacementFile(null);
+      setReviewEditorDocument(null);
+      setReviewEditorOpen(false);
+      setReviewEditorSaveState('saved');
+      setReviewEditorSaveError('');
       setReviewDraft({ title: '', chapter: '', lesson: '', period: '', content: '', note: '', fileName: '' });
       return;
     }
     setReplacementFile(null);
+    setReviewEditorDocument(selectedReviewResource.editorDocument);
+    setReviewEditorOpen(false);
+    setReviewEditorSaveState('saved');
+    setReviewEditorSaveError('');
     setReviewDraft({
       title: selectedReviewResource.title,
       chapter: selectedReviewResource.chapter,
@@ -503,34 +718,20 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
     };
   }, [selectedReviewResource]);
 
-  const runDocumentAssistant = async (action: 'latex' | 'polish' | 'check') => {
+  const runDocumentAssistant = async (action: LessonDocumentAssistantAction) => {
     if (!documentContent.trim()) {
       setFeedback('Nhập nội dung tài liệu trước khi dùng trợ lý.');
       return;
     }
 
-    const compactRule = ' Trình bày gọn: không chèn quá một dòng trống liên tiếp, không để dòng trống giữa các mục danh sách hoặc giữa tiêu đề và nội dung ngay sau nó, không dùng dòng "---" ngăn cách thừa.';
-    const requests = {
-      latex: `Hãy sửa và chuẩn hóa các công thức Toán, Lý, Hóa trong tài liệu sau bằng cú pháp LaTeX đúng chuẩn KaTeX: công thức trong dòng đặt giữa $...$, công thức độc lập đặt giữa $$...$$. Công thức hóa học viết bằng \\mathrm{}, ví dụ $\\mathrm{N_2 + 3H_2 \\rightleftharpoons 2NH_3}$ (không dùng \\text{} cho từng ký hiệu, không dùng \\ce). Đơn vị viết bằng \\mathrm{} hoặc \\text{}. Không dùng ký hiệu in nghiêng bằng dấu * bao quanh công thức. Giữ nguyên nội dung khác và chỉ trả về bản đã xử lý.${compactRule}`,
-      polish: `Hãy trình bày lại tài liệu sau cho rõ ràng, đẹp, có tiêu đề và danh sách hợp lý nếu phù hợp. Giữ nguyên ý nghĩa và chỉ trả về nội dung đã trình bày.${compactRule}`,
-      check: 'Hãy kiểm tra tài liệu sau về lỗi chính tả, ngữ pháp, diễn đạt và công thức. Không viết lại tài liệu; trả về danh sách lỗi phát hiện và đề xuất sửa, hoặc xác nhận chưa thấy lỗi rõ ràng.',
-    };
     setAiBusy(true);
     setFeedback('');
     try {
-      const response = await authenticatedFetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'lesson-document', prompt: `${requests[action]}\n\n${documentContent}` }),
-      });
-      const result: { success: boolean; data?: string; message?: string } = await response.json();
-      if (!response.ok || !result.success || !result.data) {
-        throw new Error(result.message || 'Không thể xử lý nội dung bằng trợ lý AI.');
-      }
-      if (action === 'check') setFeedback(result.data);
+      const result = await runLessonDocumentAssistant(action, documentContent);
+      if (action === 'check') setFeedback(result);
       else {
         if (action === 'latex') setPreviousLatexContent(documentContent);
-        setDocumentContent(result.data.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim());
+        setDocumentContent(result);
       }
     } catch (requestError) {
       setFeedback(requestError instanceof Error ? requestError.message : 'Không thể kết nối tới dịch vụ AI.');
@@ -582,7 +783,15 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setFeedback('Chọn một tệp trước khi đăng.');
       return;
     }
-    if (entryMode === 'write' && !documentContent.trim()) {
+    const hasUnloadedInitialDraft = Boolean(
+      initialDraft?.editorDraftId
+      && editorDraftIdRef.current === initialDraft.editorDraftId
+      && !editorDocumentRef.current,
+    );
+    if (entryMode === 'write'
+      && !documentContent.trim()
+      && !hasLessonEditorContent(editorDocumentRef.current)
+      && !hasUnloadedInitialDraft) {
       setFeedback('Nhập nội dung tài liệu trước khi gửi.');
       return;
     }
@@ -626,8 +835,16 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
             ...payload, title: resourceTitle, note: note.trim(), file,
           });
         } else {
+          const currentDocument = editorDocumentRef.current;
+          const savedDraftId = currentDocument
+            ? await saveEditorDraft(currentDocument, resourceTitle)
+            : editorDraftIdRef.current;
           await createClassLearningResource(classId, {
-            ...payload, title: resourceTitle, content: documentContent.trim(), note: note.trim(),
+            ...payload,
+            title: resourceTitle,
+            content: savedDraftId ? '' : documentContent.trim(),
+            note: note.trim(),
+            ...(savedDraftId ? { editorDraftId: savedDraftId } : {}),
           });
         }
       } else {
@@ -654,6 +871,14 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setTitle('');
       setNote('');
       setDocumentContent('');
+      editorDraftGenerationRef.current += 1;
+      editorSaveSequenceRef.current += 1;
+      editorDraftIdRef.current = null;
+      editorDocumentRef.current = null;
+      setInitialEditorDocument(null);
+      setEditorOpen(false);
+      setEditorSaveState('idle');
+      setEditorSaveError('');
       setPreviousLatexContent(null);
       setFiles([]);
       showToast(contentType === 'lesson' ? 'Bài giảng đã được đăng.' : 'Bài tập đã được giao.');
@@ -686,11 +911,15 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
 
   const saveReviewedLesson = async () => {
     if (!selectedClass || !selectedReviewResource) return;
+    const editorDocument = reviewEditorDocument ?? selectedReviewResource.editorDocument;
     if (!reviewDraft.title.trim() || !reviewDraft.chapter.trim() || !reviewDraft.lesson.trim()) {
       setFeedback('Tên bài giảng, chương và bài học không được để trống.');
       return;
     }
-    if (!reviewDraft.content.trim() && !selectedReviewResource.files.length && !replacementFile) {
+    if (!reviewDraft.content.trim()
+      && !editorDocument
+      && !selectedReviewResource.files.length
+      && !replacementFile) {
       setFeedback('Bài giảng cần có nội dung hoặc tệp đính kèm.');
       return;
     }
@@ -700,6 +929,8 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
     }
     setPublishing(true);
     setFeedback('');
+    setReviewEditorSaveState('saving');
+    setReviewEditorSaveError('');
     try {
       await updateClassLearningResource(selectedClass.id, selectedReviewResource.id, {
         academicYear: selectedReviewResource.academicYear,
@@ -709,8 +940,9 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         lesson: reviewDraft.lesson.trim(),
         period: reviewDraft.period.trim() || null,
         title: reviewDraft.title.trim(),
-        content: reviewDraft.content,
+        content: editorDocument ? '' : reviewDraft.content,
         note: reviewDraft.note.trim(),
+        ...(editorDocument ? { editorDocument } : {}),
         ...(selectedReviewResource.files.length ? { fileName: reviewDraft.fileName.trim() } : {}),
         ...(replacementFile ? { file: replacementFile } : {}),
       });
@@ -718,6 +950,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
         .filter((resource) => resource.subject === selectedReviewResource.subject);
       setReviewResources(updatedResources);
       setReplacementFile(null);
+      setReviewEditorSaveState('saved');
       setRecentEntries((current) => current.map((entry) => entry.id === selectedReviewResource.id
         ? {
           ...entry,
@@ -732,7 +965,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
       setEditingReview(false);
       showToast('Bài giảng đã được cập nhật và đăng lại cho học sinh.');
     } catch (requestError) {
-      setFeedback(requestError instanceof Error ? requestError.message : 'Không thể cập nhật bài giảng.');
+      const message = requestError instanceof Error ? requestError.message : 'Không thể cập nhật bài giảng.';
+      setFeedback(message);
+      setReviewEditorSaveState('error');
+      setReviewEditorSaveError(message);
     } finally {
       setPublishing(false);
     }
@@ -1270,9 +1506,9 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
               <div className="space-y-2">
                 <textarea
                   ref={documentContentTextareaRef}
-                  hidden={Boolean(documentContent.trim()) && !editingDocumentContent}
+                  hidden={hasComposedLessonContent || (Boolean(documentContent.trim()) && !editingDocumentContent)}
                   value={documentContent}
-                  onChange={(event) => setDocumentContent(event.target.value)}
+                  onChange={(event) => handleDocumentContentChange(event.target.value)}
                   onBlur={() => {
                     if (documentContent.trim()) setEditingDocumentContent(false);
                   }}
@@ -1283,30 +1519,39 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                   className="input-field min-h-28 resize-y text-sm"
                   aria-label={contentType === 'assignment' ? 'Nội dung bài tập' : 'Nội dung tài liệu'}
                 />
-                {documentContent.trim() && (
+                {(documentContent.trim() || initialEditorDocument) && (
                   <section
                     aria-label="Xem trước công thức"
-                    hidden={editingDocumentContent}
+                    hidden={editingDocumentContent && !initialEditorDocument}
                     className="rounded-lg border border-slate-200 bg-white"
                   >
                     <div className="border-b border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                      Bản xem trước - Bấm vào nội dung để sửa LaTeX (Ctrl+Z để hoàn tác)
+                      {initialEditorDocument
+                        ? 'Bản xem trước nội dung đã lưu trong trình soạn thảo'
+                        : 'Bản xem trước - Bấm vào nội dung để sửa LaTeX (Ctrl+Z để hoàn tác)'}
                     </div>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      aria-label="Bấm để sửa nội dung và công thức LaTeX"
-                      onClick={() => setEditingDocumentContent(true)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setEditingDocumentContent(true);
-                        }
-                      }}
-                      className="max-h-72 cursor-text overflow-y-auto px-3 py-2 text-sm leading-6 text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
-                    >
-                      <MathText text={documentContent} />
-                    </div>
+                    {initialEditorDocument
+                      ? <RichLessonContent document={initialEditorDocument} className="max-h-72 overflow-y-auto px-3 py-2 text-sm" />
+                      : (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label="Bấm để sửa nội dung và công thức LaTeX"
+                          onClick={() => setEditingDocumentContent(true)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setEditingDocumentContent(true);
+                            }
+                          }}
+                          className="max-h-72 cursor-text overflow-y-auto px-3 py-2 text-sm leading-6 text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                        >
+                          <MathText
+                            text={documentContent}
+                            variant={contentType === 'lesson' ? 'lesson' : 'default'}
+                          />
+                        </div>
+                      )}
                   </section>
                 )}
                 {contentType === 'assignment' && documentContent.trim() && (
@@ -1329,7 +1574,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                     )}
                   </section>
                 )}
-                <div className="flex flex-wrap gap-1.5">
+                {editorSaveError && (
+                  <p role="alert" className="text-xs text-rose-700">{editorSaveError}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-1.5">
                   {previousLatexContent !== null && (
                     <button
                       type="button"
@@ -1343,20 +1591,54 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                       <Undo2 className="h-3.5 w-3.5" /> Hoàn tác chuẩn hóa LaTeX
                     </button>
                   )}
-                  {([
-                    ['latex', 'Tạo / chuẩn hóa LaTeX', Sparkles],
-                    ['polish', 'Trình bày đẹp hơn', WandSparkles],
-                    ['check', 'Kiểm tra lỗi', Search],
-                  ] as const).map(([action, label, Icon]) => (
+                  <div className="relative">
                     <button
-                      key={action}
-                      onClick={() => runDocumentAssistant(action)}
+                      type="button"
+                      onClick={() => setAdvancedActionsOpen((open) => !open)}
                       disabled={aiBusy || !documentContent.trim()}
+                      aria-haspopup="menu"
+                      aria-expanded={advancedActionsOpen}
                       className="inline-flex items-center gap-1.5 rounded-md border border-blue-100 bg-blue-50/70 px-2.5 py-1.5 text-[0.6875rem] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <Icon className="h-3.5 w-3.5" /> {aiBusy ? 'Đang xử lý...' : label}
+                      <WandSparkles className="h-3.5 w-3.5" />
+                      {aiBusy ? 'Đang xử lý...' : 'Trình bày nâng cao'}
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedActionsOpen ? 'rotate-180' : ''}`} />
                     </button>
-                  ))}
+                    {advancedActionsOpen && (
+                      <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 min-w-52 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                        {([
+                          ['latex', 'Tạo / chuẩn hóa LaTeX', Sparkles],
+                          ['polish', 'Trình bày đẹp hơn', WandSparkles],
+                          ['check', 'Kiểm tra lỗi', Search],
+                        ] as const).map(([action, label, Icon]) => (
+                          <button
+                            key={action}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setAdvancedActionsOpen(false);
+                              void runDocumentAssistant(action);
+                            }}
+                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            <Icon className="h-3.5 w-3.5" /> {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {contentType === 'lesson' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditorOpen(true)}
+                      disabled={editorDraftLoading || publishing}
+                      title="Mở môi trường soạn bài chuyên nghiệp"
+                      aria-label="Mở môi trường soạn bài chuyên nghiệp"
+                      className="ml-auto inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-md transition hover:bg-blue-700 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Pencil className="h-5 w-5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -1415,15 +1697,16 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                     />
                     <button
                       type="button"
-                      onClick={() => { setCreatingChapter(false); setChapter(''); }}
-                      className="shrink-0 rounded-md border border-slate-200 px-2 text-[0.625rem] font-semibold text-slate-600 hover:bg-slate-50"
+                      onClick={() => void confirmNewChapter()}
+                      disabled={!chapter.trim() || !selectedClass || !selectedSubject || savingChapter}
+                      className="shrink-0 rounded-md border border-blue-200 px-2 text-[0.625rem] font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Chọn chương
+                      {savingChapter ? 'Đang lưu...' : 'Xác nhận'}
                     </button>
                   </span>
                 ) : (
                   <select
-                    value={availableChapters.includes(chapter) ? chapter : ''}
+                    value={chapter}
                     onChange={(event) => {
                       if (event.target.value === '__create_chapter__') {
                         setCreatingChapter(true);
@@ -1435,6 +1718,7 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                     className="input-field mt-1 h-9 w-full px-2.5 py-1.5 text-xs"
                   >
                     <option value="">Chọn chương</option>
+                    {chapter && !availableChapters.includes(chapter) && <option value={chapter}>{chapter}</option>}
                     {availableChapters.map((item) => <option key={item} value={item}>{item}</option>)}
                     <option value="__create_chapter__">+ Tạo chương mới</option>
                   </select>
@@ -2192,6 +2476,10 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                               fileName: selectedReviewResource.files[0]?.name ?? '',
                             });
                             setReplacementFile(null);
+                            setReviewEditorDocument(selectedReviewResource.editorDocument);
+                            setReviewEditorOpen(false);
+                            setReviewEditorSaveState('saved');
+                            setReviewEditorSaveError('');
                             setEditingReview(false);
                           }}
                           disabled={publishing}
@@ -2303,15 +2591,36 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                           className="input-field mt-1 resize-y text-sm"
                         />
                       </label>
-                      <label className="block text-sm font-semibold text-slate-700">Nội dung bài giảng
-                        <textarea
-                          value={reviewDraft.content}
-                          onChange={(event) => setReviewDraft((current) => ({ ...current, content: event.target.value }))}
-                          maxLength={50000}
-                          rows={12}
-                          className="input-field mt-1 min-h-56 resize-y whitespace-pre-wrap text-sm leading-6"
-                        />
-                      </label>
+                      {selectedReviewResource.editorDocument ? (
+                        <section className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-700">Nội dung có định dạng</p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReviewEditorSaveState('saved');
+                                setReviewEditorSaveError('');
+                                setReviewEditorOpen(true);
+                              }}
+                              className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                            >
+                              <Pencil className="h-4 w-4" /> Sửa nội dung
+                            </button>
+                          </div>
+                          <RichLessonContent document={reviewEditorDocument ?? selectedReviewResource.editorDocument} />
+                          <p className="mt-3 text-xs text-slate-500">Chỉnh sửa trong trình soạn thảo rồi nhấn “Đăng lại” để lưu và gửi bản mới cho học sinh.</p>
+                        </section>
+                      ) : (
+                        <label className="block text-sm font-semibold text-slate-700">Nội dung bài giảng
+                          <textarea
+                            value={reviewDraft.content}
+                            onChange={(event) => setReviewDraft((current) => ({ ...current, content: event.target.value }))}
+                            maxLength={50000}
+                            rows={12}
+                            className="input-field mt-1 min-h-56 resize-y whitespace-pre-wrap text-sm leading-6"
+                          />
+                        </label>
+                      )}
                       <p className="text-xs text-slate-500">Tệp hiện tại được giữ nguyên nếu không chọn tệp thay thế. Nhấn “Đăng lại” để học sinh thấy bản cập nhật.</p>
                     </div>
                   ) : (
@@ -2340,9 +2649,18 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
                           )}
                         </section>
                       )}
-                      {selectedReviewResource.content
-                        ? <MathText text={selectedReviewResource.content} className="whitespace-pre-wrap text-base leading-7 text-slate-700" />
-                        : !selectedReviewResource.files.length && <p className="text-sm text-slate-500">Bài giảng chưa có nội dung.</p>}
+                      {selectedReviewResource.editorDocument
+                        ? <RichLessonContent
+                          document={selectedReviewResource.editorDocument}
+                          className="text-base leading-7 text-slate-700"
+                        />
+                        : selectedReviewResource.content
+                          ? <MathText
+                          text={selectedReviewResource.content}
+                          className="text-base leading-7 text-slate-700"
+                          variant="lesson"
+                          />
+                          : !selectedReviewResource.files.length && <p className="text-sm text-slate-500">Bài giảng chưa có nội dung.</p>}
                     </>
                   )}
                 </>
@@ -2357,6 +2675,50 @@ export function LessonRepository({ initialDraft }: { initialDraft?: LessonReposi
           </div>
         </section>
       )}
+      {editorOpen && contentType === 'lesson' && entryMode === 'write' && (
+        <LessonEditor
+          title={title}
+          initialMarkdown={documentContent}
+          document={initialEditorDocument}
+          saveState={editorSaveState}
+          saveError={editorSaveError}
+          onTitleChange={(nextTitle) => setTitle(nextTitle)}
+          onDocumentChange={handleEditorDocumentChange}
+          onClose={() => { void closeLessonEditor(); }}
+          onUploadImage={uploadEditorImage}
+        />
+      )}
+      {activeTab === 'review'
+        && reviewEditorOpen
+        && selectedReviewResource
+        && selectedClass
+        && reviewEditorDocument && (
+          <LessonEditor
+            title={reviewDraft.title}
+            initialMarkdown={reviewDraft.content}
+            document={reviewEditorDocument}
+            saveState={reviewEditorSaveState}
+            saveError={reviewEditorSaveError}
+            onTitleChange={(nextTitle) => {
+              setReviewDraft((current) => ({ ...current, title: nextTitle }));
+              setReviewEditorSaveState('unsaved');
+            }}
+            onDocumentChange={(document) => {
+              setReviewEditorDocument(document);
+              setReviewEditorSaveState('unsaved');
+              setReviewEditorSaveError('');
+            }}
+            onClose={() => setReviewEditorOpen(false)}
+            onUploadImage={async (file) => {
+              const asset = await uploadClassLearningResourceImage(
+                selectedClass.id,
+                selectedReviewResource.id,
+                file,
+              );
+              return asset.src;
+            }}
+          />
+        )}
     </section>
   );
 }

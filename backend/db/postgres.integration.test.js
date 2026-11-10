@@ -716,6 +716,32 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
       semester: 'Kỳ 1',
       subject: 'Hóa học',
     };
+    const savedChapter = await classroomService.createClassLearningResourceChapter(
+      teacherAuth,
+      classId,
+      { ...input, chapter: 'Chương đã lưu riêng' },
+    );
+    assert.equal(savedChapter.chapter, 'Chương đã lưu riêng');
+    assert.deepEqual(
+      await classroomService.listClassLearningResourceChapters(teacherAuth, classId, input),
+      ['Chương đã lưu riêng'],
+    );
+    assert.deepEqual(
+      await classroomService.createClassLearningResourceChapter(
+        teacherAuth,
+        classId,
+        { ...input, chapter: '  Chương đã lưu riêng  ' },
+      ),
+      savedChapter,
+    );
+    await assert.rejects(
+      classroomService.createClassLearningResourceChapter(
+        { ...teacherAuth, role: 'student' },
+        classId,
+        { ...input, chapter: 'Không được phép' },
+      ),
+      (error) => error.status === 403,
+    );
     const firstSavedAverage = await classroomService.saveStudentGrades(teacherAuth, classId, studentIds[0], {
       ...input,
       regular: [8, 9, null, null],
@@ -894,6 +920,205 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
       studentClasses[0].subjects.find(({ subject }) => subject === 'Hóa học').teacherName,
       'Đức',
     );
+    const lessonDraft = await classroomService.createTeacherLessonDraft(teacherAuth, {
+      title: 'Bài giảng có định dạng',
+      editorDocument: {
+        type: 'doc',
+        content: [{
+          type: 'paragraph',
+          content: [{
+            type: 'text',
+            text: 'Nội dung gốc',
+            marks: [{
+              type: 'textStyle',
+              attrs: {
+                color: 'rgb(38, 99, 235)',
+                backgroundColor: 'rgba(219, 234, 254, 0.5)',
+                fontSize: null,
+                fontFamily: null,
+              },
+            }],
+          }],
+        }],
+      },
+    });
+    const draftImage = await classroomService.createTeacherLessonDraftAsset(teacherAuth, lessonDraft.id, {
+      originalname: 'minh-hoa-editor.png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xZ8AAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+    const richDocument = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [{
+            type: 'text',
+            text: 'I. Khái niệm',
+            marks: [{ type: 'textStyle', attrs: { fontSize: '28px' } }],
+          }],
+        },
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: 'Công thức: ',
+              marks: [{ type: 'textStyle', attrs: { fontSize: '16px' } }],
+            },
+            { type: 'inlineMath', attrs: { latex: 'x^2 + 1' } },
+            {
+              type: 'text',
+              text: ' và ',
+              marks: [{ type: 'textStyle', attrs: { fontSize: '1.25rem' } }],
+            },
+            { type: 'inlineMath', attrs: { latex: '\\frac{a}{b}' } },
+          ],
+        },
+        {
+          type: 'table',
+          content: [{
+            type: 'tableRow',
+            content: [
+              {
+                type: 'tableHeader',
+                content: [{
+                  type: 'paragraph',
+                  content: [{
+                    type: 'text',
+                    text: 'Đại lượng',
+                    marks: [{ type: 'textStyle', attrs: { fontSize: '14px' } }],
+                  }],
+                }],
+              },
+              {
+                type: 'tableCell',
+                content: [{
+                  type: 'paragraph',
+                  content: [{
+                    type: 'text',
+                    text: 'Giá trị',
+                    marks: [{ type: 'textStyle', attrs: { fontSize: '32px' } }],
+                  }],
+                }],
+              },
+            ],
+          }],
+        },
+        {
+          type: 'image',
+          attrs: {
+            src: `/api/teacher/lesson-drafts/${lessonDraft.id}/assets/${draftImage.id}`,
+            alt: 'Hình minh họa',
+            width: 640,
+            align: 'center',
+            caption: 'Hình 1',
+          },
+        },
+      ],
+    };
+    await classroomService.updateTeacherLessonDraft(teacherAuth, lessonDraft.id, {
+      title: lessonDraft.title,
+      editorDocument: richDocument,
+    });
+    assert.deepEqual(
+      (await classroomService.getTeacherLessonDraft(teacherAuth, lessonDraft.id)).editor_document,
+      richDocument,
+    );
+    const richResource = await classroomService.createClassLearningResource(teacherAuth, classId, {
+      ...input,
+      chapter: 'Chương 1',
+      lesson: 'Bài 2',
+      period: null,
+      title: 'Bài giảng có định dạng',
+      content: '',
+      note: '',
+      editorDraftId: lessonDraft.id,
+    });
+    assert.equal(richResource.editor_document.content[0].type, 'heading');
+    const publishedImageSource = richResource.editor_document.content[3].attrs.src;
+    assert.match(publishedImageSource, new RegExp(`^/api/resources/${richResource.id}/assets/`));
+    const studentRichResource = (await classroomService.listStudentLearningResources(firstStudentAuth))
+      .find((resource) => resource.id === richResource.id);
+    assert.deepEqual(studentRichResource.editorDocument, richResource.editor_document);
+    assert.deepEqual(
+      studentRichResource.editorDocument.content[1].content
+        .filter((node) => node.type === 'inlineMath')
+        .map((node) => node.attrs.latex),
+      ['x^2 + 1', '\\frac{a}{b}'],
+    );
+    assert.deepEqual(
+      studentRichResource.editorDocument.content[1].content
+        .filter((node) => node.type === 'text')
+        .map((node) => node.marks?.find((mark) => mark.type === 'textStyle')?.attrs.fontSize),
+      ['16px', '1.25rem'],
+    );
+    const publishedImageId = publishedImageSource.split('/').pop();
+    const studentImage = await classroomService.getClassLearningResourceAsset(
+      firstStudentAuth,
+      richResource.id,
+      publishedImageId,
+    );
+    assert.equal(studentImage.media_type, 'image/png');
+    assert.deepEqual(studentImage.content, Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xZ8AAAAASUVORK5CYII=',
+      'base64',
+    ));
+    const editedAsset = await classroomService.createClassLearningResourceAsset(
+      teacherAuth,
+      classId,
+      richResource.id,
+      {
+        originalname: 'hinh-bo-sung.png',
+        buffer: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xZ8AAAAASUVORK5CYII=',
+          'base64',
+        ),
+      },
+    );
+    const editedDocument = JSON.parse(JSON.stringify(richResource.editor_document));
+    editedDocument.content[0].content[0].text = 'I. Khái niệm đã chỉnh sửa';
+    editedDocument.content.push({
+      type: 'image',
+      attrs: {
+        src: `/api/resources/${richResource.id}/assets/${editedAsset.id}`,
+        alt: 'Hình bổ sung',
+        width: null,
+        align: 'center',
+        caption: '',
+      },
+    });
+    const updatedRichResource = await classroomService.updateClassLearningResource(
+      teacherAuth,
+      classId,
+      richResource.id,
+      {
+        ...input,
+        chapter: 'Chương 1',
+        lesson: 'Bài 2',
+        period: null,
+        title: richResource.title,
+        content: '',
+        note: '',
+        editorDocument: editedDocument,
+      },
+    );
+    assert.deepEqual(updatedRichResource.editor_document, editedDocument);
+    const updatedStudentResource = (await classroomService.listStudentLearningResources(firstStudentAuth))
+      .find((resource) => resource.id === richResource.id);
+    assert.deepEqual(updatedStudentResource.editorDocument, editedDocument);
+    const studentEditedImage = await classroomService.getClassLearningResourceAsset(
+      firstStudentAuth,
+      richResource.id,
+      editedAsset.id,
+    );
+    assert.deepEqual(studentEditedImage.content, Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xZ8AAAAASUVORK5CYII=',
+      'base64',
+    ));
     await assert.rejects(
       classroomService.listClassAssignmentSubmissions(firstStudentAuth, classId, assignment.id),
       (error) => error.status === 404,

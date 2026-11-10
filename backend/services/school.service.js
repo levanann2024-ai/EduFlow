@@ -3471,14 +3471,280 @@ async function listStudentSubjectAverages(auth, semester) {
   }));
 }
 
+const LESSON_EDITOR_NODE_TYPES = new Set([
+  'doc', 'paragraph', 'heading', 'text', 'hardBreak', 'horizontalRule', 'blockquote', 'codeBlock',
+  'bulletList', 'orderedList', 'listItem', 'table', 'tableRow', 'tableHeader', 'tableCell',
+  'image', 'inlineMath', 'blockMath',
+]);
+const LESSON_EDITOR_MARK_TYPES = new Set([
+  'bold', 'italic', 'strike', 'underline', 'code', 'link', 'textStyle', 'highlight',
+]);
+const LESSON_EDITOR_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isSafeLessonEditorCssValue(value) {
+  return typeof value === 'string'
+    && (value.trim().length === 0 || !/[;{}]/.test(value));
+}
+
+function validateLessonEditorDocument(document, { draftId, resourceId } = {}) {
+  if (!document || typeof document !== 'object' || Array.isArray(document) || document.type !== 'doc'
+    || !Array.isArray(document.content)) {
+    throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Cấu trúc nội dung bài giảng không hợp lệ.');
+  }
+  if (Buffer.byteLength(JSON.stringify(document), 'utf8') > 750000) {
+    throw serviceError(413, 'SCHOOL_LESSON_DOCUMENT_TOO_LARGE', 'Nội dung bài giảng vượt quá giới hạn lưu trữ.');
+  }
+
+  let nodeCount = 0;
+  const expectedAssetPrefix = draftId
+    ? `/api/teacher/lesson-drafts/${draftId}/assets/`
+    : resourceId ? `/api/resources/${resourceId}/assets/` : null;
+  const visit = (node, depth = 0) => {
+    nodeCount += 1;
+    if (nodeCount > 12000 || depth > 80 || !node || typeof node !== 'object' || Array.isArray(node)
+      || typeof node.type !== 'string' || !LESSON_EDITOR_NODE_TYPES.has(node.type)) {
+      throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Nội dung bài giảng chứa cấu trúc không được hỗ trợ.');
+    }
+    if (node.type === 'text' && (typeof node.text !== 'string' || node.text.length > 50000)) {
+      throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Đoạn văn bản trong bài giảng không hợp lệ.');
+    }
+    if (node.marks !== undefined) {
+      if (!Array.isArray(node.marks)) {
+        throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Định dạng văn bản trong bài giảng không hợp lệ.');
+      }
+      for (const mark of node.marks) {
+        if (!mark || typeof mark !== 'object' || !LESSON_EDITOR_MARK_TYPES.has(mark.type)) {
+          throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Bài giảng chứa định dạng không được hỗ trợ.');
+        }
+        const attrs = mark.attrs ?? {};
+        if (mark.type === 'link'
+          && (typeof attrs.href !== 'string'
+            || !/^(https:\/\/|mailto:|tel:)/i.test(attrs.href)
+            || attrs.href.length > 2048)) {
+          throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Liên kết trong bài giảng không hợp lệ.');
+        }
+        if (mark.type === 'textStyle') {
+          if (attrs.color !== undefined && attrs.color !== null && !isSafeLessonEditorCssValue(attrs.color)) {
+            throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Màu chữ trong bài giảng không hợp lệ.');
+          }
+          if (attrs.backgroundColor !== undefined && attrs.backgroundColor !== null
+            && !isSafeLessonEditorCssValue(attrs.backgroundColor)) {
+            throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Màu nền chữ trong bài giảng không hợp lệ.');
+          }
+          if (attrs.fontSize !== undefined && attrs.fontSize !== null
+            && !isSafeLessonEditorCssValue(attrs.fontSize)) {
+            throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Cỡ chữ trong bài giảng không hợp lệ.');
+          }
+          if (attrs.fontFamily !== undefined && attrs.fontFamily !== null
+            && !isSafeLessonEditorCssValue(attrs.fontFamily)) {
+            throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Phông chữ trong bài giảng không hợp lệ.');
+          }
+        }
+      }
+    }
+
+    const attrs = node.attrs ?? {};
+    if (node.type === 'image') {
+      const source = attrs.src;
+      const assetPathMatches = typeof source === 'string' && expectedAssetPrefix
+        && source.startsWith(expectedAssetPrefix)
+        && LESSON_EDITOR_UUID_PATTERN.test(source.slice(expectedAssetPrefix.length));
+      const externalImage = typeof source === 'string' && /^https:\/\/[^/]/i.test(source);
+      if (!assetPathMatches && !externalImage) {
+        throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Ảnh trong bài giảng không hợp lệ.');
+      }
+      if (attrs.width !== null && attrs.width !== undefined
+        && (!Number.isInteger(attrs.width) || attrs.width < 80 || attrs.width > 1200)) {
+        throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Kích thước ảnh trong bài giảng không hợp lệ.');
+      }
+      if (attrs.align !== undefined && !['left', 'center', 'right'].includes(attrs.align)) {
+        throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Căn chỉnh ảnh trong bài giảng không hợp lệ.');
+      }
+      if (attrs.alt !== null && attrs.alt !== undefined
+        && (typeof attrs.alt !== 'string' || attrs.alt.length > 500)) {
+        throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Chú thích ảnh trong bài giảng không hợp lệ.');
+      }
+    }
+    if (node.content !== undefined) {
+      if (!Array.isArray(node.content)) {
+        throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Các mục trong bài giảng không hợp lệ.');
+      }
+      node.content.forEach((child) => visit(child, depth + 1));
+    }
+  };
+  visit(document);
+  return document;
+}
+
+function validateTeacherLessonDraft(input, draftId) {
+  const { title, editorDocument } = input;
+  if (typeof title !== 'string' || title.trim().length === 0 || title.length > 200) {
+    throw serviceError(400, 'SCHOOL_INVALID_LESSON_DRAFT', 'Tên bản nháp bài giảng không hợp lệ.');
+  }
+  return validateLessonEditorDocument(editorDocument, { draftId });
+}
+
+async function createTeacherLessonDraft(auth, input) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được lưu bản nháp bài giảng.');
+  }
+  const id = randomUUID();
+  const editorDocument = validateTeacherLessonDraft(input, id);
+  const result = await getPool().query(
+    `INSERT INTO teacher_lesson_drafts (id, teacher_user_id, title, editor_document)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, title, editor_document, updated_at`,
+    [id, auth.userId, input.title.trim(), editorDocument],
+  );
+  return result.rows[0];
+}
+
+async function getTeacherLessonDraft(auth, draftId) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được xem bản nháp bài giảng.');
+  }
+  const result = await getPool().query(
+    `SELECT id, title, editor_document, updated_at
+       FROM teacher_lesson_drafts
+      WHERE id = $1 AND teacher_user_id = $2`,
+    [draftId, auth.userId],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_LESSON_DRAFT_NOT_FOUND', 'Không tìm thấy bản nháp bài giảng.');
+  }
+  return result.rows[0];
+}
+
+async function updateTeacherLessonDraft(auth, draftId, input) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được lưu bản nháp bài giảng.');
+  }
+  const editorDocument = validateTeacherLessonDraft(input, draftId);
+  const result = await getPool().query(
+    `UPDATE teacher_lesson_drafts
+        SET title = $3, editor_document = $4, updated_at = now()
+      WHERE id = $1 AND teacher_user_id = $2
+      RETURNING id, title, editor_document, updated_at`,
+    [draftId, auth.userId, input.title.trim(), editorDocument],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_LESSON_DRAFT_NOT_FOUND', 'Không tìm thấy bản nháp bài giảng.');
+  }
+  return result.rows[0];
+}
+
+async function createTeacherLessonDraftAsset(auth, draftId, file) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được tải ảnh lên bản nháp.');
+  }
+  const { originalName, mediaType } = validateResourceFile(file);
+  if (!mediaType.startsWith('image/') || file.buffer.length > 3 * 1024 * 1024) {
+    throw serviceError(400, 'SCHOOL_INVALID_LESSON_IMAGE', 'Ảnh phải là JPEG, PNG, GIF hoặc WebP và không vượt quá 3 MB.');
+  }
+  const result = await getPool().query(
+    `INSERT INTO teacher_lesson_draft_assets
+       (id, draft_id, original_name, media_type, size_bytes, content)
+     SELECT $1, d.id, $3, $4, $5, $6
+       FROM teacher_lesson_drafts d
+      WHERE d.id = $2 AND d.teacher_user_id = $7
+        AND (SELECT count(*) FROM teacher_lesson_draft_assets a WHERE a.draft_id = d.id) < 15
+     RETURNING id, original_name, media_type, size_bytes`,
+    [randomUUID(), draftId, originalName, mediaType, file.buffer.length, file.buffer, auth.userId],
+  );
+  if (result.rowCount === 0) {
+    const draft = await getPool().query(
+      'SELECT 1 FROM teacher_lesson_drafts WHERE id = $1 AND teacher_user_id = $2',
+      [draftId, auth.userId],
+    );
+    if (draft.rowCount === 0) {
+      throw serviceError(404, 'SCHOOL_LESSON_DRAFT_NOT_FOUND', 'Không tìm thấy bản nháp bài giảng.');
+    }
+    throw serviceError(400, 'SCHOOL_LESSON_IMAGE_LIMIT', 'Mỗi bản nháp hỗ trợ tối đa 15 ảnh.');
+  }
+  return result.rows[0];
+}
+
+async function createClassLearningResourceAsset(auth, classId, resourceId, file) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được tải ảnh lên bài giảng.');
+  }
+  const { originalName, mediaType } = validateResourceFile(file);
+  if (!mediaType.startsWith('image/') || file.buffer.length > 3 * 1024 * 1024) {
+    throw serviceError(400, 'SCHOOL_INVALID_LESSON_IMAGE', 'Ảnh phải là JPEG, PNG, GIF hoặc WebP và không vượt quá 3 MB.');
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const resourceResult = await client.query(
+      `SELECT id, school_id, subject, academic_year
+         FROM class_learning_resources
+        WHERE id = $1 AND class_id = $2 AND teacher_user_id = $3
+        FOR UPDATE`,
+      [resourceId, classId, auth.userId],
+    );
+    if (resourceResult.rowCount === 0) {
+      throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp hiện tại.');
+    }
+    const resource = resourceResult.rows[0];
+    const classroom = await requireTeacherSubject(auth, classId, resource.subject);
+    validateClassAcademicYear(classroom, resource.academic_year);
+    if (classroom.school_id !== resource.school_id) {
+      throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp hiện tại.');
+    }
+
+    const assetCount = await client.query(
+      'SELECT count(*)::int AS count FROM class_learning_resource_assets WHERE resource_id = $1',
+      [resourceId],
+    );
+    if (assetCount.rows[0].count >= 15) {
+      throw serviceError(400, 'SCHOOL_LESSON_IMAGE_LIMIT', 'Mỗi bài giảng hỗ trợ tối đa 15 ảnh.');
+    }
+    const asset = await client.query(
+      `INSERT INTO class_learning_resource_assets
+         (id, resource_id, original_name, media_type, size_bytes, content)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, original_name, media_type, size_bytes`,
+      [randomUUID(), resourceId, originalName, mediaType, file.buffer.length, file.buffer],
+    );
+    await client.query('COMMIT');
+    return asset.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function getTeacherLessonDraftAsset(auth, draftId, assetId) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được xem ảnh trong bản nháp.');
+  }
+  const result = await getPool().query(
+    `SELECT a.original_name, a.media_type, a.content
+       FROM teacher_lesson_draft_assets a
+       JOIN teacher_lesson_drafts d ON d.id = a.draft_id
+      WHERE d.id = $1 AND a.id = $2 AND d.teacher_user_id = $3`,
+    [draftId, assetId, auth.userId],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_LESSON_IMAGE_NOT_FOUND', 'Không tìm thấy ảnh trong bản nháp.');
+  }
+  return result.rows[0];
+}
+
 function validateLearningResource(input) {
   const { academicYear, semester, subject, chapter, lesson, period, title, content, note = '' } = input;
+  const hasEditorDraft = typeof input.editorDraftId === 'string'
+    && LESSON_EDITOR_UUID_PATTERN.test(input.editorDraftId);
   validatePeriod(academicYear, semester, subject);
   if (typeof chapter !== 'string' || chapter.trim().length === 0 || chapter.length > 160
     || typeof lesson !== 'string' || lesson.trim().length === 0 || lesson.length > 200
     || (period !== null && period !== undefined && (typeof period !== 'string' || period.length > 80))
     || typeof title !== 'string' || title.trim().length === 0 || title.length > 200
-    || typeof content !== 'string' || content.trim().length === 0 || content.length > 50000
+    || typeof content !== 'string' || (!hasEditorDraft && content.trim().length === 0) || content.length > 50000
+    || (input.editorDraftId !== undefined && !hasEditorDraft)
     || typeof note !== 'string' || note.length > 500) {
     throw serviceError(400, 'SCHOOL_INVALID_RESOURCE', 'Thông tin bài giảng không hợp lệ.');
   }
@@ -3489,6 +3755,88 @@ async function createClassLearningResource(auth, classId, input) {
   const { academicYear, semester, subject, chapter, lesson, period, title, content, note = '' } = input;
   const classroom = await requireTeacherSubject(auth, classId, subject);
   validateClassAcademicYear(classroom, academicYear);
+  if (input.editorDraftId) {
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const draftResult = await client.query(
+        `SELECT editor_document
+           FROM teacher_lesson_drafts
+          WHERE id = $1 AND teacher_user_id = $2
+          FOR UPDATE`,
+        [input.editorDraftId, auth.userId],
+      );
+      if (draftResult.rowCount === 0) {
+        throw serviceError(404, 'SCHOOL_LESSON_DRAFT_NOT_FOUND', 'Không tìm thấy bản nháp bài giảng đã lưu.');
+      }
+      const draftDocument = validateLessonEditorDocument(draftResult.rows[0].editor_document, {
+        draftId: input.editorDraftId,
+      });
+      const resourceId = randomUUID();
+      const created = await client.query(
+        `INSERT INTO class_learning_resources
+           (id, class_id, school_id, teacher_user_id, subject, academic_year, semester,
+            chapter, lesson, period, title, content, note, editor_document)
+         SELECT $1, c.id, c.school_id, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+           FROM classes c
+          WHERE c.id = $2 AND c.school_id = $3 AND c.status = 'active'
+            AND EXISTS (
+              SELECT 1 FROM teacher_class_assignments tca
+               WHERE tca.class_id = c.id AND tca.teacher_user_id = $4
+                 AND tca.school_id = c.school_id AND lower(trim(tca.subject)) = lower(trim($5))
+                 AND tca.revoked_at IS NULL
+            )
+         RETURNING id, class_id, subject, academic_year, semester, chapter, lesson, period,
+                   title, content, note, editor_document, created_at`,
+        [
+          resourceId, classroom.id, classroom.school_id, auth.userId, subject.trim(), academicYear,
+          semester, chapter.trim(), lesson.trim(), period?.trim() || null, title.trim(), content.trim(),
+          note.trim(), draftDocument,
+        ],
+      );
+      if (created.rowCount === 0) {
+        throw serviceError(404, 'SCHOOL_SUBJECT_NOT_FOUND', 'Không tìm thấy môn học trong phạm vi phân công.');
+      }
+      const assets = await client.query(
+        `SELECT id, original_name, media_type, size_bytes, content
+           FROM teacher_lesson_draft_assets
+          WHERE draft_id = $1
+          ORDER BY created_at, id`,
+        [input.editorDraftId],
+      );
+      const assetUrls = new Map();
+      for (const asset of assets.rows) {
+        const newAssetId = randomUUID();
+        await client.query(
+          `INSERT INTO class_learning_resource_assets
+             (id, resource_id, original_name, media_type, size_bytes, content)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [newAssetId, resourceId, asset.original_name, asset.media_type, asset.size_bytes, asset.content],
+        );
+        assetUrls.set(
+          `/api/teacher/lesson-drafts/${input.editorDraftId}/assets/${asset.id}`,
+          `/api/resources/${resourceId}/assets/${newAssetId}`,
+        );
+      }
+      const publishedDocument = rewriteLessonEditorAssetUrls(draftDocument, assetUrls);
+      validateLessonEditorDocument(publishedDocument, { resourceId });
+      const updated = await client.query(
+        `UPDATE class_learning_resources
+            SET editor_document = $2
+          WHERE id = $1
+          RETURNING id, class_id, subject, academic_year, semester, chapter, lesson, period,
+                    title, content, note, editor_document, created_at`,
+        [resourceId, publishedDocument],
+      );
+      await client.query('COMMIT');
+      return updated.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
   const result = await getPool().query(
     `INSERT INTO class_learning_resources
        (id, class_id, school_id, teacher_user_id, subject, academic_year, semester,
@@ -3515,9 +3863,40 @@ async function createClassLearningResource(auth, classId, input) {
   return result.rows[0];
 }
 
+function rewriteLessonEditorAssetUrls(document, assetUrls) {
+  if (Array.isArray(document)) {
+    return document.map((item) => rewriteLessonEditorAssetUrls(item, assetUrls));
+  }
+  if (!document || typeof document !== 'object') return document;
+  return Object.fromEntries(Object.entries(document).map(([key, value]) => {
+    if (key === 'src' && typeof value === 'string' && assetUrls.has(value)) {
+      return [key, assetUrls.get(value)];
+    }
+    return [key, rewriteLessonEditorAssetUrls(value, assetUrls)];
+  }));
+}
+
+function lessonEditorResourceAssetIds(document, resourceId) {
+  const ids = new Set();
+  const prefix = `/api/resources/${resourceId}/assets/`;
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'image' && typeof node.attrs?.src === 'string'
+      && node.attrs.src.startsWith(prefix)) {
+      ids.add(node.attrs.src.slice(prefix.length));
+    }
+    if (Array.isArray(node.content)) node.content.forEach(visit);
+  };
+  visit(document);
+  return [...ids];
+}
+
 async function updateClassLearningResource(auth, classId, resourceId, input, file) {
   const { academicYear, semester, subject, chapter, lesson, period, title, content, note = '', fileName } = input;
   const uploadedFile = file ? validateResourceFile(file) : null;
+  const editorDocument = input.editorDocument === undefined
+    ? undefined
+    : validateLessonEditorDocument(input.editorDocument, { resourceId });
   validatePeriod(academicYear, semester, subject);
   if (typeof chapter !== 'string' || chapter.trim().length === 0 || chapter.length > 160
     || typeof lesson !== 'string' || lesson.trim().length === 0 || lesson.length > 200
@@ -3538,7 +3917,7 @@ async function updateClassLearningResource(auth, classId, resourceId, input, fil
     const current = await client.query(
       `SELECT EXISTS (
          SELECT 1 FROM class_learning_resource_files WHERE resource_id = r.id
-       ) AS has_file
+       ) AS has_file, r.editor_document IS NOT NULL AS has_editor_document
          FROM class_learning_resources r
         WHERE r.id = $1 AND r.class_id = $2 AND r.school_id = $3 AND r.teacher_user_id = $4
         FOR UPDATE`,
@@ -3547,13 +3926,33 @@ async function updateClassLearningResource(auth, classId, resourceId, input, fil
     if (current.rowCount === 0) {
       throw serviceError(404, 'SCHOOL_RESOURCE_NOT_FOUND', 'Không tìm thấy bài giảng trong lớp hiện tại.');
     }
-    if (!content.trim() && !current.rows[0].has_file && !uploadedFile) {
+    if (!content.trim() && !current.rows[0].has_file && !uploadedFile
+      && !current.rows[0].has_editor_document && !editorDocument) {
       throw serviceError(400, 'SCHOOL_INVALID_RESOURCE', 'Bài giảng cần có nội dung hoặc tệp đính kèm.');
+    }
+    if (editorDocument) {
+      const assetIds = lessonEditorResourceAssetIds(editorDocument, resourceId);
+      if (assetIds.length) {
+        const assets = await client.query(
+          `SELECT id FROM class_learning_resource_assets
+            WHERE resource_id = $1 AND id = ANY($2::uuid[])`,
+          [resourceId, assetIds],
+        );
+        if (assets.rowCount !== assetIds.length) {
+          throw serviceError(400, 'SCHOOL_INVALID_LESSON_DOCUMENT', 'Ảnh trong bài giảng không hợp lệ.');
+        }
+      }
     }
     const updated = await client.query(
       `UPDATE class_learning_resources r
           SET subject = $5, academic_year = $6, semester = $7, chapter = $8, lesson = $9,
-              period = $10, title = $11, content = $12, note = $13
+              period = $10, title = $11, content = $12,
+              editor_document = CASE
+                WHEN $14::jsonb IS NOT NULL THEN $14::jsonb
+                WHEN length(trim($12)) > 0 THEN NULL
+                ELSE r.editor_document
+              END,
+              note = $13
         WHERE r.id = $1 AND r.class_id = $2 AND r.school_id = $3 AND r.teacher_user_id = $4
           AND EXISTS (
             SELECT 1 FROM teacher_class_assignments tca
@@ -3562,10 +3961,11 @@ async function updateClassLearningResource(auth, classId, resourceId, input, fil
                AND tca.revoked_at IS NULL
           )
        RETURNING r.id, r.class_id, r.subject, r.academic_year, r.semester, r.chapter,
-                 r.lesson, r.period, r.title, r.content, r.note, r.created_at`,
+                 r.lesson, r.period, r.title, r.content, r.note, r.editor_document, r.created_at`,
       [
         resourceId, classroom.id, classroom.school_id, auth.userId, subject.trim(), academicYear,
         semester, chapter.trim(), lesson.trim(), period?.trim() || null, title.trim(), content.trim(), note.trim(),
+        editorDocument ?? null,
       ],
     );
     if (updated.rowCount === 0) {
@@ -3621,6 +4021,55 @@ function validateResourceChapterScope(input, chapter) {
   return { ...scope, chapter: chapter.trim() };
 }
 
+async function createClassLearningResourceChapter(auth, classId, input) {
+  const scope = validateResourceChapterScope(input, input.chapter);
+  const classroom = await requireTeacherSubject(auth, classId, scope.subject);
+  validateClassAcademicYear(classroom, scope.academicYear);
+  const result = await getPool().query(
+    `INSERT INTO class_learning_resource_chapters
+       (class_id, school_id, subject, academic_year, semester, chapter)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT DO NOTHING
+     RETURNING chapter`,
+    [
+      classroom.id, classroom.school_id, scope.subject, scope.academicYear,
+      scope.semester, scope.chapter,
+    ],
+  );
+  if (result.rowCount > 0) return { chapter: result.rows[0].chapter };
+
+  const existing = await getPool().query(
+    `SELECT chapter
+       FROM class_learning_resource_chapters
+      WHERE class_id = $1 AND school_id = $2 AND academic_year = $3 AND semester = $4
+        AND lower(trim(subject)) = lower(trim($5))
+        AND lower(trim(chapter)) = lower(trim($6))`,
+    [
+      classroom.id, classroom.school_id, scope.academicYear, scope.semester,
+      scope.subject, scope.chapter,
+    ],
+  );
+  if (existing.rowCount === 0) {
+    throw serviceError(500, 'SCHOOL_RESOURCE_CHAPTER_SAVE_FAILED', 'Không thể lưu chương học.');
+  }
+  return { chapter: existing.rows[0].chapter };
+}
+
+async function listClassLearningResourceChapters(auth, classId, input) {
+  const scope = validateResourcePeriodScope(input);
+  const classroom = await requireTeacherSubject(auth, classId, scope.subject);
+  validateClassAcademicYear(classroom, scope.academicYear);
+  const result = await getPool().query(
+    `SELECT chapter
+       FROM class_learning_resource_chapters
+      WHERE class_id = $1 AND school_id = $2 AND academic_year = $3 AND semester = $4
+        AND lower(trim(subject)) = lower(trim($5))
+      ORDER BY chapter`,
+    [classroom.id, classroom.school_id, scope.academicYear, scope.semester, scope.subject],
+  );
+  return result.rows.map((row) => row.chapter);
+}
+
 async function renameClassLearningResourceChapter(auth, classId, currentChapter, input) {
   const scope = validateResourceChapterScope(input, currentChapter);
   const nextChapter = input.newChapter;
@@ -3629,57 +4078,106 @@ async function renameClassLearningResourceChapter(auth, classId, currentChapter,
   }
   const classroom = await requireTeacherSubject(auth, classId, scope.subject);
   validateClassAcademicYear(classroom, scope.academicYear);
-  const result = await getPool().query(
-    `UPDATE class_learning_resources r
-        SET chapter = $8
-      WHERE r.class_id = $1 AND r.school_id = $2 AND r.teacher_user_id = $3
-        AND lower(trim(r.subject)) = lower(trim($4))
-        AND r.academic_year = $5 AND r.semester = $6 AND r.chapter = $7
-        AND EXISTS (
-          SELECT 1 FROM teacher_class_assignments tca
-           WHERE tca.class_id = r.class_id AND tca.teacher_user_id = r.teacher_user_id
-             AND tca.school_id = r.school_id
-             AND lower(trim(tca.subject)) = lower(trim(r.subject))
-             AND tca.revoked_at IS NULL
-        )
-     RETURNING r.id`,
-    [
-      classroom.id, classroom.school_id, auth.userId, scope.subject, scope.academicYear,
-      scope.semester, scope.chapter, nextChapter.trim(),
-    ],
-  );
-  if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_RESOURCE_CHAPTER_NOT_FOUND', 'Không tìm thấy chương trong phạm vi lớp học.');
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `UPDATE class_learning_resources r
+          SET chapter = $8
+        WHERE r.class_id = $1 AND r.school_id = $2 AND r.teacher_user_id = $3
+          AND lower(trim(r.subject)) = lower(trim($4))
+          AND r.academic_year = $5 AND r.semester = $6 AND r.chapter = $7
+          AND EXISTS (
+            SELECT 1 FROM teacher_class_assignments tca
+             WHERE tca.class_id = r.class_id AND tca.teacher_user_id = r.teacher_user_id
+               AND tca.school_id = r.school_id
+               AND lower(trim(tca.subject)) = lower(trim(r.subject))
+               AND tca.revoked_at IS NULL
+          )
+       RETURNING r.id`,
+      [
+        classroom.id, classroom.school_id, auth.userId, scope.subject, scope.academicYear,
+        scope.semester, scope.chapter, nextChapter.trim(),
+      ],
+    );
+    if (result.rowCount === 0) {
+      throw serviceError(404, 'SCHOOL_RESOURCE_CHAPTER_NOT_FOUND', 'Không tìm thấy chương trong phạm vi lớp học.');
+    }
+    await client.query(
+      `DELETE FROM class_learning_resource_chapters
+        WHERE class_id = $1 AND school_id = $2 AND academic_year = $3 AND semester = $4
+          AND lower(trim(subject)) = lower(trim($5)) AND lower(trim(chapter)) = lower(trim($6))`,
+      [
+        classroom.id, classroom.school_id, scope.academicYear, scope.semester,
+        scope.subject, scope.chapter,
+      ],
+    );
+    await client.query(
+      `INSERT INTO class_learning_resource_chapters
+         (class_id, school_id, subject, academic_year, semester, chapter)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT DO NOTHING`,
+      [
+        classroom.id, classroom.school_id, scope.subject, scope.academicYear,
+        scope.semester, nextChapter.trim(),
+      ],
+    );
+    await client.query('COMMIT');
+    return { updatedCount: result.rowCount, chapter: nextChapter.trim() };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-  return { updatedCount: result.rowCount, chapter: nextChapter.trim() };
 }
 
 async function deleteClassLearningResourceChapter(auth, classId, chapter, input) {
   const scope = validateResourceChapterScope(input, chapter);
   const classroom = await requireTeacherSubject(auth, classId, scope.subject);
   validateClassAcademicYear(classroom, scope.academicYear);
-  const result = await getPool().query(
-    `DELETE FROM class_learning_resources r
-      WHERE r.class_id = $1 AND r.school_id = $2 AND r.teacher_user_id = $3
-        AND lower(trim(r.subject)) = lower(trim($4))
-        AND r.academic_year = $5 AND r.semester = $6 AND r.chapter = $7
-        AND EXISTS (
-          SELECT 1 FROM teacher_class_assignments tca
-           WHERE tca.class_id = r.class_id AND tca.teacher_user_id = r.teacher_user_id
-             AND tca.school_id = r.school_id
-             AND lower(trim(tca.subject)) = lower(trim(r.subject))
-             AND tca.revoked_at IS NULL
-        )
-     RETURNING r.id`,
-    [
-      classroom.id, classroom.school_id, auth.userId, scope.subject, scope.academicYear,
-      scope.semester, scope.chapter,
-    ],
-  );
-  if (result.rowCount === 0) {
-    throw serviceError(404, 'SCHOOL_RESOURCE_CHAPTER_NOT_FOUND', 'Không tìm thấy chương trong phạm vi lớp học.');
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `DELETE FROM class_learning_resources r
+        WHERE r.class_id = $1 AND r.school_id = $2 AND r.teacher_user_id = $3
+          AND lower(trim(r.subject)) = lower(trim($4))
+          AND r.academic_year = $5 AND r.semester = $6 AND r.chapter = $7
+          AND EXISTS (
+            SELECT 1 FROM teacher_class_assignments tca
+             WHERE tca.class_id = r.class_id AND tca.teacher_user_id = r.teacher_user_id
+               AND tca.school_id = r.school_id
+               AND lower(trim(tca.subject)) = lower(trim(r.subject))
+               AND tca.revoked_at IS NULL
+          )
+       RETURNING r.id`,
+      [
+        classroom.id, classroom.school_id, auth.userId, scope.subject, scope.academicYear,
+        scope.semester, scope.chapter,
+      ],
+    );
+    const deletedChapters = await client.query(
+      `DELETE FROM class_learning_resource_chapters
+        WHERE class_id = $1 AND school_id = $2 AND academic_year = $3 AND semester = $4
+          AND lower(trim(subject)) = lower(trim($5)) AND lower(trim(chapter)) = lower(trim($6))
+       RETURNING chapter`,
+      [
+        classroom.id, classroom.school_id, scope.academicYear, scope.semester,
+        scope.subject, scope.chapter,
+      ],
+    );
+    if (result.rowCount === 0 && deletedChapters.rowCount === 0) {
+      throw serviceError(404, 'SCHOOL_RESOURCE_CHAPTER_NOT_FOUND', 'Không tìm thấy chương trong phạm vi lớp học.');
+    }
+    await client.query('COMMIT');
+    return { deletedCount: result.rowCount };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-  return { deletedCount: result.rowCount };
 }
 
 async function renameClassLearningResourceLesson(auth, classId, chapter, lesson, input) {
@@ -3903,7 +4401,7 @@ async function listClassLearningResources(auth, classId) {
   }
   const result = await getPool().query(
     `SELECT r.id, r.class_id, r.subject, r.academic_year, r.semester, r.chapter,
-            r.lesson, r.period, r.title, r.content, r.note, r.created_at,
+            r.lesson, r.period, r.title, r.content, r.note, r.editor_document, r.created_at,
             COALESCE((
               SELECT json_agg(json_build_object(
                 'id', f.id, 'name', f.original_name, 'mediaType', f.media_type, 'sizeBytes', f.size_bytes
@@ -3934,7 +4432,7 @@ async function listStudentLearningResources(auth) {
   const result = await getPool().query(
     `SELECT r.id, r.class_id, c.name AS class_name, c.code AS class_code,
             r.subject, r.academic_year, r.semester, r.chapter, r.lesson, r.period,
-            r.title, r.content, r.note, r.created_at,
+            r.title, r.content, r.note, r.editor_document, r.created_at,
             teacher.full_name AS teacher_name,
             COALESCE((
               SELECT json_agg(json_build_object(
@@ -3966,10 +4464,45 @@ async function listStudentLearningResources(auth) {
     title: row.title,
     content: row.content,
     note: row.note,
+    editorDocument: row.editor_document,
     createdAt: row.created_at.toISOString(),
     teacherName: row.teacher_name,
     files: row.files,
   }));
+}
+
+async function getClassLearningResourceAsset(auth, resourceId, assetId) {
+  if (auth.role !== 'student' && auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Vai trò không được phép xem ảnh trong bài giảng.');
+  }
+  const schoolId = await getSingleActiveSchool(auth.userId, auth.role);
+  const result = await getPool().query(
+    `SELECT a.original_name, a.media_type, a.content
+       FROM class_learning_resource_assets a
+       JOIN class_learning_resources r ON r.id = a.resource_id
+       JOIN classes c ON c.id = r.class_id AND c.school_id = r.school_id
+       JOIN schools sc ON sc.id = c.school_id AND sc.status = 'active'
+      WHERE r.id = $1 AND a.id = $2 AND c.school_id = $3 AND c.status = 'active'
+        AND (
+          ($4 = 'lecturer' AND r.teacher_user_id = $5 AND EXISTS (
+            SELECT 1 FROM teacher_class_assignments tca
+             WHERE tca.class_id = c.id AND tca.teacher_user_id = $5
+               AND tca.school_id = c.school_id
+               AND lower(trim(tca.subject)) = lower(trim(r.subject))
+               AND tca.revoked_at IS NULL
+          ))
+          OR
+          ($4 = 'student' AND EXISTS (
+            SELECT 1 FROM class_memberships cm
+             WHERE cm.class_id = c.id AND cm.student_user_id = $5 AND cm.status = 'active'
+          ))
+        )`,
+    [resourceId, assetId, schoolId, auth.role, auth.userId],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_LESSON_IMAGE_NOT_FOUND', 'Không tìm thấy ảnh trong bài giảng của lớp hiện tại.');
+  }
+  return result.rows[0];
 }
 
 async function getClassLearningResourceFile(auth, resourceId, fileId) {
@@ -4150,6 +4683,9 @@ module.exports = {
   deleteClassAssignmentChapter,
   deleteClassAssignmentLesson,
   createClassLearningResource,
+  createClassLearningResourceAsset,
+  createTeacherLessonDraft,
+  createClassLearningResourceChapter,
   createClassLearningResourceFile,
   deleteClassLearningResource,
   deleteClassLearningResourceLesson,
@@ -4161,10 +4697,16 @@ module.exports = {
   listClassAssignmentSubmissions,
   getClassAssignmentSubmissionFile,
   getClassLearningResourceFile,
+  getClassLearningResourceAsset,
+  getTeacherLessonDraft,
+  getTeacherLessonDraftAsset,
   getClassGradebook,
   listClasses,
   listClassAssignments,
   listClassLearningResources,
+  listClassLearningResourceChapters,
+  updateTeacherLessonDraft,
+  createTeacherLessonDraftAsset,
   listClassStudents,
   listStudentExamRooms,
   listStudentExamResults,
@@ -4202,6 +4744,7 @@ module.exports = {
   submitClassAssignment,
   updateClassLearningResource,
   updateClassAssignment,
+  validateLessonEditorDocument,
   renameClassAssignmentChapter,
   renameClassAssignmentLesson,
   renameClassLearningResourceChapter,

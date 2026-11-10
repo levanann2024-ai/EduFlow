@@ -14,7 +14,11 @@ const {
   deleteClassAssignmentChapter,
   deleteClassAssignmentLesson,
   createClassLearningResource,
+  createClassLearningResourceAsset,
+  createClassLearningResourceChapter,
   createClassLearningResourceFile,
+  createTeacherLessonDraft,
+  createTeacherLessonDraftAsset,
   deleteClassLearningResource,
   deleteTeacherAssessment,
   deleteTeacherExamRoom,
@@ -32,10 +36,14 @@ const {
   listClassAssignmentSubmissions,
   getClassAssignmentSubmissionFile,
   getClassLearningResourceFile,
+  getClassLearningResourceAsset,
+  getTeacherLessonDraft,
+  getTeacherLessonDraftAsset,
   getClassGradebook,
   listClasses,
   listClassAssignments,
   listClassLearningResources,
+  listClassLearningResourceChapters,
   listClassStudents,
   listStudentExamRooms,
   listStudentExamResults,
@@ -63,6 +71,7 @@ const {
   submitClassAssignment,
   updateClassAssignment,
   updateClassLearningResource,
+  updateTeacherLessonDraft,
   renameClassAssignmentChapter,
   renameClassAssignmentLesson,
   renameClassLearningResourceChapter,
@@ -96,6 +105,11 @@ const resourceFileUpload = multer({
   storage: multer.memoryStorage(),
   defParamCharset: 'utf8',
   limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 12, parts: 13 },
+});
+const lessonImageUpload = multer({
+  storage: multer.memoryStorage(),
+  defParamCharset: 'utf8',
+  limits: { fileSize: 3 * 1024 * 1024, files: 1, fields: 0, parts: 1 },
 });
 const assignmentSubmissionUpload = multer({
   storage: multer.memoryStorage(),
@@ -157,6 +171,21 @@ function parseResourceFile(req, res, next) {
         success: false,
         code: tooLarge ? 'SCHOOL_RESOURCE_FILE_TOO_LARGE' : 'SCHOOL_INVALID_RESOURCE_FILE',
         message: tooLarge ? 'Tệp không được vượt quá 50 MB.' : 'Yêu cầu tải tệp không hợp lệ.',
+      });
+    }
+    if (error) return next(error);
+    return next();
+  });
+}
+
+function parseLessonImageUpload(req, res, next) {
+  lessonImageUpload.single('file')(req, res, (error) => {
+    if (error instanceof multer.MulterError) {
+      const tooLarge = error.code === 'LIMIT_FILE_SIZE';
+      return res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        code: tooLarge ? 'SCHOOL_LESSON_IMAGE_TOO_LARGE' : 'SCHOOL_INVALID_LESSON_IMAGE',
+        message: tooLarge ? 'Ảnh không được vượt quá 3 MB.' : 'Yêu cầu tải ảnh lên không hợp lệ.',
       });
     }
     if (error) return next(error);
@@ -294,6 +323,7 @@ router.use('/student/timetable', requireAuthForSchoolReads, requireAccountReady,
 router.use('/student/progress', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount, requireRole('student'));
 router.use('/student/learning-activity', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount, requireRole('student'));
 router.use('/teacher/timetable', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount, requireRole('lecturer'));
+router.use('/teacher/lesson-drafts', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount, requireRole('lecturer'));
 router.use('/resources', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount);
 router.use('/teacher/assessments', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount, requireRole('lecturer'));
 router.use('/teacher/exam-rooms', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount, requireRole('lecturer'));
@@ -634,6 +664,18 @@ router.get('/classes/:classId/resources', asyncRoute(async (req, res) => {
   return res.json({ success: true, resources });
 }));
 
+router.get('/classes/:classId/resource-chapters', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const chapters = await listClassLearningResourceChapters(req.auth, classId, req.query);
+  return res.json({ success: true, chapters });
+}));
+
+router.post('/classes/:classId/resource-chapters', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const result = await createClassLearningResourceChapter(req.auth, classId, req.body ?? {});
+  return res.status(201).json({ success: true, ...result });
+}));
+
 router.patch('/classes/:classId/resource-chapters/:chapter', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const resource = await renameClassLearningResourceChapter(req.auth, classId, req.params.chapter, req.body ?? {});
@@ -672,15 +714,45 @@ router.delete('/classes/:classId/resource-chapters/:chapter/lessons/:lesson', as
 
 router.post('/classes/:classId/resources', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
-  const resource = await createClassLearningResource(req.auth, classId, req.body ?? {});
+  const input = { ...(req.body ?? {}) };
+  if (input.editorDraftId !== undefined) input.editorDraftId = requireUuid(input.editorDraftId, 'editorDraftId');
+  const resource = await createClassLearningResource(req.auth, classId, input);
   return res.status(201).json({ success: true, resource });
 }));
 
 router.put('/classes/:classId/resources/:resourceId', parseResourceFile, asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const resourceId = requireUuid(req.params.resourceId, 'resourceId');
-  const resource = await updateClassLearningResource(req.auth, classId, resourceId, req.body ?? {}, req.file);
+  const input = { ...(req.body ?? {}) };
+  if (typeof input.editorDocument === 'string') {
+    try {
+      input.editorDocument = JSON.parse(input.editorDocument);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        code: 'SCHOOL_INVALID_LESSON_DOCUMENT',
+        message: 'Cấu trúc nội dung bài giảng không hợp lệ.',
+      });
+    }
+  }
+  const resource = await updateClassLearningResource(req.auth, classId, resourceId, input, req.file);
   return res.json({ success: true, resource });
+}));
+
+router.post('/classes/:classId/resources/:resourceId/assets', parseLessonImageUpload, asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const resourceId = requireUuid(req.params.resourceId, 'resourceId');
+  const asset = await createClassLearningResourceAsset(req.auth, classId, resourceId, req.file);
+  return res.status(201).json({
+    success: true,
+    asset: {
+      id: asset.id,
+      src: `/api/resources/${resourceId}/assets/${asset.id}`,
+      name: asset.original_name,
+      mediaType: asset.media_type,
+      sizeBytes: Number(asset.size_bytes),
+    },
+  });
 }));
 
 router.delete('/classes/:classId/resources/:resourceId', asyncRoute(async (req, res) => {
@@ -694,6 +766,48 @@ router.post('/classes/:classId/resources/upload', parseResourceFile, asyncRoute(
   const classId = requireUuid(req.params.classId, 'classId');
   const resource = await createClassLearningResourceFile(req.auth, classId, req.body ?? {}, req.file);
   return res.status(201).json({ success: true, resource });
+}));
+
+router.post('/teacher/lesson-drafts', asyncRoute(async (req, res) => {
+  const draft = await createTeacherLessonDraft(req.auth, req.body ?? {});
+  return res.status(201).json({ success: true, draft });
+}));
+
+router.get('/teacher/lesson-drafts/:draftId', asyncRoute(async (req, res) => {
+  const draftId = requireUuid(req.params.draftId, 'draftId');
+  const draft = await getTeacherLessonDraft(req.auth, draftId);
+  return res.json({ success: true, draft });
+}));
+
+router.put('/teacher/lesson-drafts/:draftId', asyncRoute(async (req, res) => {
+  const draftId = requireUuid(req.params.draftId, 'draftId');
+  const draft = await updateTeacherLessonDraft(req.auth, draftId, req.body ?? {});
+  return res.json({ success: true, draft });
+}));
+
+router.post('/teacher/lesson-drafts/:draftId/assets', parseLessonImageUpload, asyncRoute(async (req, res) => {
+  const draftId = requireUuid(req.params.draftId, 'draftId');
+  const asset = await createTeacherLessonDraftAsset(req.auth, draftId, req.file);
+  return res.status(201).json({
+    success: true,
+    asset: {
+      id: asset.id,
+      src: `/api/teacher/lesson-drafts/${draftId}/assets/${asset.id}`,
+      name: asset.original_name,
+      mediaType: asset.media_type,
+      sizeBytes: Number(asset.size_bytes),
+    },
+  });
+}));
+
+router.get('/teacher/lesson-drafts/:draftId/assets/:assetId', asyncRoute(async (req, res) => {
+  const draftId = requireUuid(req.params.draftId, 'draftId');
+  const assetId = requireUuid(req.params.assetId, 'assetId');
+  const asset = await getTeacherLessonDraftAsset(req.auth, draftId, assetId);
+  res.set('Content-Type', asset.media_type);
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  return res.send(asset.content);
 }));
 
 router.get('/student/resources', requireRole('student'), asyncRoute(async (req, res) => {
@@ -884,6 +998,16 @@ router.get('/resources/:resourceId/files/:fileId', asyncRoute(async (req, res) =
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('Content-Disposition', file.mediaType.startsWith('image/') ? 'inline' : 'attachment');
   return res.send(file.content);
+}));
+
+router.get('/resources/:resourceId/assets/:assetId', asyncRoute(async (req, res) => {
+  const resourceId = requireUuid(req.params.resourceId, 'resourceId');
+  const assetId = requireUuid(req.params.assetId, 'assetId');
+  const asset = await getClassLearningResourceAsset(req.auth, resourceId, assetId);
+  res.set('Content-Type', asset.media_type);
+  res.set('Cache-Control', 'private, no-store');
+  res.set('X-Content-Type-Options', 'nosniff');
+  return res.send(asset.content);
 }));
 
 router.post('/classes/:classId/assignments', asyncRoute(async (req, res) => {
