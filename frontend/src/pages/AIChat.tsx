@@ -1059,7 +1059,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
 
           {error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{error}</p>}
           {saved.error && <p role="alert" className="mx-4 mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{saved.error}</p>}
-          <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} style={mobileComposerStyle} className="fixed inset-x-0 z-[60] mx-auto w-auto max-w-[1480px] border-t border-slate-100 bg-white p-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:p-3 md:static md:z-auto md:w-auto md:max-w-none md:shadow-none">
+          <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} style={mobileComposerStyle} className="fixed inset-x-0 z-[60] mx-auto w-auto max-w-[1480px] border-t border-slate-100 bg-white p-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:p-3 md:static md:z-auto md:w-full md:max-w-none md:self-stretch md:shadow-none">
             <SpeechStatus speech={speech} />
             {selectedImage && (
               <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-2">
@@ -1258,7 +1258,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
           <div ref={endRef} />
         </div>
         {error && <p role="alert" className="mt-2 text-sm text-rose-600">{error}</p>}
-        <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} style={mobileComposerStyle} className="card fixed inset-x-0 z-[60] mx-auto w-auto max-w-[1480px] p-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:p-3 md:static md:z-auto md:mt-3 md:w-auto md:max-w-none md:shadow-none">
+        <form onSubmit={(event) => { event.preventDefault(); void handleSend(); }} style={mobileComposerStyle} className="card fixed inset-x-0 z-[60] mx-auto w-auto max-w-[1480px] p-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] sm:p-3 md:static md:z-auto md:mt-3 md:w-full md:max-w-none md:self-stretch md:shadow-none">
           {role === 'lecturer' && <SpeechStatus speech={speech} />}
           {selectedImage && (
             <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-2">

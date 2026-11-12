@@ -2736,12 +2736,25 @@ export async function getStudentProgress(): Promise<StudentProgressData> {
 export async function analyzeStudentProgress(
   filters: StudentProgressFilters,
 ): Promise<StudentProgressAnalysisResponse> {
-  const response = await authenticatedFetch('/api/student/progress/analysis', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(filters),
-  });
-  const body = await readResponse(response);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 75_000);
+  let body: Record<string, unknown>;
+  try {
+    const response = await authenticatedFetch('/api/student/progress/analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filters),
+      signal: controller.signal,
+    });
+    body = await readResponse(response);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('Phân tích quá thời gian chờ. Vui lòng thử lại sau.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (body.status === 'insufficient-data'
     && typeof body.message === 'string'
     && body.analysis === null) {

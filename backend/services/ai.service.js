@@ -3,6 +3,7 @@ const pLimit = require('p-limit');
 
 const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const geminiLimit = pLimit(1);
+const AI_REQUEST_TIMEOUT_MS = 60_000;
 
 function extractGroundingSources(chunks) {
   const seenUrls = new Set();
@@ -55,11 +56,22 @@ async function generateText({
   const model = client.getGenerativeModel({
     model: requestedModelName,
     systemInstruction: getSystemInstruction(type, teacherGender),
-  });
-  const result = await geminiLimit(() => retry(
-    () => model.generateContent(prompt),
-    { retries: 3, baseDelayMs: 800 },
-  ));
+  }, { timeout: AI_REQUEST_TIMEOUT_MS });
+  let result;
+  try {
+    result = await geminiLimit(() => retry(
+      () => model.generateContent(prompt),
+      { retries: 3, baseDelayMs: 800 },
+    ));
+  } catch (error) {
+    if (error?.name === 'GoogleGenerativeAIAbortError') {
+      const timeoutError = new Error('AI không phản hồi trong 60 giây. Vui lòng thử lại sau.');
+      timeoutError.status = 503;
+      timeoutError.code = 'AI_REQUEST_TIMEOUT';
+      throw timeoutError;
+    }
+    throw error;
+  }
   const text = result.response.text().trim();
 
   if (!text) {
