@@ -14,6 +14,7 @@ import { isLessonEditorDocument, type LessonEditorDocument } from '@/types/lesso
 import { LessonFormatSelector, type LessonFormat } from '@/pages/teacher/LessonFormatSelector';
 import { normalizeLessonMaterialMarkdown } from '@/utils/lessonMaterialMarkdown';
 import { textbookSeries } from './textbookOptions';
+import { getAISubjectExamples } from './aiSubjectExamples';
 const methods = ['Thuyết trình', 'Thảo luận nhóm', 'Khám phá', 'Dự án', 'Luyện tập'];
 
 interface LessonSection {
@@ -26,16 +27,18 @@ type LectureOutlineKey = 'flow';
 const lectureOutlineFields = [{
   key: 'flow' as const,
   title: 'Nội dung theo trình tự',
-  placeholder: 'Ví dụ:\n- Ôn lại đồ thị hàm số bậc nhất\n- Giới thiệu dạng parabol\n- Hướng dẫn cách xác định đỉnh',
+  placeholder: 'Ví dụ:\n- Ôn kiến thức nền\n- Khám phá nội dung trọng tâm\n- Luyện tập vận dụng',
 }];
 
 export function LessonPlan({
   format,
   onFormatChange,
   onAssignToStudents,
+  assignedSubjects = [],
 }: {
   format?: LessonFormat;
   onFormatChange?: (format: LessonFormat) => void;
+  assignedSubjects?: string[];
   onAssignToStudents?: (draft: {
     title: string;
     subject: string;
@@ -45,6 +48,7 @@ export function LessonPlan({
   }) => void;
 } = {}) {
   const [textbook, setTextbook] = useState('');
+  const [subject, setSubject] = useState(assignedSubjects[0] ?? '');
   const [volume, setVolume] = useState('Tập 1');
   const [topic, setTopic] = useState('');
   const [grade, setGrade] = useState('Khối 10');
@@ -60,13 +64,18 @@ export function LessonPlan({
   const [editText, setEditText] = useState('');
   const [editorDocument, setEditorDocument] = useState<LessonEditorDocument | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [draftSaveState, setDraftSaveState] = useState<'idle' | 'unsaved' | 'saving' | 'saved' | 'error'>('idle');
   const [draftSaveError, setDraftSaveError] = useState('');
   const draftIdRef = useRef<string | null>(null);
   const editorDocumentRef = useRef<LessonEditorDocument | null>(null);
   const draftGenerationRef = useRef(0);
   const saveSequenceRef = useRef(0);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const subjectExamples = getAISubjectExamples(subject);
+
+  useEffect(() => {
+    setSubject((current) => assignedSubjects.includes(current) ? current : assignedSubjects[0] ?? '');
+  }, [assignedSubjects]);
 
   const saveDraftSnapshot = useCallback((document: LessonEditorDocument, title: string) => {
     const generation = draftGenerationRef.current;
@@ -99,23 +108,24 @@ export function LessonPlan({
 
   const handleEditorDocumentChange = (document: LessonEditorDocument) => {
     editorDocumentRef.current = document;
-    setEditorDocument(document);
-    setDraftSaveState('saving');
-    setDraftSaveError('');
+    setDraftSaveState((current) => current === 'unsaved' ? current : 'unsaved');
+    setDraftSaveError((current) => current ? '' : current);
   };
 
-  useEffect(() => {
-    if (!format || !editorDocument) return undefined;
-    const timer = window.setTimeout(() => {
-      void saveDraftSnapshot(editorDocument, topic.trim()).catch((saveError: unknown) => {
-        console.error('Không thể tự động lưu bản nháp bài giảng.', saveError);
-      });
-    }, 750);
-    return () => window.clearTimeout(timer);
-  }, [editorDocument, format, saveDraftSnapshot, topic]);
+  const handleEditorDocumentReady = (document: LessonEditorDocument) => {
+    editorDocumentRef.current = document;
+    setDraftSaveState((current) => current === 'saved' ? current : 'unsaved');
+  };
+
+  const saveCurrentEditorDocument = async () => {
+    const document = editorDocumentRef.current;
+    if (!document) throw new Error('Nội dung bài giảng chưa sẵn sàng. Vui lòng thử lại.');
+    await saveDraftSnapshot(document, topic.trim());
+    setEditorDocument(document);
+  };
 
   const handleGenerate = async () => {
-    if (!topic.trim() || !textbook.trim()) return;
+    if (!subject.trim() || !topic.trim() || !textbook.trim()) return;
     draftGenerationRef.current += 1;
     saveSequenceRef.current += 1;
     draftIdRef.current = null;
@@ -137,12 +147,13 @@ export function LessonPlan({
             'Đây không phải giáo án dành cho giáo viên: không viết mục tiêu sư phạm, kế hoạch hoạt động trên lớp, phương pháp đánh giá hay tài liệu tham khảo.',
             '',
             'Thông tin bài giảng:',
+            `- Môn học: ${subject.trim() || 'giáo viên chưa chọn'}`,
             `- Bộ sách: ${textbook.trim()}`,
             `- Tập: ${volume}`,
             `- Khối lớp: ${grade}`,
             `- Chủ đề: ${topic.trim()}`,
             '',
-            'Hãy xác định môn học và triển khai nội dung phù hợp dựa trên bộ sách, tập, khối lớp và chủ đề; không tự đưa nội dung không liên quan.',
+            'Bám sát môn học đã chọn, bộ sách, tập, khối lớp và chủ đề; không tự suy đoán hoặc đưa nội dung thuộc môn khác.',
             'Các nội dung cốt lõi giáo viên muốn triển khai theo thứ tự:',
             lectureOutline.flow.trim(),
             '',
@@ -157,7 +168,7 @@ export function LessonPlan({
             '8. Chỉ trả về nội dung bài giảng, không thêm lời dẫn hoặc kết luận chung ngoài các phần kiến thức.',
           ].join('\n'),
         }
-        : { grade, topic, duration, method, textbook: textbook.trim(), volume };
+        : { grade, subject, topic, duration, method, textbook: textbook.trim(), volume };
       const response = await authenticatedFetch(format ? '/api/ai' : '/api/ai/lesson-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -194,20 +205,19 @@ export function LessonPlan({
     if (currentDocument) {
       try {
         const editorDraftId = await saveDraftSnapshot(currentDocument, topic.trim());
-        onAssignToStudents({ title: topic.trim(), subject: '', grade, content: '', editorDraftId });
+        onAssignToStudents({ title: topic.trim(), subject, grade, content: '', editorDraftId });
       } catch (saveError) {
         console.error('Không thể lưu bài giảng trước khi giao cho học sinh.', saveError);
         setDraftSaveError(saveError instanceof Error ? saveError.message : 'Không thể lưu bài giảng trước khi giao.');
       }
       return;
     }
-    onAssignToStudents({ title: topic.trim(), subject: '', grade, content });
+    onAssignToStudents({ title: topic.trim(), subject, grade, content });
   };
 
   const uploadEditorImage = async (file: File) => {
-    const document = editorDocumentRef.current;
-    if (!document) throw new Error('Đang khởi tạo nội dung bài giảng. Vui lòng thử chèn ảnh lại.');
-    const draftId = await saveDraftSnapshot(document, topic.trim());
+    const draftId = draftIdRef.current;
+    if (!draftId) throw new Error('Hãy nhấn “Lưu” trước khi chèn ảnh lần đầu.');
     const asset = await uploadTeacherLessonDraftImage(draftId, file);
     return asset.src;
   };
@@ -237,6 +247,19 @@ export function LessonPlan({
               </div>
             )}
             <div className="space-y-3.5">
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-slate-400" /> Môn học
+                </label>
+                {assignedSubjects.length > 0 ? (
+                  <select value={subject} onChange={(event) => setSubject(event.target.value)} className="input-field cursor-pointer">
+                    {assignedSubjects.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                ) : (
+                  <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Nhập môn học" className="input-field" />
+                )}
+              </div>
+
               <div>
                 <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-slate-400" /> Bộ sách và tập
@@ -278,7 +301,7 @@ export function LessonPlan({
                 <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
                   <Target className="w-3.5 h-3.5 text-slate-400" /> Chủ đề bài giảng
                 </label>
-                <textarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="VD: Hàm số bậc hai và đồ thị parabol" rows={2} className="input-field resize-none" />
+                <textarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={`Ví dụ: ${subjectExamples.topic}`} rows={2} className="input-field resize-none" />
               </div>
 
               {format ? (
@@ -291,7 +314,7 @@ export function LessonPlan({
                       <textarea
                         value={lectureOutline[key]}
                         onChange={(event) => setLectureOutline((current) => ({ ...current, [key]: event.target.value }))}
-                        placeholder={placeholder}
+                        placeholder={subject ? subjectExamples.outline : placeholder}
                         rows={8}
                         className="input-field mt-1.5 resize-y text-sm"
                       />
@@ -319,7 +342,7 @@ export function LessonPlan({
 
               <button
                 onClick={handleGenerate}
-                disabled={!topic.trim() || !textbook.trim() || generating}
+                disabled={!subject.trim() || !topic.trim() || !textbook.trim() || generating}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600 disabled:opacity-60"
               >
                 {generating ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Đang tạo...</> : <><Wand2 className="w-3.5 h-3.5" /> {format ? 'Tạo nội dung bài giảng' : 'Tạo giáo án'}</>}
@@ -445,7 +468,7 @@ export function LessonPlan({
       </div>
       {draftSaveError && !editorOpen && (
         <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-          Không thể tự động lưu bản nháp: {draftSaveError}
+          Không thể lưu bản nháp: {draftSaveError}
         </p>
       )}
       {editorOpen && format && plan && (
@@ -457,10 +480,15 @@ export function LessonPlan({
           saveError={draftSaveError}
           onTitleChange={(nextTitle) => {
             setTopic(nextTitle);
-            if (editorDocumentRef.current) setDraftSaveState('saving');
+            setDraftSaveState((current) => current === 'unsaved' ? current : 'unsaved');
           }}
+          onDocumentReady={handleEditorDocumentReady}
           onDocumentChange={handleEditorDocumentChange}
-          onClose={() => setEditorOpen(false)}
+          onSave={saveCurrentEditorDocument}
+          onClose={() => {
+            setEditorDocument(editorDocumentRef.current);
+            setEditorOpen(false);
+          }}
           onUploadImage={uploadEditorImage}
         />
       )}

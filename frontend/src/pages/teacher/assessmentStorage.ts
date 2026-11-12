@@ -28,6 +28,8 @@ export interface SavedExam {
 
 export type SavedAssignment = SavedExam;
 
+export type AssignmentEditorSeed = Pick<SavedAssignment, 'title' | 'subject' | 'grade' | 'topic'>;
+
 export type ExamQuestionType = 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
 
 export interface AssessmentSection {

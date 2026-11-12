@@ -4,6 +4,26 @@ const pLimit = require('p-limit');
 const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const geminiLimit = pLimit(1);
 
+function extractGroundingSources(chunks) {
+  const seenUrls = new Set();
+  return (Array.isArray(chunks) ? chunks : [])
+    .map((chunk) => chunk?.web)
+    .filter((web) => typeof web?.uri === 'string')
+    .flatMap((web) => {
+      try {
+        const url = new URL(web.uri);
+        if (url.protocol !== 'https:' || seenUrls.has(url.href)) return [];
+        seenUrls.add(url.href);
+        return [{
+          title: typeof web.title === 'string' && web.title.trim() ? web.title.trim() : url.hostname,
+          url: url.href,
+        }];
+      } catch {
+        return [];
+      }
+    });
+}
+
 async function retry(operation, { retries = 3, baseDelayMs = 800 } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -58,6 +78,61 @@ async function generateJson({ type, prompt, schema, teacherGender }) {
   try {
     const jsonText = text.replace(/^```(?:json)?\s*|\s*```$/gi, '').trim();
     return JSON.parse(jsonText);
+  } catch {
+    throw new Error(`Gemini trả về dữ liệu không đúng JSON cho ${schema}.`);
+  }
+}
+
+async function generateGroundedJson({ type, prompt, schema, teacherGender }) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('Thiếu GEMINI_API_KEY trong file backend/.env.');
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+  const response = await geminiLimit(() => retry(async () => {
+    const result = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': process.env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: getSystemInstruction(type, teacherGender) }],
+        },
+        contents: [{
+          parts: [{ text: `${prompt}\nChỉ trả về JSON hợp lệ, không có Markdown.` }],
+        }],
+        tools: [{ google_search: {} }],
+      }),
+    });
+    if (!result.ok) {
+      throw new Error(`Gemini grounded request failed with status ${result.status}.`);
+    }
+    return result.json();
+  }, { retries: 3, baseDelayMs: 800 }));
+
+  const candidate = response.candidates?.[0];
+  const text = candidate?.content?.parts
+    ?.map((part) => typeof part.text === 'string' ? part.text : '')
+    .join('')
+    .trim();
+  if (!text) {
+    throw new Error('Gemini không trả về nội dung đã kiểm chứng bằng tìm kiếm web.');
+  }
+
+  const sources = extractGroundingSources(candidate.groundingMetadata?.groundingChunks);
+  if (sources.length === 0) {
+    throw new Error('Không tìm thấy nguồn web có thể xác minh; không tạo câu hỏi để tránh thông tin sai.');
+  }
+
+  try {
+    const jsonText = text.replace(/^```(?:json)?\s*|\s*```$/gi, '').trim();
+    return {
+      data: JSON.parse(jsonText),
+      sources,
+      searchQueries: candidate.groundingMetadata?.webSearchQueries ?? [],
+    };
   } catch {
     throw new Error(`Gemini trả về dữ liệu không đúng JSON cho ${schema}.`);
   }
@@ -210,6 +285,8 @@ function getSystemInstruction(type, teacherGender) {
 module.exports = {
   generateText,
   generateJson,
+  generateGroundedJson,
+  extractGroundingSources,
   getSystemInstruction,
   getTeacherHonorific,
   retry,

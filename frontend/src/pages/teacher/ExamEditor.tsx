@@ -318,13 +318,13 @@ export function ExamEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 sm:p-6" onClick={closeEditor}>
+    <div className="assessment-editor-backdrop-enter fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 sm:p-6" onClick={closeEditor}>
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="exam-editor-title"
         onClick={(event) => event.stopPropagation()}
-        className="flex h-[calc(100dvh-120px)] max-h-[calc(100dvh-120px)] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl"
+        className="assessment-editor-panel-enter flex h-[calc(100dvh-120px)] max-h-[calc(100dvh-120px)] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl"
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
           <div className="min-w-0">

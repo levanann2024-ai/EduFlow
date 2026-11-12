@@ -28,6 +28,7 @@ import { RichLessonContent } from '@/components/LessonEditorContent';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { authenticatedFetch } from '@/auth/authApi';
 import { useSavedItems } from './savedItems';
+import { isChapterLevelResourceLesson } from '@/utils/classLearningResourceDisplay';
 import {
   distributeAssignmentPoints,
   parseAssignmentAnswers,
@@ -518,9 +519,10 @@ export function MyClasses(props: MyClassesProps) {
     const chapters = new Map<string, Map<string, StudentLearningResource[]>>();
     visibleResources.forEach((resource) => {
       const chapter = chapters.get(resource.chapter) ?? new Map<string, StudentLearningResource[]>();
-      const lessons = chapter.get(resource.lesson) ?? [];
+      const lessonName = isChapterLevelResourceLesson(resource.lesson) ? '' : resource.lesson;
+      const lessons = chapter.get(lessonName) ?? [];
       lessons.push(resource);
-      chapter.set(resource.lesson, lessons);
+      chapter.set(lessonName, lessons);
       chapters.set(resource.chapter, chapter);
     });
     return Array.from(chapters.entries())
@@ -976,18 +978,20 @@ export function MyClasses(props: MyClassesProps) {
                         <div className="min-w-0 space-y-1 pl-3">
                           {lessons.map(({ lesson, resources: lessonResources }) => {
                             const lessonKey = `${chapter}:${lesson}`;
-                            const lessonExpanded = expandedLessons.has(lessonKey);
+                            const lessonExpanded = !lesson || expandedLessons.has(lessonKey);
                             return (
                               <section key={lessonKey} className="min-w-0">
-                                <button
-                                  type="button"
-                                  aria-expanded={lessonExpanded}
-                                  onClick={() => toggleExpandedLesson(chapter, lesson)}
-                                  className="flex min-h-9 min-w-0 w-full items-start justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm font-bold text-slate-700 hover:bg-white"
-                                >
-                                  <span className="min-w-0 flex-1 whitespace-normal break-words">{lesson}</span>
-                                  {lessonExpanded ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" />}
-                                </button>
+                                {lesson && (
+                                  <button
+                                    type="button"
+                                    aria-expanded={lessonExpanded}
+                                    onClick={() => toggleExpandedLesson(chapter, lesson)}
+                                    className="flex min-h-9 min-w-0 w-full items-start justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm font-bold text-slate-700 hover:bg-white"
+                                  >
+                                    <span className="min-w-0 flex-1 whitespace-normal break-words">{lesson}</span>
+                                    {lessonExpanded ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" />}
+                                  </button>
+                                )}
                                 {lessonExpanded && (
                                   <ul className="min-w-0 space-y-1 overflow-x-hidden pb-1 pl-3">
                                     {lessonResources.map((resource) => {

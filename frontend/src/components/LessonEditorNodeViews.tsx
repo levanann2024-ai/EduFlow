@@ -54,6 +54,9 @@ export function LessonImageView({ node, editor, selected, updateAttributes }: No
   const [imageError, setImageError] = useState('');
   const [imageLoading, setImageLoading] = useState(isAuthenticatedSource);
   const [resizing, setResizing] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState(
+    typeof node.attrs.caption === 'string' ? node.attrs.caption : '',
+  );
   const resizeStart = useRef<{
     pointerId: number;
     x: number;
@@ -63,6 +66,10 @@ export function LessonImageView({ node, editor, selected, updateAttributes }: No
   const width = typeof node.attrs.width === 'number' ? node.attrs.width : null;
   const alignment = node.attrs.align === 'left' || node.attrs.align === 'right' ? node.attrs.align : 'center';
   const caption = typeof node.attrs.caption === 'string' ? node.attrs.caption : '';
+
+  useEffect(() => {
+    setCaptionDraft(caption);
+  }, [caption]);
 
   useEffect(() => {
     let active = true;
@@ -155,8 +162,14 @@ export function LessonImageView({ node, editor, selected, updateAttributes }: No
         <>
           <input
             className="lesson-image-caption"
-            value={caption}
-            onChange={(event) => updateAttributes({ caption: event.target.value })}
+            value={captionDraft}
+            onChange={(event) => setCaptionDraft(event.target.value)}
+            onBlur={() => {
+              if (captionDraft !== caption) updateAttributes({ caption: captionDraft });
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur();
+            }}
             onMouseDown={(event) => event.stopPropagation()}
             placeholder="Thêm chú thích ảnh..."
             aria-label="Chú thích ảnh"

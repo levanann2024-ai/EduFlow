@@ -1,4 +1,4 @@
-const { generateText, generateJson } = require('../services/ai.service');
+const { generateText, generateJson, generateGroundedJson } = require('../services/ai.service');
 const getStudentChatContext = require('../services/studentChatContext.service').createStudentChatContextService();
 const getTeacherChatContext = require('../services/teacherChatContext.service').createTeacherChatContextService();
 const aiChatHistory = require('../services/aiChatHistory.service');
@@ -264,12 +264,18 @@ async function generateQuestions(req, res) {
     const gradeContext = typeof grade === 'string' && grade.trim()
       ? `, khối lớp ${grade.trim()}`
       : '';
-    const questions = await generateJson({
-      type: 'questions',
-      prompt: [
+    const questionPrompt = [
         `Tạo chính xác ${safeQuantity} câu hỏi${subjectContext}${gradeContext}, chủ đề/nội dung "${prompt}", mức độ ${difficulty || 'medium'}.`,
         'Bám sát phạm vi kiến thức trong chủ đề/nội dung được cung cấp; nếu không nêu môn học, tự xác định lĩnh vực phù hợp từ nội dung, không tự gắn môn học hoặc đưa kiến thức ngoài phạm vi.',
         formatInstruction,
+        req.body?.useWebGrounding === true ? [
+          'Bắt buộc sử dụng kết quả tìm kiếm Google Search được cung cấp qua công cụ grounding, không dựa riêng vào trí nhớ của mô hình.',
+          'Chỉ nêu thông tin thực tế có thể đối chiếu với các nguồn tìm được; ưu tiên nguồn sơ cấp/chính thức, nhà xuất bản, cơ quan giáo dục hoặc tổ chức uy tín.',
+          'Không bịa nhan đề, tác giả, trích dẫn, xuất xứ, dữ kiện, câu hỏi, đáp án hoặc nội dung văn bản. Không coi đoạn trích kết quả tìm kiếm ngắn là toàn văn.',
+          'Nếu giáo viên đã dán toàn văn, dùng chính văn bản đó và tìm nguồn web để kiểm chứng thông tin liên quan. Nếu chưa có toàn văn, chỉ dùng toàn văn truy cập được từ nguồn công cộng thuộc phạm vi công cộng hoặc có giấy phép mở; không chép tác phẩm có bản quyền.',
+          'Không tạo câu hỏi đọc hiểu nếu chỉ tìm thấy tiêu đề, mô tả hoặc đoạn trích ngắn mà không truy cập được toàn văn hợp pháp. Khi không tìm thấy nguồn đáng tin cậy hoặc không thể xác minh, trả về [] thay vì suy đoán.',
+          'Trong câu đọc hiểu đầu tiên, ghi nhan đề và URL nguồn chính thống để học sinh có thể mở văn bản gốc. Không sao chép dài nội dung có bản quyền vào câu hỏi.',
+        ].join('\n') : '',
         'Trả về JSON array. Mỗi phần tử phải có id, type, question, options, correctIndex, correctAnswer, correctAnswers, points, explanation, difficulty.',
         'type phải là multiple-choice, true-false, short-answer hoặc essay.',
         'multiple-choice: options có đúng 4 phương án, correctIndex từ 0 đến 3, correctAnswer ghi nguyên văn đáp án đúng.',
@@ -279,10 +285,32 @@ async function generateQuestions(req, res) {
         'points là điểm tối đa của câu, không mặc định tất cả đều 1: dùng mức nền gợi ý multiple-choice 0.25, true-false 1, short-answer 0.5, essay 2; tăng/giảm theo độ khó, công sức và độ phức tạp. Đúng/sai có 4 ý và áp dụng điểm thành phần theo rubric.',
         'Với nội dung Toán, Lý, Hóa, dùng cú pháp LaTeX hợp lệ cho công thức: $...$ cho công thức trong dòng và $$...$$ cho công thức riêng dòng. Trong chuỗi JSON, escape dấu gạch chéo ngược theo chuẩn JSON. Không dùng dấu $ thừa, không đặt toàn bộ câu hỏi trong công thức.',
         'Giải thích ngắn gọn cách xác định đáp án; bảo đảm đáp án nhất quán với câu hỏi và lựa chọn.',
-      ].join('\n'),
-      schema: 'questions',
+      ].filter(Boolean).join('\n');
+    const generated = req.body?.useWebGrounding === true
+      ? await generateGroundedJson({
+        type: 'questions',
+        prompt: questionPrompt,
+        schema: 'questions',
+      })
+      : await generateJson({
+        type: 'questions',
+        prompt: questionPrompt,
+        schema: 'questions',
+      });
+    const questions = req.body?.useWebGrounding === true ? generated.data : generated;
+    if (!Array.isArray(questions) || questions.length !== safeQuantity) {
+      const error = new Error('Không đủ nguồn đáng tin cậy để tạo đủ số câu mà không suy đoán.');
+      error.statusCode = 422;
+      throw error;
+    }
+    return res.json({
+      success: true,
+      data: questions,
+      ...(req.body?.useWebGrounding === true ? {
+        sources: generated.sources,
+        searchQueries: generated.searchQueries,
+      } : {}),
     });
-    return res.json({ success: true, data: questions });
   } catch (error) {
     return sendError(res, error, 'Không thể tạo câu hỏi.');
   }
@@ -290,7 +318,7 @@ async function generateQuestions(req, res) {
 
 async function generateSlides(req, res) {
   try {
-    const { topic, content, textbook, volume, grade, slideCount, style } = req.body || {};
+    const { topic, subject, content, textbook, volume, grade, slideCount, style } = req.body || {};
     const lessonTopic = requireText(topic, 'Topic');
     const bookContext = [textbook, volume]
       .filter((value) => typeof value === 'string' && value.trim())
@@ -300,11 +328,12 @@ async function generateSlides(req, res) {
       type: 'slides',
       prompt: [
         `Tạo cấu trúc ${Number.parseInt(slideCount, 10) || 8} slide về "${lessonTopic}".`,
+        `Môn học: ${typeof subject === 'string' && subject.trim() ? subject.trim() : 'chưa được cung cấp'}.`,
         `Bộ sách và tập tham chiếu: ${bookContext || 'chưa được cung cấp'}.`,
         `Khối lớp: ${typeof grade === 'string' && grade.trim() ? grade.trim() : 'chưa được cung cấp'}.`,
         `Nội dung chính: ${content || 'Tự đề xuất nội dung phù hợp'}.`,
         `Phong cách: ${style || 'Trực quan'}.`,
-        'Bám sát bộ sách, tập, khối lớp và chủ đề; tự xác định môn học từ các thông tin này, không thêm nội dung ngoài phạm vi.',
+        'Bám sát môn học đã chọn, bộ sách, tập, khối lớp và chủ đề; không suy đoán môn khác hoặc thêm nội dung ngoài phạm vi.',
       ].join('\n'),
       schema: 'slides',
     });
@@ -316,7 +345,7 @@ async function generateSlides(req, res) {
 
 async function generateLessonPlan(req, res) {
   try {
-    const { textbook, volume, grade, topic, duration, method, difficulty } = req.body || {};
+    const { textbook, volume, grade, topic, subject, duration, method, difficulty } = req.body || {};
     const lessonTopic = requireText(topic, 'Topic');
     const bookContext = [textbook, volume]
       .filter((value) => typeof value === 'string' && value.trim())
@@ -324,7 +353,7 @@ async function generateLessonPlan(req, res) {
       .join(', ');
     const data = await generateText({
       type: 'lesson-plan',
-      prompt: `Tạo giáo án cho ${grade || ''}, theo sách giáo khoa ${bookContext || 'chưa được cung cấp'}. Chủ đề: ${lessonTopic}. Thời lượng: ${duration || 45} phút. Phương pháp: ${method || ''}. Mức độ: ${difficulty || 'medium'}.`,
+      prompt: `Tạo giáo án môn ${typeof subject === 'string' && subject.trim() ? subject.trim() : 'chưa được giáo viên chọn'}, cho ${grade || ''}, theo sách giáo khoa ${bookContext || 'chưa được cung cấp'}. Chủ đề: ${lessonTopic}. Thời lượng: ${duration || 45} phút. Phương pháp: ${method || ''}. Mức độ: ${difficulty || 'medium'}. Chỉ triển khai kiến thức thuộc môn học đã chọn; không suy đoán hoặc đưa nội dung không liên quan.`,
     });
     return res.json({ success: true, data });
   } catch (error) {

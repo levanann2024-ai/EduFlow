@@ -867,6 +867,18 @@ test('gradebook and assignment submissions persist for the assigned chemistry te
       note: '',
     });
     assert.equal((await classroomService.listClassLearningResources(teacherAuth, classId))[0].id, resource.id);
+    const chapterLevelResource = await classroomService.createClassLearningResource(teacherAuth, classId, {
+      ...input,
+      chapter: 'Chương 1',
+      lesson: '__eduflow_chapter_level__',
+      period: null,
+      title: 'Mục lục và kiến thức trọng tâm',
+      content: 'Các nội dung chính của chương.',
+      note: '',
+    });
+    const listedChapterLevelResource = (await classroomService.listClassLearningResources(teacherAuth, classId))
+      .find((item) => item.id === chapterLevelResource.id);
+    assert.equal(listedChapterLevelResource.lesson, '__eduflow_chapter_level__');
     const uploadedResource = await classroomService.createClassLearningResourceFile(teacherAuth, classId, {
       ...input,
       chapter: 'Chương 1',

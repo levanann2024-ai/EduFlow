@@ -7,6 +7,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import type { QuizQuestion } from '@/types';
 import { authenticatedFetch } from '@/auth/authApi';
+import { getAISubjectExamples } from './aiSubjectExamples';
 
 interface GeneratedQuestionSet {
   topic: string;
@@ -17,24 +18,70 @@ interface GeneratedQuestionSet {
   structureSummary?: string[];
   sectionPoints?: Record<GeneratedQuestionType, number>;
   writtenSection?: string;
+  sourceReferences?: SourceReference[];
+}
+
+interface SourceReference {
+  title: string;
+  url: string;
 }
 
 type PracticeFormat = 'free' | 'multiple-choice' | 'true-false' | 'short-answer' | 'essay';
 type AssessmentType = 'practice' | 'official';
+type VietnameseWritingFormat = 'paragraph-and-essay' | 'essay-only';
+type VietnameseReadingField = 'title' | 'author' | 'source' | 'origin' | 'position';
+type VietnameseReadingDetails = Record<VietnameseReadingField, string>;
+type VietnameseReadingMode = 'details' | 'full-text';
 type GeneratedQuestionType = NonNullable<QuizQuestion['type']>;
+
+const vietnameseReadingFields: { key: VietnameseReadingField; label: string; placeholder: string }[] = [
+  { key: 'title', label: 'Nhan đề văn bản', placeholder: 'Tên tác phẩm hoặc văn bản' },
+  { key: 'author', label: 'Tác giả', placeholder: 'Tên nhà văn, nhà thơ nếu có' },
+  { key: 'source', label: 'Nguồn trích dẫn', placeholder: 'Tên sách, tuyển tập, tài liệu' },
+  { key: 'origin', label: 'Xuất xứ', placeholder: 'Trích từ tác phẩm nào, phần nào' },
+  { key: 'position', label: 'Vị trí đoạn trích', placeholder: 'Chương, phần, trang nếu có' },
+];
+
+const emptyVietnameseReadingDetails: VietnameseReadingDetails = {
+  title: '',
+  author: '',
+  source: '',
+  origin: '',
+  position: '',
+};
+const defaultVietnameseCounts = { recognition: 2, comprehension: 2, application: 1 };
+
+function normalizeVietnameseReadingDetails(value: unknown): VietnameseReadingDetails {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return vietnameseReadingFields.reduce((details, { key }) => ({
+    ...details,
+    [key]: typeof source[key] === 'string' ? source[key] : '',
+  }), { ...emptyVietnameseReadingDetails });
+}
 
 interface GeneratedAssessmentDraft {
   topic: string;
   subject?: string;
+  readingMode?: VietnameseReadingMode;
+  readingDetails?: VietnameseReadingDetails;
+  readingFullText?: string;
   grade: string;
   difficulty: 'easy' | 'medium' | 'hard';
   numQuestions: number;
+  englishDefaultsApplied?: boolean;
   practiceFormat: PracticeFormat;
-  vietnameseCounts: { recognition: number; comprehension: number; application: number; advanced: number };
-  englishCounts: { notice: number; ordering: number; cloze: number; reading: number };
+  vietnameseCounts: { recognition: number; comprehension: number; application: number };
+  includeReading?: boolean;
+  includeWriting?: boolean;
+  writingFormat: VietnameseWritingFormat;
   generalCounts: { multipleChoice: number; trueFalse: number; shortAnswer: number; essay: number };
   sectionPoints: Record<GeneratedQuestionType, number>;
   writtenSection: string;
+  paragraphSection?: string;
+  essaySection?: string;
+  sourceReferences?: SourceReference[];
   questions: QuizQuestion[];
 }
 
@@ -53,15 +100,30 @@ function readAssessmentDraft(type: AssessmentType): GeneratedAssessmentDraft | n
       || !Array.isArray(draft.questions)
       || !draft.questions.every((question) => question && typeof question.question === 'string' && Array.isArray(question.options))
     ) return null;
+    const hasSectionSelectionSettings = typeof draft.includeReading === 'boolean'
+      || typeof draft.includeWriting === 'boolean';
+    const hasLegacyEnglishDefaults = draft.englishDefaultsApplied !== true
+      && draft.subject === 'Tiếng Anh'
+      && draft.numQuestions === 5;
     return {
       topic: draft.topic,
       subject: typeof draft.subject === 'string' ? draft.subject : '',
+      readingMode: draft.readingMode === 'details' || draft.readingMode === 'full-text'
+        ? draft.readingMode
+        : draft.topic.trim() ? 'full-text' : 'details',
+      readingDetails: normalizeVietnameseReadingDetails(draft.readingDetails),
+      readingFullText: typeof draft.readingFullText === 'string' ? draft.readingFullText : draft.topic,
       grade: draft.grade,
       difficulty: draft.difficulty === 'easy' || draft.difficulty === 'hard' ? draft.difficulty : 'medium',
-      numQuestions: typeof draft.numQuestions === 'number' ? draft.numQuestions : 5,
-      practiceFormat: practiceFormats.some(({ value: format }) => format === draft.practiceFormat) ? draft.practiceFormat! : 'free',
-      vietnameseCounts: draft.vietnameseCounts ?? { recognition: 1, comprehension: 1, application: 1, advanced: 1 },
-      englishCounts: draft.englishCounts ?? { notice: 12, ordering: 5, cloze: 5, reading: 18 },
+      numQuestions: hasLegacyEnglishDefaults ? 40 : typeof draft.numQuestions === 'number' ? draft.numQuestions : 5,
+      englishDefaultsApplied: true,
+      practiceFormat: hasLegacyEnglishDefaults
+        ? 'multiple-choice'
+        : practiceFormats.some(({ value: format }) => format === draft.practiceFormat) ? draft.practiceFormat! : 'free',
+      vietnameseCounts: hasSectionSelectionSettings ? draft.vietnameseCounts ?? defaultVietnameseCounts : defaultVietnameseCounts,
+      includeReading: draft.includeReading ?? true,
+      includeWriting: draft.includeWriting ?? true,
+      writingFormat: draft.writingFormat === 'essay-only' ? 'essay-only' : 'paragraph-and-essay',
       generalCounts: draft.generalCounts ?? { multipleChoice: 12, trueFalse: 2, shortAnswer: 4, essay: 6 },
       sectionPoints: draft.sectionPoints ?? {
         'multiple-choice': 3,
@@ -70,6 +132,16 @@ function readAssessmentDraft(type: AssessmentType): GeneratedAssessmentDraft | n
         essay: 3,
       },
       writtenSection: typeof draft.writtenSection === 'string' ? draft.writtenSection : '',
+      paragraphSection: typeof draft.paragraphSection === 'string' ? draft.paragraphSection : '',
+      essaySection: typeof draft.essaySection === 'string' ? draft.essaySection : '',
+      sourceReferences: Array.isArray(draft.sourceReferences)
+        ? draft.sourceReferences.filter((source): source is SourceReference => (
+          Boolean(source)
+          && typeof source.title === 'string'
+          && typeof source.url === 'string'
+          && source.url.startsWith('https://')
+        ))
+        : [],
       questions: draft.questions.map((question, index) => ({
         ...question,
         id: typeof question.id === 'string' ? question.id : `restored-question-${index}`,
@@ -175,6 +247,26 @@ function normalizeGeneratedQuestion(value: unknown, index: number): QuizQuestion
 function questionTypeLabel(type?: QuizQuestion['type']): string {
   return type ? questionTypeLabels[type] : questionTypeLabels['multiple-choice'];
 }
+
+function vietnameseQuestionLabels(
+  counts: { recognition: number; comprehension: number; application: number },
+  writingFormat: VietnameseWritingFormat,
+  includeReading: boolean,
+  includeWriting: boolean,
+) {
+  const readingLabels = includeReading ? [
+    ...Array.from({ length: counts.recognition }, (_, index) => `Phần I: Đọc hiểu - Câu ${index + 1} (Nhận biết)`),
+    ...Array.from({ length: counts.comprehension }, (_, index) => `Phần I: Đọc hiểu - Câu ${counts.recognition + index + 1} (Thông hiểu)`),
+    ...Array.from({ length: counts.application }, (_, index) => `Phần I: Đọc hiểu - Câu ${counts.recognition + counts.comprehension + index + 1} (Vận dụng)`),
+  ] : [];
+  return [
+    ...readingLabels,
+    ...(!includeWriting ? [] : writingFormat === 'paragraph-and-essay'
+      ? ['Phần II: Viết - Câu 1: Viết đoạn văn', 'Phần II: Viết - Câu 2: Viết bài văn']
+      : ['Phần II: Viết - Câu 1: Viết bài văn']),
+  ];
+}
+
 const difficulties = [
   { value: 'easy', label: 'Dễ', activeClass: 'bg-green-50 border-green-300 text-green-700' },
   { value: 'medium', label: 'Trung bình', activeClass: 'bg-amber-50 border-amber-300 text-amber-700' },
@@ -196,28 +288,146 @@ function distributeQuestionPoints(
   });
 }
 
+function VietnameseReadingInput({
+  mode,
+  details,
+  fullText,
+  onModeChange,
+  onDetailChange,
+  onFullTextChange,
+}: {
+  mode: VietnameseReadingMode;
+  details: VietnameseReadingDetails;
+  fullText: string;
+  onModeChange: (mode: VietnameseReadingMode) => void;
+  onDetailChange: (field: VietnameseReadingField, value: string) => void;
+  onFullTextChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div role="tablist" aria-label="Cách nhập thông tin bài đọc hiểu" className="inline-flex rounded-lg bg-slate-100 p-1">
+        {([
+          ['details', 'Thông tin bài đọc hiểu'],
+          ['full-text', 'Toàn bộ văn bản'],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={mode === value}
+            onClick={() => onModeChange(value)}
+            className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${mode === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'details' ? (
+        <div className="space-y-3">
+          {vietnameseReadingFields.map(({ key, label, placeholder }) => (
+            <label key={key} className="block text-sm font-medium text-slate-700">
+              {label}
+              <textarea
+                value={details[key]}
+                onChange={(event) => onDetailChange(key, event.target.value)}
+                rows={1}
+                placeholder={placeholder}
+                className="input-field mt-1.5 resize-y text-base leading-6"
+              />
+            </label>
+          ))}
+        </div>
+      ) : (
+        <textarea
+          value={fullText}
+          onChange={(event) => onFullTextChange(event.target.value)}
+          rows={14}
+          placeholder="Dán toàn bộ văn bản hoặc nguồn đọc hiểu vào đây. Nội dung sẽ được giữ nguyên để AI tạo câu hỏi."
+          className="input-field min-h-80 resize-y text-base leading-7"
+        />
+      )}
+      <p className="text-sm leading-6 text-slate-600">
+        AI sẽ tìm kiếm và đối chiếu nguồn trên web; đường dẫn nguồn sẽ hiện cùng kết quả. Nếu không xác minh được nguồn đáng tin cậy hoặc toàn văn hợp pháp, AI sẽ dừng thay vì tự bịa.
+      </p>
+    </div>
+  );
+}
+
+function VietnameseWritingInputs({
+  writingFormat,
+  paragraphSection,
+  essaySection,
+  onParagraphChange,
+  onEssayChange,
+}: {
+  writingFormat: VietnameseWritingFormat;
+  paragraphSection: string;
+  essaySection: string;
+  onParagraphChange: (value: string) => void;
+  onEssayChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {writingFormat === 'paragraph-and-essay' && (
+        <label className="block text-sm font-medium text-slate-700">
+          Câu 1 - Viết đoạn văn
+          <textarea
+            value={paragraphSection}
+            onChange={(event) => onParagraphChange(event.target.value)}
+            rows={3}
+            placeholder="Nhập yêu cầu, chủ đề hoặc nội dung cần viết thành đoạn văn..."
+            className="input-field mt-1.5 resize-y text-base leading-6"
+          />
+        </label>
+      )}
+      <label className="block text-sm font-medium text-slate-700">
+        {writingFormat === 'paragraph-and-essay' ? 'Câu 2 - Viết bài văn' : 'Câu 1 - Viết bài văn'}
+        <textarea
+          value={essaySection}
+          onChange={(event) => onEssayChange(event.target.value)}
+          rows={3}
+          placeholder="Nhập yêu cầu, chủ đề hoặc nội dung cần viết thành bài văn..."
+          className="input-field mt-1.5 resize-y text-base leading-6"
+        />
+      </label>
+    </div>
+  );
+}
+
 export function AIQuizGenerator({
   onSaveQuestions,
   saveLabel = 'Lưu vào ngân hàng',
   examMode = false,
   assessmentType,
+  assignedSubjects = [],
   onAssessmentTypeChange,
 }: {
   onSaveQuestions: (set: GeneratedQuestionSet) => void;
   saveLabel?: string;
   examMode?: boolean;
   assessmentType?: 'practice' | 'official';
+  assignedSubjects?: string[];
   onAssessmentTypeChange?: (type: 'practice' | 'official') => void;
 }) {
   const [initialDraft] = useState(() => assessmentType ? readAssessmentDraft(assessmentType) : null);
+  const defaultSubject = initialDraft?.subject ?? assignedSubjects[0] ?? '';
   const [topic, setTopic] = useState(initialDraft?.topic ?? '');
-  const [subject, setSubject] = useState(initialDraft?.subject ?? 'Toán học');
+  const [subject, setSubject] = useState(defaultSubject);
+  const [readingMode, setReadingMode] = useState<VietnameseReadingMode>(initialDraft?.readingMode ?? 'details');
+  const [readingDetails, setReadingDetails] = useState<VietnameseReadingDetails>(initialDraft?.readingDetails ?? emptyVietnameseReadingDetails);
+  const [readingFullText, setReadingFullText] = useState(initialDraft?.readingFullText ?? '');
   const [grade, setGrade] = useState(initialDraft?.grade ?? 'Khối 10');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(initialDraft?.difficulty ?? 'medium');
-  const [numQuestions, setNumQuestions] = useState(initialDraft?.numQuestions ?? 5);
-  const [practiceFormat, setPracticeFormat] = useState<PracticeFormat>(initialDraft?.practiceFormat ?? 'free');
-  const [vietnameseCounts, setVietnameseCounts] = useState(initialDraft?.vietnameseCounts ?? { recognition: 1, comprehension: 1, application: 1, advanced: 1 });
-  const [englishCounts, setEnglishCounts] = useState(initialDraft?.englishCounts ?? { notice: 12, ordering: 5, cloze: 5, reading: 18 });
+  const [numQuestions, setNumQuestions] = useState(
+    initialDraft?.numQuestions ?? (defaultSubject === 'Tiếng Anh' ? 40 : 5),
+  );
+  const [practiceFormat, setPracticeFormat] = useState<PracticeFormat>(
+    initialDraft?.practiceFormat ?? (defaultSubject === 'Tiếng Anh' ? 'multiple-choice' : 'free'),
+  );
+  const [vietnameseCounts, setVietnameseCounts] = useState(initialDraft?.vietnameseCounts ?? defaultVietnameseCounts);
+  const [includeReading, setIncludeReading] = useState(initialDraft?.includeReading ?? true);
+  const [includeWriting, setIncludeWriting] = useState(initialDraft?.includeWriting ?? true);
+  const [writingFormat, setWritingFormat] = useState<VietnameseWritingFormat>(initialDraft?.writingFormat ?? 'paragraph-and-essay');
   const [generalCounts, setGeneralCounts] = useState(initialDraft?.generalCounts ?? { multipleChoice: 12, trueFalse: 2, shortAnswer: 4, essay: 6 });
   const [sectionPoints, setSectionPoints] = useState<Record<GeneratedQuestionType, number>>(initialDraft?.sectionPoints ?? {
     'multiple-choice': 3,
@@ -226,7 +436,10 @@ export function AIQuizGenerator({
     essay: 3,
   });
   const [writtenSection, setWrittenSection] = useState(initialDraft?.writtenSection ?? '');
+  const [paragraphSection, setParagraphSection] = useState(initialDraft?.paragraphSection ?? '');
+  const [essaySection, setEssaySection] = useState(initialDraft?.essaySection ?? initialDraft?.writtenSection ?? '');
   const [questions, setQuestions] = useState<QuizQuestion[]>(initialDraft?.questions ?? []);
+  const [sourceReferences, setSourceReferences] = useState<SourceReference[]>(initialDraft?.sourceReferences ?? []);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -237,32 +450,87 @@ export function AIQuizGenerator({
     const draft = readAssessmentDraft(assessmentType);
     if (draft) {
       setTopic(draft.topic);
-      setSubject(draft.subject ?? 'Toán học');
+      setSubject(assignedSubjects.includes(draft.subject ?? '') ? draft.subject! : assignedSubjects[0] ?? '');
+      setReadingMode(draft.readingMode ?? 'details');
+      setReadingDetails(draft.readingDetails ?? emptyVietnameseReadingDetails);
+      setReadingFullText(draft.readingFullText ?? '');
       setGrade(draft.grade);
       setDifficulty(draft.difficulty);
       setNumQuestions(draft.numQuestions);
       setPracticeFormat(draft.practiceFormat);
       setVietnameseCounts(draft.vietnameseCounts);
-      setEnglishCounts(draft.englishCounts);
+      setIncludeReading(draft.includeReading ?? true);
+      setIncludeWriting(draft.includeWriting ?? true);
+      setWritingFormat(draft.writingFormat);
       setGeneralCounts(draft.generalCounts);
       setSectionPoints(draft.sectionPoints);
       setWrittenSection(draft.writtenSection);
+      setParagraphSection(draft.paragraphSection ?? '');
+      setEssaySection(draft.essaySection || draft.writtenSection);
       setQuestions(draft.questions);
     } else {
       setQuestions([]);
     }
     setError('');
     setExpandedId(null);
-    if (assessmentType === 'practice') {
+    if (assessmentType === 'practice' && subject !== 'Tiếng Anh') {
       setNumQuestions((current) => Math.min(10, Math.max(5, current)));
     }
-  }, [assessmentType]);
+  }, [assessmentType, assignedSubjects, subject]);
 
-  const hasSubjectContext = !assessmentType && !examMode;
-  const isVietnamese = hasSubjectContext && subject === 'Ngữ văn';
-  const isEnglish = hasSubjectContext && subject === 'Tiếng Anh';
-  const currentCounts = isVietnamese ? vietnameseCounts : isEnglish ? englishCounts : generalCounts;
-  const totalExamQuestions = Object.values(currentCounts).reduce((total, count) => total + count, 0);
+  const isVietnamese = subject === 'Ngữ văn';
+  const isEnglish = subject === 'Tiếng Anh';
+  const hasReadingSection = assessmentType === 'official' && isVietnamese ? true : includeReading;
+  const hasWritingSection = assessmentType === 'official' && isVietnamese ? true : includeWriting;
+  const subjectExamples = getAISubjectExamples(subject);
+  const assessmentTopic = assessmentType && isVietnamese
+    ? readingMode === 'details'
+      ? vietnameseReadingFields
+        .map(({ key, label }) => readingDetails[key].trim() ? `${label}: ${readingDetails[key]}` : '')
+        .filter(Boolean)
+        .join('\n')
+      : readingFullText
+    : topic;
+  const vietnameseWritingInstructions = writingFormat === 'paragraph-and-essay'
+    ? [
+      paragraphSection.trim() ? `Thông tin cho câu viết đoạn văn (Câu 1): ${paragraphSection.trim()}` : '',
+      essaySection.trim() ? `Thông tin cho câu viết bài văn (Câu 2): ${essaySection.trim()}` : '',
+    ].filter(Boolean).join('\n')
+    : essaySection.trim() ? `Thông tin cho câu viết bài văn (Câu 1): ${essaySection.trim()}` : '';
+  const currentCounts = isVietnamese
+    ? assessmentType === 'practice'
+      ? hasReadingSection ? vietnameseCounts : { recognition: 0, comprehension: 0, application: 0 }
+      : hasReadingSection ? defaultVietnameseCounts : { recognition: 0, comprehension: 0, application: 0 }
+    : generalCounts;
+  const vietnameseCountsForAssessment = assessmentType === 'practice'
+    ? hasReadingSection ? vietnameseCounts : { recognition: 0, comprehension: 0, application: 0 }
+    : hasReadingSection ? defaultVietnameseCounts : { recognition: 0, comprehension: 0, application: 0 };
+  const vietnameseWritingQuestionCount = writingFormat === 'paragraph-and-essay' ? 2 : 1;
+  const vietnameseReadingQuestionCount = Object.values(currentCounts).reduce((total, count) => total + count, 0);
+  const selectedVietnameseWritingQuestionCount = hasWritingSection ? vietnameseWritingQuestionCount : 0;
+  const vietnameseBasePoints = [
+    ...(hasReadingSection ? [0.5, 0.5, 1, 1, 1] : []),
+    ...(hasWritingSection ? writingFormat === 'paragraph-and-essay' ? [2, 4] : [6] : []),
+  ];
+  const vietnamesePointScale = hasReadingSection && hasWritingSection
+    ? 1
+    : vietnameseBasePoints.length
+      ? 10 / vietnameseBasePoints.reduce((total, points) => total + points, 0)
+      : 0;
+  const vietnameseQuestionPoints = vietnameseBasePoints.map((points) => points * vietnamesePointScale);
+  const vietnameseReadingPointTotal = vietnameseQuestionPoints
+    .slice(0, hasReadingSection ? vietnameseReadingQuestionCount : 0)
+    .reduce((total, points) => total + points, 0);
+  const vietnameseWritingPointTotal = vietnameseQuestionPoints
+    .slice(hasReadingSection ? vietnameseReadingQuestionCount : 0)
+    .reduce((total, points) => total + points, 0);
+  const vietnameseQuestionCount = vietnameseReadingQuestionCount + selectedVietnameseWritingQuestionCount;
+  const totalExamQuestions = isVietnamese
+    ? assessmentType === 'practice'
+      ? vietnameseQuestionCount
+      : (hasReadingSection ? 5 : 0) + selectedVietnameseWritingQuestionCount
+    : isEnglish ? numQuestions
+    : Object.values(currentCounts).reduce((total, count) => total + count, 0);
   const sectionCounts: Record<GeneratedQuestionType, number> = {
     'multiple-choice': generalCounts.multipleChoice,
     'true-false': generalCounts.trueFalse,
@@ -282,21 +550,22 @@ export function AIQuizGenerator({
     ? distributeQuestionPoints(questions, sectionPoints)
     : questions;
   const examQuestionLimitExceeded = examMode && totalExamQuestions > 50;
-  const requestedQuestionCount = examMode ? totalExamQuestions : numQuestions;
+  const vietnamesePracticeQuestionCountInvalid = assessmentType === 'practice'
+    && isVietnamese
+    && (totalExamQuestions < 1 || totalExamQuestions > 10);
+  const requestedQuestionCount = assessmentType === 'practice' && isVietnamese
+    ? totalExamQuestions
+    : examMode || isEnglish ? totalExamQuestions : numQuestions;
   const examStructure = isVietnamese
     ? [
-      `Nhận biết: ${vietnameseCounts.recognition} câu`,
-      `Thông hiểu: ${vietnameseCounts.comprehension} câu`,
-      `Vận dụng: ${vietnameseCounts.application} câu`,
-      `Vận dụng cao: ${vietnameseCounts.advanced} câu`,
-      'Phần viết: giáo viên tự nhập yêu cầu',
-    ]
+      hasReadingSection ? `Phần I: Đọc hiểu - Nhận biết: ${vietnameseCountsForAssessment.recognition} câu` : '',
+      hasReadingSection ? `Phần I: Đọc hiểu - Thông hiểu: ${vietnameseCountsForAssessment.comprehension} câu` : '',
+      hasReadingSection ? `Phần I: Đọc hiểu - Vận dụng: ${vietnameseCountsForAssessment.application} câu` : '',
+      hasWritingSection ? `Phần II: Viết - ${writingFormat === 'paragraph-and-essay' ? 'viết đoạn văn và bài văn' : 'chỉ viết bài văn'}` : '',
+    ].filter(Boolean)
     : isEnglish
       ? [
-        `Dạng 1 - Điền từ/cụm từ ngắn: ${englishCounts.notice} câu`,
-        `Dạng 2 - Sắp xếp câu/đoạn: ${englishCounts.ordering} câu`,
-        `Dạng 3 - Đọc điền khuyết: ${englishCounts.cloze} câu`,
-        `Dạng 4 - Đọc hiểu: ${englishCounts.reading} câu`,
+        `Trắc nghiệm Tiếng Anh: ${numQuestions} câu`,
       ]
       : [
         `Trắc nghiệm ABCD: ${generalCounts.multipleChoice} câu`,
@@ -313,30 +582,114 @@ export function AIQuizGenerator({
     setter((current) => ({ ...current, [key]: count }));
   };
 
+  const persistAssessmentDraft = (overrides: Partial<GeneratedAssessmentDraft> = {}) => {
+    if (!assessmentType) return;
+    try {
+      localStorage.setItem(assessmentDraftKey(assessmentType), JSON.stringify({
+        topic: assessmentTopic,
+        subject,
+        readingMode,
+        readingDetails,
+        readingFullText,
+        grade,
+        difficulty,
+        numQuestions,
+        englishDefaultsApplied: true,
+        practiceFormat,
+        vietnameseCounts,
+        includeReading,
+        includeWriting,
+        writingFormat,
+        generalCounts,
+        sectionPoints,
+        writtenSection,
+        paragraphSection,
+        essaySection,
+        questions,
+        ...overrides,
+      } satisfies GeneratedAssessmentDraft));
+    } catch (draftError) {
+      console.error('Không thể lưu cấu hình đề trong phiên này.', draftError);
+    }
+  };
+
   const handleGenerate = async () => {
-    if (!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) return;
+    if (
+      !(assessmentType && isVietnamese && !hasReadingSection)
+      && !assessmentTopic.trim()
+      && !(examMode && !isVietnamese && writtenSection.trim())
+    ) return;
     if (examMode && !isVietnamese && !isEnglish && !sectionPointsValid) {
       setError('Tổng điểm các phần phải bằng 10; phần có câu hỏi phải có điểm, phần trống phải đặt 0.');
       return;
     }
     setGenerating(true);
     setQuestions([]);
+    setSourceReferences([]);
     setError('');
     try {
       const requestTopic = assessmentType === 'practice'
-        ? `Bài tập tự luyện. Chủ đề: ${topic.trim()}`
+        ? [
+          `Bài tập tự luyện môn ${subject}.${hasReadingSection && assessmentTopic.trim() ? `\nThông tin bài đọc hiểu:\n${assessmentTopic}` : ''}`,
+          isVietnamese ? [
+            hasReadingSection
+              ? `Phần I: Đọc hiểu gồm ${vietnameseCounts.recognition} câu mức độ nhận biết, ${vietnameseCounts.comprehension} câu mức độ thông hiểu, ${vietnameseCounts.application} câu mức độ vận dụng.`
+              : 'Không tạo Phần I: Đọc hiểu.',
+            hasWritingSection
+              ? `Phần II: Viết gồm ${writingFormat === 'paragraph-and-essay' ? 'một câu viết đoạn văn và một câu viết bài văn' : 'một câu viết bài văn'}.`
+              : 'Không tạo Phần II: Viết.',
+            'Tất cả câu đều là tự luận; không tạo trắc nghiệm ABCD, đúng/sai hoặc trả lời ngắn.',
+            'Đánh số câu liên tục trong từng phần. Không gộp nhiều câu vào một câu hỏi.',
+            hasReadingSection && assessmentTopic.trim()
+              ? `Thông tin bài đọc hiểu do giáo viên cung cấp:\n${assessmentTopic}\nDùng đúng thông tin ở từng trường; không tự suy diễn hoặc bịa nhan đề, tác giả, nguồn trích dẫn, xuất xứ hay vị trí. Nếu giáo viên cung cấp đoạn trích hoặc toàn văn, giữ nguyên từng chữ, dấu câu và cách viết; không sửa, rút gọn, diễn đạt lại hoặc thêm nội dung. Nếu đầu ra có phần văn bản/ngữ liệu, chép đầy đủ nguyên văn nội dung được cung cấp. Câu hỏi và đáp án đọc hiểu phải dựa trên chính văn bản đó.`
+              : hasReadingSection ? 'Tìm nguồn đọc hiểu đáng tin cậy trên web; nếu không xác minh được văn bản/nguồn phù hợp thì không suy đoán hoặc tự viết thay văn bản.' : '',
+            hasWritingSection
+              ? writingFormat === 'paragraph-and-essay'
+                ? 'Trong Phần II: Viết, Câu 1 phải là viết đoạn văn và Câu 2 phải là viết bài văn.'
+                : 'Trong Phần II: Viết, Câu 1 là viết bài văn.'
+              : '',
+            hasWritingSection ? vietnameseWritingInstructions : '',
+          ].join('\n') : '',
+        ].filter(Boolean).join('\n')
+        : examMode && isVietnamese
+          ? [
+            `Đề kiểm tra chính thức môn Ngữ văn luôn gồm đủ hai phần. Phần I: Đọc hiểu. Thông tin bài đọc hiểu:\n${assessmentTopic}`,
+            hasReadingSection
+              ? 'Phần I: Đọc hiểu gồm đúng 5 câu tự luận: câu 1-2 mức độ nhận biết; câu 3-4 mức độ thông hiểu; câu 5 mức độ vận dụng.'
+              : 'Không tạo Phần I: Đọc hiểu.',
+            hasWritingSection
+              ? `Phần II: Viết gồm ${writingFormat === 'paragraph-and-essay' ? 'một yêu cầu viết đoạn văn và một yêu cầu viết bài văn' : 'một yêu cầu viết bài văn'}.`
+              : 'Không tạo Phần II: Viết.',
+            'Tất cả câu đều là tự luận, tuyệt đối không tạo trắc nghiệm ABCD, đúng/sai hoặc trả lời ngắn.',
+            hasReadingSection && assessmentTopic.trim()
+              ? `Thông tin bài đọc hiểu do giáo viên cung cấp:\n${assessmentTopic}\nDùng đúng thông tin ở từng trường; không tự suy diễn hoặc bịa nhan đề, tác giả, nguồn trích dẫn, xuất xứ hay vị trí. Nếu giáo viên cung cấp đoạn trích hoặc toàn văn, giữ nguyên từng chữ, dấu câu và cách viết; không sửa, rút gọn, diễn đạt lại hoặc thêm nội dung. Nếu đầu ra có phần văn bản/ngữ liệu, chép đầy đủ nguyên văn nội dung được cung cấp. Câu hỏi và đáp án đọc hiểu phải dựa trên chính văn bản đó.`
+              : hasReadingSection ? 'Tìm nguồn đọc hiểu đáng tin cậy trên web; nếu không xác minh được văn bản/nguồn phù hợp thì không suy đoán hoặc tự viết thay văn bản.' : '',
+            'Không ghi số câu hoặc tên phần ở đầu trường question; ứng dụng sẽ gắn nhãn phần, số câu và mức độ.',
+            hasReadingSection && hasWritingSection
+              ? 'Tổng điểm đề là 10: Phần I Đọc hiểu 4 điểm, Phần II Viết 6 điểm. Ứng dụng sẽ gán điểm cụ thể cho từng câu.'
+              : 'Tổng điểm của phần được chọn là 10. Ứng dụng sẽ gán điểm cụ thể cho từng câu.',
+            hasWritingSection
+              ? writingFormat === 'paragraph-and-essay'
+                ? 'Trong Phần II: Viết, Câu 1 phải là viết đoạn văn và Câu 2 phải là viết bài văn.'
+                : 'Trong Phần II: Viết, Câu 1 là viết bài văn.'
+              : '',
+            hasWritingSection ? vietnameseWritingInstructions : '',
+          ].filter(Boolean).join('\n')
         : examMode
         ? [
-          `Nội dung/chủ đề của đề: ${topic.trim()}`,
+          `Nội dung/chủ đề của đề: ${assessmentTopic.trim()}`,
           `Cấu trúc đề yêu cầu: ${examStructure.join('; ')}.`,
-          isVietnamese && writtenSection.trim() ? `Nội dung phần viết giáo viên yêu cầu: ${writtenSection.trim()}. Hãy tạo các câu trắc nghiệm phù hợp chủ đề và yêu cầu phần viết này.` : '',
           isEnglish ? 'Đảm bảo câu hỏi theo đúng thứ tự từng dạng, nội dung tiếng Anh phù hợp chương trình phổ thông Việt Nam.' : '',
           !isVietnamese && !isEnglish ? 'Tạo câu hỏi theo đúng nội dung và cơ cấu từng phần nêu trên.' : '',
         ].filter(Boolean).join('\n')
         : topic;
-      const quantity = examMode ? totalExamQuestions : numQuestions;
-      const examQuestionStructure = examMode && !isVietnamese && !isEnglish
-        ? [
+      const quantity = assessmentType === 'practice' && isVietnamese
+        ? totalExamQuestions
+        : examMode ? totalExamQuestions : numQuestions;
+      const examQuestionStructure = examMode && isVietnamese
+        ? [{ type: 'essay' as const, count: quantity }]
+        : examMode && !isEnglish
+          ? [
           { type: 'multiple-choice', count: generalCounts.multipleChoice },
           { type: 'true-false', count: generalCounts.trueFalse },
           { type: 'short-answer', count: generalCounts.shortAnswer },
@@ -345,6 +698,8 @@ export function AIQuizGenerator({
         : undefined;
       const expectedTypes: GeneratedQuestionType[] = examQuestionStructure
         ? examQuestionStructure.flatMap(({ type, count }) => Array(count).fill(type as GeneratedQuestionType))
+        : isVietnamese
+          ? Array(quantity).fill('essay')
         : examMode
           ? Array(quantity).fill('multiple-choice')
           : assessmentType === 'practice' && practiceFormat === 'free'
@@ -358,15 +713,23 @@ export function AIQuizGenerator({
           topic: requestTopic,
           quantity,
           difficulty,
-          questionFormat: assessmentType === 'practice' ? practiceFormat : 'multiple-choice',
-          ...(hasSubjectContext ? { subject } : {}),
+          questionFormat: isVietnamese ? 'essay' : assessmentType === 'practice' ? practiceFormat : 'multiple-choice',
+          subject,
           ...(examQuestionStructure ? { questionStructure: examQuestionStructure } : {}),
+          useWebGrounding: Boolean(assessmentType && isVietnamese && hasReadingSection),
         }),
       });
-      const result: { success: boolean; data?: QuizQuestion[]; message?: string } = await response.json();
+      const result: {
+        success: boolean;
+        data?: QuizQuestion[];
+        sources?: SourceReference[];
+        message?: string;
+      } = await response.json();
       if (!response.ok || !result.success || !Array.isArray(result.data)) {
         throw new Error(result.message || 'Không thể tạo câu hỏi.');
       }
+      const generatedSources = Array.isArray(result.sources) ? result.sources : [];
+      setSourceReferences(generatedSources);
       if (result.data.length !== quantity) {
         throw new Error(`AI trả về ${result.data.length} câu, trong khi yêu cầu ${quantity} câu. Hãy thử tạo lại.`);
       }
@@ -382,21 +745,44 @@ export function AIQuizGenerator({
       if (examMode && !isVietnamese && !isEnglish) {
         normalizedQuestions = distributeQuestionPoints(normalizedQuestions, sectionPoints);
       }
+      if (examMode && isVietnamese) {
+        const labels = vietnameseQuestionLabels(vietnameseCountsForAssessment, writingFormat, hasReadingSection, hasWritingSection);
+        normalizedQuestions = normalizedQuestions.map((question, index) => ({
+          ...question,
+          question: `${labels[index]}: ${question.question}`,
+          points: vietnameseQuestionPoints[index],
+        }));
+      } else if (assessmentType === 'practice' && isVietnamese) {
+        const labels = vietnameseQuestionLabels(vietnameseCountsForAssessment, writingFormat, hasReadingSection, hasWritingSection);
+        normalizedQuestions = normalizedQuestions.map((question, index) => ({
+          ...question,
+          question: `${labels[index]}: ${question.question}`,
+        }));
+      }
       setQuestions(normalizedQuestions);
       if (assessmentType) {
         try {
           localStorage.setItem(assessmentDraftKey(assessmentType), JSON.stringify({
-            topic,
+            topic: assessmentTopic,
             subject,
+            readingMode,
+            readingDetails,
+            readingFullText,
             grade,
             difficulty,
             numQuestions,
+            englishDefaultsApplied: true,
             practiceFormat,
             vietnameseCounts,
-            englishCounts,
+            includeReading,
+            includeWriting,
+            writingFormat,
             generalCounts,
             sectionPoints,
             writtenSection,
+            paragraphSection,
+            essaySection,
+            sourceReferences: generatedSources,
             questions: normalizedQuestions,
           } satisfies GeneratedAssessmentDraft));
         } catch (draftError) {
@@ -423,7 +809,7 @@ export function AIQuizGenerator({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `quiz-${hasSubjectContext ? `${subject}-` : ''}${Date.now()}.txt`;
+    a.download = `quiz-${subject}-${Date.now()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -465,7 +851,7 @@ export function AIQuizGenerator({
                     {['Khối 10', 'Khối 11', 'Khối 12'].map((item) => <option key={item}>{item}</option>)}
                   </select>
                 </label>
-                {assessmentType === 'practice' && (
+                {assessmentType === 'practice' && !isVietnamese && (
                   <fieldset>
                     <legend className="mb-2 text-xs font-semibold text-slate-700">Hình thức bài tập</legend>
                     <div className="flex flex-wrap gap-1.5">
@@ -489,15 +875,78 @@ export function AIQuizGenerator({
             )}
 
             <div className="space-y-3.5">
-              {!examMode && !assessmentType && <div>
+              {!assessmentType && <div>
                 <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-slate-400" />
                   Môn học
                 </label>
-                <select value={subject} onChange={(e) => setSubject(e.target.value)} className="input-field cursor-pointer">
+                <select
+                  value={subject}
+                  onChange={(event) => {
+                    const nextSubject = event.target.value;
+                    setSubject(nextSubject);
+                    setNumQuestions(nextSubject === 'Tiếng Anh' ? 40 : 5);
+                    setPracticeFormat(nextSubject === 'Tiếng Anh' ? 'multiple-choice' : 'free');
+                    setQuestions([]);
+                    setError('');
+                    persistAssessmentDraft({ subject: nextSubject, questions: [] });
+                  }}
+                  className="input-field cursor-pointer"
+                >
                   {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>}
+
+              {assessmentType && assignedSubjects.length > 1 && (
+                <label className="block min-w-0 text-xs font-medium text-slate-600">Môn được phân công
+                  <select
+                    value={subject}
+                    onChange={(event) => {
+                      const nextSubject = event.target.value;
+                      setSubject(nextSubject);
+                      setNumQuestions(nextSubject === 'Tiếng Anh' ? 40 : 5);
+                      setPracticeFormat(nextSubject === 'Tiếng Anh' ? 'multiple-choice' : 'free');
+                      setQuestions([]);
+                      setError('');
+                      persistAssessmentDraft({ subject: nextSubject, questions: [] });
+                    }}
+                    className="input-field mt-1 h-9 min-w-0 px-2 text-xs"
+                  >
+                    {assignedSubjects.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </label>
+              )}
+
+              {assessmentType === 'practice' && isVietnamese && (
+                <div className="grid gap-2 rounded-lg border border-blue-100 bg-blue-50/40 p-3 sm:grid-cols-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={includeReading}
+                      onChange={(event) => {
+                        setIncludeReading(event.target.checked);
+                        setQuestions([]);
+                        persistAssessmentDraft({ includeReading: event.target.checked, questions: [] });
+                      }}
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                    Phần I: Đọc hiểu
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={includeWriting}
+                      onChange={(event) => {
+                        setIncludeWriting(event.target.checked);
+                        setQuestions([]);
+                        persistAssessmentDraft({ includeWriting: event.target.checked, questions: [] });
+                      }}
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                    Phần II: Viết
+                  </label>
+                </div>
+              )}
 
               {!examMode && !assessmentType && <div>
                 <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
@@ -509,59 +958,206 @@ export function AIQuizGenerator({
                 </select>
               </div>}
 
-              <div>
-                <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
+              {assessmentType && isVietnamese && !hasReadingSection ? null : <div>
+                <label className={`${assessmentType && isVietnamese ? 'text-base font-semibold text-slate-700' : 'text-sm font-medium text-slate-600'} mb-1.5 flex items-center gap-1.5`}>
                   <Target className="w-3.5 h-3.5 text-slate-400" />
-                  Chủ đề / Nội dung
+                  {assessmentType && isVietnamese ? 'Thông tin bài đọc hiểu' : 'Chủ đề / Nội dung'}
                 </label>
-                <textarea
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder={examMode ? 'Nhập phạm vi kiến thức, văn bản hoặc nội dung muốn kiểm tra...' : 'VD: Hàm số bậc hai và đồ thị parabol...'}
-                  rows={3}
-                  className="input-field resize-none"
-                />
-              </div>
+                {assessmentType && isVietnamese ? (
+                  <VietnameseReadingInput
+                    mode={readingMode}
+                    details={readingDetails}
+                    fullText={readingFullText}
+                    onModeChange={(nextMode) => {
+                      setReadingMode(nextMode);
+                      persistAssessmentDraft({ readingMode: nextMode });
+                    }}
+                    onDetailChange={(field, value) => {
+                      const nextDetails = { ...readingDetails, [field]: value };
+                      setReadingDetails(nextDetails);
+                      persistAssessmentDraft({ readingDetails: nextDetails });
+                    }}
+                    onFullTextChange={(value) => {
+                      setReadingFullText(value);
+                      persistAssessmentDraft({ readingFullText: value });
+                    }}
+                  />
+                ) : (
+                  <textarea
+                    value={topic}
+                    onChange={(event) => {
+                      setTopic(event.target.value);
+                      if (assessmentType) persistAssessmentDraft({ topic: event.target.value });
+                    }}
+                    placeholder={examMode
+                      ? `Nhập phạm vi kiến thức môn ${subject} muốn kiểm tra...`
+                      : `Ví dụ: ${subjectExamples.topic}`}
+                    rows={3}
+                    className="input-field resize-none"
+                  />
+                )}
+              </div>}
 
-              {examMode && (
+              {assessmentType && isVietnamese && (
+                <section className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold text-slate-800">
+                      {assessmentType === 'practice' ? 'Cấu trúc bài tập Ngữ văn' : 'Cấu trúc đề Ngữ văn'}
+                    </h4>
+                    <span className="text-xs font-semibold text-blue-700">{requestedQuestionCount} câu</span>
+                  </div>
+                  {hasReadingSection && <div>
+                    <p className="text-sm font-semibold text-slate-800">Phần I: Đọc hiểu</p>
+                    {assessmentType === 'official' ? (
+                      <div className="mt-1 space-y-1 text-sm text-slate-600">
+                        <p>Câu 1-2: mức độ nhận biết</p>
+                        <p>Câu 3-4: mức độ thông hiểu</p>
+                        <p>Câu 5: mức độ vận dụng</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {([
+                          ['recognition', 'Mức độ nhận biết'],
+                          ['comprehension', 'Mức độ thông hiểu'],
+                          ['application', 'Mức độ vận dụng'],
+                        ] as const).map(([key, label]) => (
+                          <label key={key} className="flex items-center justify-between gap-3 text-xs text-slate-700">
+                            {label}
+                            <input
+                              type="number"
+                              min={0}
+                              max={10}
+                              value={vietnameseCounts[key]}
+                              onChange={(event) => {
+                                const nextCounts = {
+                                  ...vietnameseCounts,
+                                  [key]: Math.max(0, Math.min(10, Number(event.target.value) || 0)),
+                                };
+                                setVietnameseCounts(nextCounts);
+                                setQuestions([]);
+                                persistAssessmentDraft({ vietnameseCounts: nextCounts, questions: [] });
+                              }}
+                              className="input-field h-9 w-20 text-center"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>}
+                  {hasWritingSection && <fieldset className="border-t border-blue-100 pt-2">
+                    <legend className="mb-1.5 text-sm font-semibold text-slate-800">Phần II: Viết</legend>
+                    {([
+                      ['paragraph-and-essay', 'Viết đoạn văn + bài văn'],
+                      ['essay-only', 'Chỉ viết bài văn'],
+                    ] as const).map(([value, label]) => (
+                      <label key={value} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-slate-700">
+                        <input
+                          type="radio"
+                          name="vietnamese-practice-writing-format"
+                          value={value}
+                          checked={writingFormat === value}
+                          onChange={() => {
+                            setWritingFormat(value);
+                            setQuestions([]);
+                            setError('');
+                            persistAssessmentDraft({ writingFormat: value, questions: [] });
+                          }}
+                          className="accent-blue-600"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>}
+                  {vietnamesePracticeQuestionCountInvalid && (
+                    <p role="alert" className="text-xs font-medium text-rose-700">
+                      Chọn ít nhất một phần và thiết lập tổng cộng 1-10 câu. Hiện có {totalExamQuestions} câu.
+                    </p>
+                  )}
+                  {hasWritingSection && <div className="border-t border-blue-100 pt-2">
+                    <p className="mb-2 text-sm font-semibold text-slate-700">Thông tin phần đoạn/bài văn</p>
+                    <VietnameseWritingInputs
+                      writingFormat={writingFormat}
+                      paragraphSection={paragraphSection}
+                      essaySection={essaySection}
+                      onParagraphChange={(value) => {
+                        setParagraphSection(value);
+                        persistAssessmentDraft({ paragraphSection: value });
+                      }}
+                      onEssayChange={(value) => {
+                        setEssaySection(value);
+                        setWrittenSection(value);
+                        persistAssessmentDraft({ essaySection: value, writtenSection: value });
+                      }}
+                    />
+                  </div>}
+                </section>
+              )}
+
+              {assessmentType === 'official' && !isVietnamese && (
                 <div className="space-y-2.5 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-sm font-semibold text-slate-800">Cấu trúc đề</h4>
                     <span className="text-xs font-semibold text-blue-700">{totalExamQuestions} câu</span>
                   </div>
                   {isVietnamese ? (
-                    <div className="space-y-2">
-                      <p className="text-xs text-slate-500">Phần 1 - Trắc nghiệm</p>
-                      {([
-                        ['recognition', 'Nhận biết'],
-                        ['comprehension', 'Thông hiểu'],
-                        ['application', 'Vận dụng'],
-                        ['advanced', 'Vận dụng cao'],
-                      ] as const).map(([key, label]) => (
-                        <label key={key} className="flex items-center justify-between gap-3 text-sm text-slate-700">
-                          {label}
-                          <input type="number" min={0} max={100} value={vietnameseCounts[key]} onChange={(event) => setCount(setVietnameseCounts, key, Number(event.target.value))} className="input-field h-9 w-20 text-center" />
-                        </label>
-                      ))}
-                      <label className="block border-t border-blue-100 pt-2 text-sm font-medium text-slate-700">
-                        Phần 2 - Yêu cầu phần viết
-                        <textarea value={writtenSection} onChange={(event) => setWrittenSection(event.target.value)} rows={3} placeholder="Giáo viên nhập dạng bài, tác phẩm hoặc yêu cầu viết; AI sẽ dựa vào đây để tạo nội dung phù hợp." className="input-field mt-1.5 resize-y text-sm" />
-                      </label>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">Phần I: Đọc hiểu</p>
+                        <div className="mt-1 space-y-1 text-sm text-slate-600">
+                          <p>Câu 1-2: mức độ nhận biết</p>
+                          <p>Câu 3-4: mức độ thông hiểu</p>
+                          <p>Câu 5: mức độ vận dụng</p>
+                        </div>
+                      </div>
+                      <fieldset className="border-t border-blue-100 pt-2">
+                        <legend className="mb-1.5 text-sm font-semibold text-slate-800">Phần II: Viết</legend>
+                        {([
+                          ['paragraph-and-essay', 'Viết đoạn văn + bài văn'],
+                          ['essay-only', 'Chỉ viết bài văn'],
+                        ] as const).map(([value, label]) => (
+                          <label key={value} className="flex cursor-pointer items-center gap-2 py-1 text-xs text-slate-700">
+                            <input
+                              type="radio"
+                              name="vietnamese-writing-format"
+                              value={value}
+                              checked={writingFormat === value}
+                              onChange={() => {
+                                setWritingFormat(value);
+                                setQuestions([]);
+                                setError('');
+                                persistAssessmentDraft({ writingFormat: value, questions: [] });
+                              }}
+                              className="accent-blue-600"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </fieldset>
+                      <p className="rounded-md bg-white/80 px-2.5 py-2 text-xs text-slate-600">
+                        Phân bổ mặc định 10 điểm: Đọc hiểu 4 điểm, Viết 6 điểm.
+                      </p>
+                      <div className="border-t border-blue-100 pt-2">
+                        <p className="mb-2 text-sm font-semibold text-slate-700">Thông tin phần đoạn/bài văn</p>
+                        <VietnameseWritingInputs
+                          writingFormat={writingFormat}
+                          paragraphSection={paragraphSection}
+                          essaySection={essaySection}
+                          onParagraphChange={(value) => {
+                            setParagraphSection(value);
+                            persistAssessmentDraft({ paragraphSection: value });
+                          }}
+                          onEssayChange={(value) => {
+                            setEssaySection(value);
+                            setWrittenSection(value);
+                            persistAssessmentDraft({ essaySection: value, writtenSection: value });
+                          }}
+                        />
+                      </div>
                     </div>
                   ) : isEnglish ? (
-                    <div className="space-y-2">
-                      {([
-                        ['notice', 'Dạng 1 - Điền từ/cụm từ ngắn', '30%'],
-                        ['ordering', 'Dạng 2 - Sắp xếp câu/đoạn', '12,5%'],
-                        ['cloze', 'Dạng 3 - Đọc điền khuyết', '12,5%'],
-                        ['reading', 'Dạng 4 - Đọc hiểu (thường 2 bài)', '45%'],
-                      ] as const).map(([key, label, percentage]) => (
-                        <label key={key} className="flex items-center justify-between gap-2 text-xs text-slate-700">
-                          <span className="min-w-0">{label} <span className="text-slate-400">- {percentage} mặc định</span></span>
-                          <input type="number" min={0} max={100} value={englishCounts[key]} onChange={(event) => setCount(setEnglishCounts, key, Number(event.target.value))} aria-label={`${label}, phần trăm mặc định ${percentage}`} className="input-field h-9 w-20 shrink-0 text-center" />
-                        </label>
-                      ))}
-                    </div>
+                    <p className="rounded-md bg-white/80 px-2.5 py-2 text-sm text-slate-600">
+                      Mặc định: {numQuestions} câu trắc nghiệm Tiếng Anh.
+                    </p>
                   ) : (
                     <>
                       <div className="space-y-2">
@@ -643,30 +1239,31 @@ export function AIQuizGenerator({
                 </div>
               </div>}
 
-              {!examMode && (!assessmentType || assessmentType === 'practice') && <div>
+              {!examMode && (!assessmentType || (assessmentType === 'practice' && !isVietnamese)) && <div>
                 <label className="text-sm font-medium text-slate-600 mb-1.5 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
-                    Số câu {assessmentType === 'practice' && <span className="text-xs font-normal text-slate-400">(5–10)</span>}
+                    Số câu {isEnglish && <span className="text-xs font-normal text-slate-400">(mặc định 40 trắc nghiệm)</span>}
+                    {assessmentType === 'practice' && !isEnglish && <span className="text-xs font-normal text-slate-400">(5–10)</span>}
                   </span>
                   <span className="text-blue-600 font-semibold tabular-nums">{numQuestions}</span>
                 </label>
                 <input
                   type="range"
-                  min={assessmentType === 'practice' ? 5 : 3}
-                  max={assessmentType === 'practice' ? 10 : 15}
+                  min={assessmentType === 'practice' && !isEnglish ? 5 : isEnglish ? 1 : 3}
+                  max={assessmentType === 'practice' && !isEnglish ? 10 : isEnglish ? 50 : 15}
                   value={numQuestions}
                   onChange={(e) => setNumQuestions(Number(e.target.value))}
                   className="w-full accent-blue-600 cursor-pointer"
                 />
                 <div className="flex justify-between text-sm text-slate-400 mt-0.5">
-                  <span>{assessmentType === 'practice' ? 5 : 3}</span>
-                  <span>{assessmentType === 'practice' ? 10 : 15}</span>
+                  <span>{assessmentType === 'practice' && !isEnglish ? 5 : isEnglish ? 1 : 3}</span>
+                  <span>{assessmentType === 'practice' && !isEnglish ? 10 : isEnglish ? 50 : 15}</span>
                 </div>
               </div>}
 
               {examQuestionLimitExceeded && <p role="alert" className="text-sm text-rose-700">Đề thi tối đa 50 câu. Hãy giảm số câu trong cấu trúc đề.</p>}
-              <button onClick={handleGenerate} disabled={(!topic.trim() && !(examMode && isVietnamese && writtenSection.trim())) || generating || (examMode && (totalExamQuestions === 0 || examQuestionLimitExceeded || (!isVietnamese && !isEnglish && !sectionPointsValid)))} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <button onClick={handleGenerate} disabled={(!(assessmentType && isVietnamese && !hasReadingSection) && !assessmentTopic.trim() && !(examMode && !isVietnamese && writtenSection.trim())) || generating || vietnamesePracticeQuestionCountInvalid || (examMode && (totalExamQuestions === 0 || examQuestionLimitExceeded || (!isVietnamese && !isEnglish && !sectionPointsValid)))} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                 {generating ? (
                   <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Đang tạo...</>
                 ) : (
@@ -710,15 +1307,18 @@ export function AIQuizGenerator({
                   <button
                     disabled={examMode && !isVietnamese && !isEnglish && (!sectionPointsValid || !generatedStructureMatches)}
                     onClick={() => onSaveQuestions({
-                    topic: topic.trim() || (examMode ? writtenSection.trim().slice(0, 80) : topic),
-                    subject: hasSubjectContext ? subject : '',
+                    topic: assessmentTopic.trim()
+                      || (isVietnamese && hasWritingSection ? vietnameseWritingInstructions.slice(0, 80) : '')
+                      || (examMode ? writtenSection.trim().slice(0, 80) : topic),
+                    subject,
                     grade,
                     questions: distributedQuestions,
+                    sourceReferences,
                     ...(examMode ? {
                       durationMinutes: null,
                       structureSummary: examStructure,
                       sectionPoints: !isVietnamese && !isEnglish ? sectionPoints : undefined,
-                      writtenSection,
+                      writtenSection: hasWritingSection ? vietnameseWritingInstructions || writtenSection : '',
                     } : {}),
                   })}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -727,6 +1327,42 @@ export function AIQuizGenerator({
                   </button>
                 </div>
               </div>
+
+              {sourceReferences.length > 0 && (
+                <section className="card space-y-2 p-4">
+                  <h4 className="text-sm font-semibold text-slate-800">Nguồn đã dùng để kiểm chứng</h4>
+                  <ul className="list-inside list-disc space-y-1 text-sm">
+                    {sourceReferences.map((source) => (
+                      <li key={source.url}>
+                        <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-900">
+                          {source.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {examMode && isVietnamese && (
+                <div className="card grid gap-2 p-3 text-xs sm:grid-cols-2">
+                  {hasReadingSection && (
+                    <div>
+                      <p className="font-semibold text-slate-800">Phần I: Đọc hiểu - {vietnameseReadingPointTotal.toFixed(2)} điểm</p>
+                      <p className="mt-1 text-slate-600">Câu 1-2: nhận biết · Câu 3-4: thông hiểu · Câu 5: vận dụng</p>
+                    </div>
+                  )}
+                  {hasWritingSection && (
+                    <div>
+                      <p className="font-semibold text-slate-800">Phần II: Viết - {vietnameseWritingPointTotal.toFixed(2)} điểm</p>
+                      <p className="mt-1 text-slate-600">
+                        {writingFormat === 'paragraph-and-essay'
+                          ? `Viết đoạn văn (${vietnameseQuestionPoints[hasReadingSection ? 5 : 0]?.toFixed(2)} điểm) + bài văn (${vietnameseQuestionPoints[hasReadingSection ? 6 : 1]?.toFixed(2)} điểm)`
+                          : `Chỉ viết bài văn (${vietnameseWritingPointTotal.toFixed(2)} điểm)`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {questions.map((q, i) => {
                 const expanded = expandedId === q.id;

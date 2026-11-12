@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import pptxgen from 'pptxgenjs';
 import { BookOpen, ChevronLeft, ChevronRight, Download, FileText, GraduationCap, LayoutTemplate, Layers, Palette, Target, WandSparkles, X } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
 import { showToast } from '@/components/toast';
 import { LessonFormatSelector, type LessonFormat } from '@/pages/teacher/LessonFormatSelector';
 import { textbookSeries } from './textbookOptions';
+import { getAISubjectExamples } from './aiSubjectExamples';
 
 interface Slide {
   title: string;
@@ -14,15 +15,18 @@ interface Slide {
 export function LessonSlides({
   format,
   onFormatChange,
+  assignedSubjects = [],
 }: {
   format?: LessonFormat;
   onFormatChange?: (format: LessonFormat) => void;
+  assignedSubjects?: string[];
 } = {}) {
   const [textbook, setTextbook] = useState('');
+  const [subject, setSubject] = useState(assignedSubjects[0] ?? '');
   const [volume, setVolume] = useState('Tập 1');
   const [grade, setGrade] = useState('Khối 10');
   const [topic, setTopic] = useState('');
-  const [content, setContent] = useState('Khái niệm IoT, kiến trúc hệ thống, cảm biến và ví dụ ứng dụng trong trường học.');
+  const [content, setContent] = useState('');
   const [generatedSlides, setGeneratedSlides] = useState<Slide[]>([]);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -32,6 +36,11 @@ export function LessonSlides({
   const [style, setStyle] = useState('Trực quan');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const subjectExamples = getAISubjectExamples(subject);
+
+  useEffect(() => {
+    setSubject((current) => assignedSubjects.includes(current) ? current : assignedSubjects[0] ?? '');
+  }, [assignedSubjects]);
 
   const updateSlide = (index: number, field: keyof Slide, value: string) => {
     setGeneratedSlides((slides) => slides.map((slide, slideIndex) =>
@@ -40,6 +49,7 @@ export function LessonSlides({
   };
 
   const handleGenerate = async () => {
+    if (!subject.trim() || !topic.trim() || !textbook.trim()) return;
     setGenerating(true);
     setError('');
     try {
@@ -48,6 +58,7 @@ export function LessonSlides({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topic,
+          subject,
           textbook,
           volume,
           grade,
@@ -200,6 +211,20 @@ export function LessonSlides({
             <div>
               <label className="block">
                 <span className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-slate-400" /> Môn học
+                </span>
+                {assignedSubjects.length > 0 ? (
+                  <select value={subject} onChange={(event) => setSubject(event.target.value)} className="input-field mt-1.5">
+                    {assignedSubjects.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                ) : (
+                  <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Nhập môn học" className="input-field mt-1.5" />
+                )}
+              </label>
+            </div>
+            <div>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-600 mb-1.5 flex items-center gap-1.5">
                   <GraduationCap className="w-3.5 h-3.5 text-slate-400" /> Khối lớp
                 </span>
                 <select value={grade} onChange={(event) => setGrade(event.target.value)} className="input-field mt-1.5">
@@ -214,7 +239,7 @@ export function LessonSlides({
               <input
                 value={topic}
                 onChange={(event) => setTopic(event.target.value)}
-                placeholder="Ví dụ: Nhập môn Internet of Things"
+                placeholder={`Ví dụ: ${subjectExamples.topic}`}
                 className="input-field mt-1.5"
               />
             </label>
@@ -226,7 +251,7 @@ export function LessonSlides({
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 rows={5}
-                placeholder="Nhập các ý cần đề cập, ví dụ minh họa, hoạt động lớp học hoặc yêu cầu riêng..."
+                placeholder={subjectExamples.content}
                 className="input-field mt-1.5 resize-y"
               />
             </label>
@@ -257,7 +282,7 @@ export function LessonSlides({
             </div>
             <button
               onClick={handleGenerate}
-              disabled={generating || !topic.trim() || !textbook.trim()}
+              disabled={generating || !subject.trim() || !topic.trim() || !textbook.trim()}
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600 disabled:opacity-60"
             >
               <WandSparkles className="w-4 h-4" /> {generating ? 'Đang tạo...' : 'Tạo cấu trúc slide'}

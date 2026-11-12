@@ -5,7 +5,6 @@ import {
   AlignRight,
   Bold,
   Check,
-  ChevronDown,
   Highlighter,
   ImagePlus,
   IndentDecrease,
@@ -17,9 +16,7 @@ import {
   LoaderCircle,
   Redo2,
   Save,
-  Search,
   Sigma,
-  Sparkles,
   Strikethrough,
   Table2,
   Underline as UnderlineIcon,
@@ -34,9 +31,7 @@ import type { Editor } from '@tiptap/react';
 import { Slice } from '@tiptap/pm/model';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import {
-  runLessonDocumentAssistant,
   runLessonDocumentAssistantOnNodes,
-  type LessonDocumentAssistantAction,
 } from '@/utils/lessonDocumentAssistant';
 import {
   isLessonEditorDocument,
@@ -95,7 +90,9 @@ export function LessonEditor({
   saveState,
   saveError,
   onTitleChange,
+  onDocumentReady,
   onDocumentChange,
+  onSave,
   onClose,
   onUploadImage,
 }: {
@@ -105,10 +102,14 @@ export function LessonEditor({
   saveState: SaveState;
   saveError: string;
   onTitleChange: (title: string) => void;
+  onDocumentReady: (document: LessonEditorDocument) => void;
   onDocumentChange: (document: LessonEditorDocument) => void;
+  onSave: () => Promise<void>;
   onClose: () => void;
   onUploadImage: (file: File) => Promise<string>;
 }) {
+  const onDocumentReadyRef = useRef(onDocumentReady);
+  onDocumentReadyRef.current = onDocumentReady;
   const onDocumentChangeRef = useRef(onDocumentChange);
   onDocumentChangeRef.current = onDocumentChange;
   const onUploadImageRef = useRef(onUploadImage);
@@ -121,7 +122,6 @@ export function LessonEditor({
   const [formulaBlock, setFormulaBlock] = useState(false);
   const [editingFormula, setEditingFormula] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [advancedActionsOpen, setAdvancedActionsOpen] = useState(false);
   const [assistantBusy, setAssistantBusy] = useState(false);
   const [assistantFeedback, setAssistantFeedback] = useState<{ message: string; isError: boolean } | null>(null);
   const normalizedDocument = document ? normalizeLessonEditorMath(document) : null;
@@ -139,7 +139,7 @@ export function LessonEditor({
       }
       const initializedDocument = currentEditor.getJSON();
       if (isLessonEditorDocument(initializedDocument)) {
-        onDocumentChangeRef.current(initializedDocument);
+        onDocumentReadyRef.current(initializedDocument);
       }
     },
     onUpdate: ({ editor: currentEditor }) => {
@@ -287,96 +287,105 @@ export function LessonEditor({
     }
   };
 
-  const runEditorAssistant = async (action: LessonDocumentAssistantAction) => {
+  const handleSave = async () => {
+    if (!editor || saveState === 'saving') return;
+    setUploadError('');
+    try {
+      await onSave();
+    } catch (error) {
+      console.error('Không thể lưu bài giảng từ trình soạn thảo.', error);
+      setUploadError(error instanceof Error ? error.message : 'Không thể lưu bài giảng.');
+    }
+  };
+
+  const handleClose = () => {
+    if ((saveState === 'unsaved' || saveState === 'error')
+      && !window.confirm('Bài giảng còn thay đổi chưa lưu. Đóng trình soạn thảo mà không lưu? Nội dung chỉ được giữ tạm trên trang này.')) {
+      return;
+    }
+    onClose();
+  };
+
+  const runEditorAssistant = async () => {
     if (!editor) return;
     const documentAtRequest = editor.state.doc;
-    setAdvancedActionsOpen(false);
     setAssistantBusy(true);
     setAssistantFeedback(null);
     try {
-      if (action === 'check') {
-        const result = await runLessonDocumentAssistant(action, editor.getMarkdown());
-        if (!editor.state.doc.eq(documentAtRequest)) {
-          throw new Error('Bài giảng đã thay đổi trong lúc trợ lý xử lý. Hãy chạy lại thao tác.');
-        }
-        setAssistantFeedback({ message: result, isError: false });
-        return;
-      }
-
-      if (action === 'latex') {
-        const formulaTargets: Array<{ id: string; pos: number; node: ProseMirrorNode; latex: string }> = [];
-        documentAtRequest.descendants((node, pos) => {
-          if ((node.type.name === 'inlineMath' || node.type.name === 'blockMath')
-            && typeof node.attrs.latex === 'string'
-            && node.attrs.latex.trim()) {
-            formulaTargets.push({ id: `formula-${formulaTargets.length}`, pos, node, latex: node.attrs.latex });
-          }
-        });
-        if (formulaTargets.length === 0) {
-          setAssistantFeedback({ message: 'Chưa tìm thấy công thức LaTeX trong bài giảng.', isError: false });
-          return;
-        }
-
-        const results = await runLessonDocumentAssistantOnNodes('latex', formulaTargets.map(({ id, latex }) => ({
-          id,
-          text: latex,
-        })));
-        if (!editor.state.doc.eq(documentAtRequest)) {
-          throw new Error('Bài giảng đã thay đổi trong lúc trợ lý xử lý. Hãy chạy lại thao tác.');
-        }
-        const resultById = new Map(results.map(({ id, text }) => [id, text]));
-        let transaction = editor.state.tr;
-        for (const target of [...formulaTargets].sort((a, b) => b.pos - a.pos)) {
-          const latex = resultById.get(target.id);
-          if (latex !== undefined && latex !== target.latex) {
-            transaction = transaction.setNodeMarkup(target.pos, undefined, {
-              ...target.node.attrs,
-              latex,
-            }, target.node.marks);
-          }
-        }
-        if (transaction.docChanged) editor.view.dispatch(transaction);
-        setAssistantFeedback({
-          message: `Đã kiểm tra ${formulaTargets.length} công thức LaTeX trên toàn bài. Các nội dung và định dạng khác được giữ nguyên.`,
-          isError: false,
-        });
-        return;
-      }
-
-      const textTargets: Array<{ id: string; pos: number; node: ProseMirrorNode; context: string }> = [];
+      const targets: Array<{
+        id: string;
+        pos: number;
+        node: ProseMirrorNode;
+        kind: 'text' | 'formula';
+        text: string;
+        context: string;
+        display?: boolean;
+        canChangeDisplay?: boolean;
+      }> = [];
       documentAtRequest.descendants((node, pos, parent) => {
-        const insideCode = parent?.type.name === 'codeBlock' || node.marks.some((mark) => mark.type.name === 'code');
-        if (node.isText && node.text?.trim() && !insideCode) {
-          textTargets.push({
-            id: `text-${textTargets.length}`,
+        if ((node.type.name === 'inlineMath' || node.type.name === 'blockMath')
+          && typeof node.attrs.latex === 'string'
+          && node.attrs.latex.trim()) {
+          const canChangeDisplay = node.type.name === 'inlineMath';
+          targets.push({
+            id: `formula-${targets.length}`,
             pos,
             node,
+            kind: 'formula',
+            text: node.attrs.latex,
+            context: parent?.textContent ?? '',
+            display: canChangeDisplay ? node.attrs.display === true : true,
+            canChangeDisplay,
+          });
+          return;
+        }
+        const insideCode = parent?.type.name === 'codeBlock' || node.marks.some((mark) => mark.type.name === 'code');
+        if (node.isText && node.text?.trim() && !insideCode) {
+          targets.push({
+            id: `text-${targets.length}`,
+            pos,
+            node,
+            kind: 'text',
+            text: node.text,
             context: parent?.textContent ?? node.text,
           });
         }
       });
-      if (textTargets.length === 0) {
-        setAssistantFeedback({ message: 'Chưa tìm thấy văn bản để trình bày lại.', isError: false });
+      if (targets.length === 0) {
+        setAssistantFeedback({ message: 'Chưa tìm thấy văn bản hoặc công thức để xử lý.', isError: false });
         return;
       }
 
-      const results = await runLessonDocumentAssistantOnNodes('polish', textTargets.map(({ id, node, context }) => ({
+      const result = await runLessonDocumentAssistantOnNodes(targets.map(({
+        id, kind, text, context, display, canChangeDisplay,
+      }) => ({
         id,
-        text: node.text ?? '',
+        kind,
+        text,
         context,
+        ...(kind === 'formula' ? { display, canChangeDisplay } : {}),
       })));
       if (!editor.state.doc.eq(documentAtRequest)) {
         throw new Error('Bài giảng đã thay đổi trong lúc trợ lý xử lý. Hãy chạy lại thao tác.');
       }
-      const resultById = new Map(results.map(({ id, text }) => [id, text]));
+      const resultById = new Map(result.items.map((item) => [item.id, item]));
       let transaction = editor.state.tr;
-      for (const target of [...textTargets].sort((a, b) => b.pos - a.pos)) {
+      for (const target of [...targets].sort((a, b) => b.pos - a.pos)) {
+        const revised = resultById.get(target.id);
+        if (!revised) continue;
+        if (target.kind === 'formula') {
+          const attrs = {
+            ...target.node.attrs,
+            latex: revised.text.trim(),
+            ...(target.node.type.name === 'inlineMath' ? { display: revised.display } : {}),
+          };
+          transaction = transaction.setNodeMarkup(target.pos, undefined, attrs, target.node.marks);
+          continue;
+        }
         const originalText = target.node.text ?? '';
-        const revisedText = resultById.get(target.id);
-        if (revisedText === undefined) continue;
         const leadingWhitespace = originalText.match(/^\s*/)?.[0] ?? '';
         const trailingWhitespace = originalText.match(/\s*$/)?.[0] ?? '';
-        const normalizedText = `${leadingWhitespace}${revisedText.trim()}${trailingWhitespace}`;
+        const normalizedText = `${leadingWhitespace}${revised.text.trim()}${trailingWhitespace}`;
         if (normalizedText !== originalText) {
           transaction = transaction.replaceWith(
             target.pos,
@@ -387,7 +396,7 @@ export function LessonEditor({
       }
       if (transaction.docChanged) editor.view.dispatch(transaction);
       setAssistantFeedback({
-        message: `Đã trình bày lại ${textTargets.length} phần văn bản trên toàn bài. Bố cục, định dạng, công thức và ảnh được giữ nguyên.`,
+        message: result.report || 'Đã rà soát và xử lý nội dung toàn bài. Hãy kiểm tra lại trước khi lưu.',
         isError: false,
       });
     } catch (error) {
@@ -402,7 +411,7 @@ export function LessonEditor({
 
   const saveLabel = {
     idle: 'Chờ chỉnh sửa',
-    unsaved: 'Có thay đổi chưa đăng lại',
+    unsaved: 'Có thay đổi chưa lưu',
     saving: 'Đang lưu...',
     saved: 'Đã lưu',
     error: 'Lỗi lưu',
@@ -440,41 +449,15 @@ export function LessonEditor({
             <button
               type="button"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setAdvancedActionsOpen((open) => !open)}
+              onClick={() => { void runEditorAssistant(); }}
               disabled={assistantBusy}
-              aria-haspopup="menu"
-              aria-expanded={advancedActionsOpen}
+              aria-label="Trình bày nâng cao toàn bộ bài giảng bằng AI"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50/70 px-2.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-wait disabled:opacity-60 sm:text-sm"
-              title="Trợ lý AI cho toàn bộ bài giảng"
+              title="AI rà soát LaTeX, xuống dòng công thức và sửa lỗi rõ ràng trên toàn bài"
             >
               {assistantBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
               <span className="hidden sm:inline">{assistantBusy ? 'Đang xử lý...' : 'Trình bày nâng cao'}</span>
-              <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform sm:block ${advancedActionsOpen ? 'rotate-180' : ''}`} />
             </button>
-            {advancedActionsOpen && (
-              <div role="menu" className="absolute right-0 top-full z-[90] mt-2 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
-                <p className="px-2.5 py-2 text-[0.6875rem] leading-relaxed text-slate-500">
-                  Chọn một tính năng để xử lý toàn bộ bài giảng.
-                </p>
-                {([
-                  ['latex', 'Tạo / chuẩn hóa LaTeX', Sparkles],
-                  ['polish', 'Trình bày đẹp hơn', WandSparkles],
-                  ['check', 'Kiểm tra lỗi', Search],
-                ] as const).map(([action, label, Icon]) => (
-                  <button
-                    key={action}
-                    type="button"
-                    role="menuitem"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => { void runEditorAssistant(action); }}
-                    disabled={assistantBusy}
-                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
-                  >
-                    <Icon className="h-3.5 w-3.5" /> {label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
           <ToolbarButton label="Hoàn tác" disabled={!editor.can().undo()} onClick={() => editor.chain().focus().undo().run()}>
             <Undo2 className="h-4 w-4" />
@@ -482,7 +465,18 @@ export function LessonEditor({
           <ToolbarButton label="Làm lại" disabled={!editor.can().redo()} onClick={() => editor.chain().focus().redo().run()}>
             <Redo2 className="h-4 w-4" />
           </ToolbarButton>
-          <button type="button" onClick={onClose} className="ml-1 inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100" aria-label="Đóng trình soạn thảo">
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void handleSave()}
+            disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
+            className="ml-1 inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            aria-label="Lưu bài giảng"
+          >
+            {saveState === 'saving' ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            <span>Lưu</span>
+          </button>
+          <button type="button" onClick={handleClose} className="ml-1 inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100" aria-label="Đóng trình soạn thảo">
             <X className="h-4 w-4" /><span className="hidden sm:inline">Đóng</span>
           </button>
         </div>

@@ -4,6 +4,7 @@ import { deleteTeacherExamRoom, listTeacherExamRooms, saveTeacherExamRoom } from
 import { showToast } from '@/components/toast';
 import type { Page } from '@/types';
 import type { SavedExam } from './assessmentStorage';
+import type { AssignmentEditorSeed } from './assessmentStorage';
 import { AssignmentGradingWorkspace } from './AssignmentGradingWorkspace';
 import { ClassAnalytics } from './ClassAnalytics';
 import { ExamManagement } from './ExamManagement';
@@ -72,12 +73,16 @@ export function ExamQuestionWorkspace({
   currentPage,
   onNavigate,
   onAssignAssignment,
+  initialAssignmentSeed,
+  onInitialAssignmentSeedConsumed,
   onCreateExamRoom,
   questionBankOwnerEmail,
 }: {
   currentPage: Page;
   onNavigate: (page: Page) => void;
   onAssignAssignment: (draft: { title: string; subject: string; content: string }) => void;
+  initialAssignmentSeed?: AssignmentEditorSeed | null;
+  onInitialAssignmentSeedConsumed?: () => void;
   onCreateExamRoom: (exam: SavedExam) => void;
   questionBankOwnerEmail: string;
 }) {
@@ -98,7 +103,13 @@ export function ExamQuestionWorkspace({
             {activePage === 'question-bank'
               ? <QuestionBank ownerEmail={questionBankOwnerEmail} />
               : activePage === 'saved-assignments'
-                ? <AssignmentManagement onAssignToClass={onAssignAssignment} />
+                ? (
+                  <AssignmentManagement
+                    onAssignToClass={onAssignAssignment}
+                    initialAssignmentSeed={initialAssignmentSeed}
+                    onInitialAssignmentSeedConsumed={onInitialAssignmentSeedConsumed}
+                  />
+                )
                 : <ExamManagement onCreateExamRoom={onCreateExamRoom} />}
           </>
         )}

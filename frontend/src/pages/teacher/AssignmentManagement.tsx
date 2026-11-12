@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ClipboardList, Eye, FileText, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { deleteTeacherAssessment, saveTeacherAssessment } from '@/api/schoolApi';
 import { showToast } from '@/components/toast';
-import { defaultAssessmentSections, loadTeacherAssessments, type SavedAssignment } from '@/pages/teacher/assessmentStorage';
+import {
+  defaultAssessmentSections,
+  loadTeacherAssessments,
+  type AssignmentEditorSeed,
+  type SavedAssignment,
+} from '@/pages/teacher/assessmentStorage';
 import { ExamEditor } from '@/pages/teacher/ExamEditor';
 import { BookmarkButton, useTeacherBookmarks, type SavedTeacherAssignment } from '@/pages/teacher/teacherSavedItems';
 
@@ -42,8 +47,12 @@ function assignmentContent(assignment: SavedAssignment) {
 
 export function AssignmentManagement({
   onAssignToClass,
+  initialAssignmentSeed = null,
+  onInitialAssignmentSeedConsumed,
 }: {
   onAssignToClass: (draft: { title: string; subject: string; content: string }) => void;
+  initialAssignmentSeed?: AssignmentEditorSeed | null;
+  onInitialAssignmentSeedConsumed?: () => void;
 }) {
   const [assignments, setAssignments] = useState<SavedAssignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<SavedAssignment | null>(null);
@@ -100,21 +109,27 @@ export function AssignmentManagement({
     }
   };
 
-  const createAssignment = () => {
+  const createAssignment = useCallback((seed?: AssignmentEditorSeed) => {
     const createdAt = Date.now();
     setError('');
     setSelectedAssignment({
       id: `assignment-${createdAt}`,
-      title: '',
-      topic: '',
-      subject: '',
-      grade: '',
+      title: seed?.title ?? '',
+      topic: seed?.topic ?? seed?.title ?? '',
+      subject: seed?.subject ?? '',
+      grade: seed?.grade ?? '',
       createdAt: new Date(createdAt).toLocaleDateString('vi-VN'),
       durationMinutes: null,
       questions: [],
       status: 'draft',
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!initialAssignmentSeed) return;
+    createAssignment(initialAssignmentSeed);
+    onInitialAssignmentSeedConsumed?.();
+  }, [createAssignment, initialAssignmentSeed, onInitialAssignmentSeedConsumed]);
 
   const deleteAssignment = async (assignment: SavedAssignment) => {
     if (!window.confirm(`Xác nhận xóa bài tập "${assignment.title}"?`)) return;
@@ -133,7 +148,7 @@ export function AssignmentManagement({
   return (
     <main className="space-y-4">
       <div className="flex justify-end">
-        <button onClick={createAssignment} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800">
+        <button onClick={() => createAssignment()} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800">
           <Plus className="h-4 w-4" /> Tạo bài tập
         </button>
       </div>

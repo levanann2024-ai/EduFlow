@@ -3069,7 +3069,10 @@ async function renameClassAssignmentLesson(auth, classId, chapter, lesson, input
       WHERE a.class_id = $1 AND a.school_id = $2 AND a.teacher_user_id = $3
         AND lower(trim(a.subject)) = lower(trim($4))
         AND a.academic_year = $5 AND a.semester = $6
-        AND a.chapter = $7 AND a.lesson = $8 AND a.due_at > now()
+        AND a.chapter = $7
+        AND lower(regexp_replace(trim(a.lesson), '[[:space:]]+', ' ', 'g'))
+          = lower(regexp_replace(trim($8), '[[:space:]]+', ' ', 'g'))
+        AND a.due_at > now()
         AND EXISTS (
           SELECT 1 FROM teacher_class_assignments tca
            WHERE tca.class_id = a.class_id AND tca.teacher_user_id = a.teacher_user_id
@@ -3105,7 +3108,10 @@ async function deleteAuthorizedClassAssignments(auth, classId, input, selector) 
   }
   if (selector.lesson !== undefined) {
     values.push(selector.lesson);
-    filters.push(`a.lesson = $${values.length}`);
+    filters.push(
+      `lower(regexp_replace(trim(a.lesson), '[[:space:]]+', ' ', 'g'))`
+      + ` = lower(regexp_replace(trim($${values.length}), '[[:space:]]+', ' ', 'g'))`,
+    );
   }
   if (selector.activeOnly) filters.push('a.due_at > now()');
   const client = await getPool().connect();
@@ -4100,10 +4106,7 @@ async function renameClassLearningResourceChapter(auth, classId, currentChapter,
         scope.semester, scope.chapter, nextChapter.trim(),
       ],
     );
-    if (result.rowCount === 0) {
-      throw serviceError(404, 'SCHOOL_RESOURCE_CHAPTER_NOT_FOUND', 'Không tìm thấy chương trong phạm vi lớp học.');
-    }
-    await client.query(
+    const deletedChapters = await client.query(
       `DELETE FROM class_learning_resource_chapters
         WHERE class_id = $1 AND school_id = $2 AND academic_year = $3 AND semester = $4
           AND lower(trim(subject)) = lower(trim($5)) AND lower(trim(chapter)) = lower(trim($6))`,
@@ -4112,6 +4115,9 @@ async function renameClassLearningResourceChapter(auth, classId, currentChapter,
         scope.subject, scope.chapter,
       ],
     );
+    if (result.rowCount === 0 && deletedChapters.rowCount === 0) {
+      throw serviceError(404, 'SCHOOL_RESOURCE_CHAPTER_NOT_FOUND', 'Không tìm thấy chương trong phạm vi lớp học.');
+    }
     await client.query(
       `INSERT INTO class_learning_resource_chapters
          (class_id, school_id, subject, academic_year, semester, chapter)

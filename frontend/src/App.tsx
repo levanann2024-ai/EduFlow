@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar, MobileNav, NotificationDrawer, TopBar } from '@/components/Sidebar';
 import { ToastViewport } from '@/components/ToastNotifications';
 import { Login } from '@/pages/Login';
@@ -14,6 +14,7 @@ import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard';
 import { LessonRepository, type LessonRepositoryDraft } from '@/pages/teacher/LessonRepository';
 import { AILessonBuilder } from '@/pages/teacher/AILessonBuilder';
 import { ExamQuestionWorkspace, GradingAnalyticsWorkspace, ProctoringWorkspace } from '@/pages/teacher/TeacherWorkspaces';
+import type { AssignmentEditorSeed } from '@/pages/teacher/assessmentStorage';
 import { MyClasses } from '@/pages/student/MyClasses';
 import { Assignments } from '@/pages/student/Assignments';
 import { MyResults } from '@/pages/student/MyResults';
@@ -105,6 +106,7 @@ function App() {
   const [lessonBuilderInitialMode, setLessonBuilderInitialMode] = useState<'lesson' | 'exam'>('lesson');
   const [roomExamSeed, setRoomExamSeed] = useState<SavedExam | null>(null);
   const [lessonRepositoryDraft, setLessonRepositoryDraft] = useState<LessonRepositoryDraft | null>(null);
+  const [assignmentEditorSeed, setAssignmentEditorSeed] = useState<AssignmentEditorSeed | null>(null);
   const [lessonsWorkspaceVisited, setLessonsWorkspaceVisited] = useState(
     () => window.location.pathname === '/teacher/lessons',
   );
@@ -212,6 +214,7 @@ function App() {
       if (route && route !== window.location.pathname) window.history.pushState({ page: nextPage }, '', route);
     }
   };
+  const consumeAssignmentEditorSeed = useCallback(() => setAssignmentEditorSeed(null), []);
 
   const logout = async () => {
     try {
@@ -512,41 +515,55 @@ function App() {
   }
 
   const activePage = allowedPages[role].includes(page) ? page : 'dashboard';
+  const pageContentClassName = activePage === 'ai-chat'
+    ? 'flex min-h-0 max-w-none flex-col overflow-hidden p-0 md:max-w-[1480px] md:p-6 md:pb-8 lg:p-8 lg:pb-8'
+    : [
+      'max-w-[1480px] p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-8',
+      role === 'lecturer' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-0' : '',
+      role === 'student' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-8' : '',
+      role === 'lecturer' && activePage === 'lessons'
+        ? 'flex min-h-0 flex-col p-3 pb-24 sm:p-3 sm:pb-24 md:overflow-hidden md:p-3 md:pb-3 lg:max-w-none lg:p-4 lg:pb-3'
+        : 'lg:p-8 lg:pb-8',
+    ].filter(Boolean).join(' ');
   return (
     <div
-      className={`flex min-h-screen bg-slate-50 ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface md:h-dvh md:overflow-hidden' : ''}`}
+      className={`flex min-h-screen bg-slate-50 ${activePage === 'ai-chat' ? 'h-dvh min-h-0 overflow-hidden md:h-auto md:min-h-screen md:overflow-visible' : ''} ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface md:h-dvh md:overflow-hidden' : ''}`}
       style={backgroundStyle(userSettings)}
     >
       <ToastViewport />
-      <Sidebar
-        current={activePage}
-        onNavigate={navigateToPage}
-        role={role}
-        userId={authUser.id}
-        language={userSettings.language}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
-      />
-      <div className={`flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-[clamp(80px,14vw,224px)]'}`}>
-        <TopBar
+      <div className={activePage === 'ai-chat' ? 'hidden md:block' : ''}>
+        <Sidebar
+          current={activePage}
+          onNavigate={navigateToPage}
           role={role}
           userId={authUser.id}
-          userName={authUser.fullName}
-          avatarUrl={userSettings.avatar}
           language={userSettings.language}
-          unreadNotificationCount={notifications.filter((item) => !item.read).length}
-          onNotifications={() => setNotificationsOpen(true)}
-          onNavigate={navigateToPage}
-          onLogout={logout}
-          onOpenResources={role === 'student' ? openSubjectResources : undefined}
-          onOpenAssignments={role === 'student' ? openSubjectAssignments : undefined}
-          onAskAI={role === 'student' ? askStudentAI : undefined}
-          onShowGuide={() => {
-            setOnboardingStorageError('');
-            setOnboardingOpen(true);
-          }}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
         />
-        <div className={`app-page-content mx-auto w-full min-w-0 max-w-[1480px] flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:p-6 md:pb-8 ${role === 'lecturer' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-0' : role === 'student' && activePage === 'dashboard' ? 'lg:max-w-none lg:p-5 lg:pb-8' : role === 'lecturer' && activePage === 'lessons' ? 'flex min-h-0 flex-col p-3 pb-24 sm:p-3 sm:pb-24 md:overflow-hidden md:p-3 md:pb-3 lg:max-w-none lg:p-4 lg:pb-3' : 'lg:p-8 lg:pb-8'}`}>
+      </div>
+      <div className={`flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-200 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-[clamp(80px,14vw,224px)]'}`}>
+        <div className={activePage === 'ai-chat' ? 'hidden md:block' : ''}>
+          <TopBar
+            role={role}
+            userId={authUser.id}
+            userName={authUser.fullName}
+            avatarUrl={userSettings.avatar}
+            language={userSettings.language}
+            unreadNotificationCount={notifications.filter((item) => !item.read).length}
+            onNotifications={() => setNotificationsOpen(true)}
+            onNavigate={navigateToPage}
+            onLogout={logout}
+            onOpenResources={role === 'student' ? openSubjectResources : undefined}
+            onOpenAssignments={role === 'student' ? openSubjectAssignments : undefined}
+            onAskAI={role === 'student' ? askStudentAI : undefined}
+            onShowGuide={() => {
+              setOnboardingStorageError('');
+              setOnboardingOpen(true);
+            }}
+          />
+        </div>
+        <div className={`app-page-content mx-auto w-full min-w-0 flex-1 ${pageContentClassName}`}>
           {role === 'student' && activePage === 'dashboard' ? (
             <StudentDashboard
               userName={authUser.fullName}
@@ -567,7 +584,13 @@ function App() {
               {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} avatarUrl={userSettings.avatar} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} initialImage={initialChatImage} onInitialImageConsumed={() => setInitialChatImage(null)} initialConversationId={initialChatConversationId ?? undefined} />}
               {role === 'lecturer' && lessonsWorkspaceVisited && (
                 <div className={activePage === 'lessons' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-                  <LessonRepository initialDraft={lessonRepositoryDraft} />
+                  <LessonRepository
+                    initialDraft={lessonRepositoryDraft}
+                    onCreateStructuredAssignment={(seed) => {
+                      setAssignmentEditorSeed(seed);
+                      navigateToPage('saved-assignments');
+                    }}
+                  />
                 </div>
               )}
               {role === 'lecturer' && (
@@ -589,6 +612,8 @@ function App() {
                   currentPage={activePage}
                   onNavigate={navigateToPage}
                   questionBankOwnerEmail={authUser.email}
+                  initialAssignmentSeed={assignmentEditorSeed}
+                  onInitialAssignmentSeedConsumed={consumeAssignmentEditorSeed}
                   onCreateExamRoom={(exam) => {
                     setRoomExamSeed(exam);
                     navigateToPage('exam-monitor');

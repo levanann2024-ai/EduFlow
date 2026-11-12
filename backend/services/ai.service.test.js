@@ -1,6 +1,75 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { getSystemInstruction, getTeacherHonorific } = require('./ai.service');
+const {
+  extractGroundingSources,
+  generateGroundedJson,
+  getSystemInstruction,
+  getTeacherHonorific,
+} = require('./ai.service');
+
+test('grounding sources include unique secure web URLs only', () => {
+  assert.deepEqual(extractGroundingSources([
+    { web: { title: 'Official text', uri: 'https://example.edu/text' } },
+    { web: { title: 'Duplicate', uri: 'https://example.edu/text' } },
+    { web: { title: 'Insecure', uri: 'http://example.edu/text' } },
+    { web: { title: 'Invalid', uri: 'not a url' } },
+    { retrievedContext: { title: 'Not a web citation', uri: 'https://example.edu/context' } },
+  ]), [
+    { title: 'Official text', url: 'https://example.edu/text' },
+  ]);
+});
+
+test('grounded question generation enables Google Search and returns source citations', async (t) => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  const previousFetch = global.fetch;
+  process.env.GEMINI_API_KEY = 'test-key';
+  let requestOptions;
+  global.fetch = async (_url, options) => {
+    requestOptions = options;
+    return {
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: '[{"question":"Grounded question"}]' }] },
+          groundingMetadata: {
+            webSearchQueries: ['authoritative source'],
+            groundingChunks: [{ web: { title: 'Source', uri: 'https://example.edu/source' } }],
+          },
+        }],
+      }),
+    };
+  };
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+    global.fetch = previousFetch;
+  });
+
+  const result = await generateGroundedJson({
+    type: 'questions',
+    prompt: 'Create a question from verified sources.',
+    schema: 'questions',
+  });
+  assert.deepEqual(result.data, [{ question: 'Grounded question' }]);
+  assert.deepEqual(result.sources, [{ title: 'Source', url: 'https://example.edu/source' }]);
+  assert.deepEqual(result.searchQueries, ['authoritative source']);
+  assert.deepEqual(JSON.parse(requestOptions.body).tools, [{ google_search: {} }]);
+  assert.equal(requestOptions.headers['x-goog-api-key'], 'test-key');
+
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      candidates: [{
+        content: { parts: [{ text: '[]' }] },
+        groundingMetadata: { groundingChunks: [] },
+      }],
+    }),
+  });
+  await assert.rejects(
+    generateGroundedJson({ type: 'questions', prompt: 'No source', schema: 'questions' }),
+    /Không tìm thấy nguồn web có thể xác minh/,
+  );
+});
 
 test('student AI instructions consistently use toi-ban address', () => {
   for (const type of ['student-chat', 'student-progress', 'student-schedule']) {

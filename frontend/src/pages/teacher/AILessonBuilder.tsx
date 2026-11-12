@@ -4,7 +4,7 @@ import { AIQuizGenerator } from '@/pages/teacher/AIQuizGenerator';
 import { LessonPlan } from '@/pages/teacher/LessonPlan';
 import { LessonSlides } from '@/pages/teacher/LessonSlides';
 import type { LessonFormat } from '@/pages/teacher/LessonFormatSelector';
-import { saveTeacherAssessment } from '@/api/schoolApi';
+import { listClasses, listClassSubjects, saveTeacherAssessment } from '@/api/schoolApi';
 import type { ExamQuestion } from '@/pages/teacher/assessmentStorage';
 import { distributeAssignmentPoints } from '@/pages/student/assignmentQuestions';
 import type { QuizQuestion } from '@/types';
@@ -39,6 +39,33 @@ export function AILessonBuilder({
   const [lessonFormat, setLessonFormat] = useState<LessonFormat>(initialMode === 'slides' ? 'slides' : 'text');
   const [assessmentType, setAssessmentType] = useState<AssessmentType>(initialMode === 'exam' ? 'official' : 'practice');
   const [error, setError] = useState('');
+  const [assignedSubjects, setAssignedSubjects] = useState<string[]>([]);
+  const [assignedSubjectsLoading, setAssignedSubjectsLoading] = useState(true);
+  const [assignedSubjectsError, setAssignedSubjectsError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve()
+      .then(async () => {
+        const classrooms = await listClasses();
+        const subjectsByClass = await Promise.all(
+          classrooms.map((classroom) => listClassSubjects(classroom.id)),
+        );
+        if (active) {
+          setAssignedSubjects([...new Set(subjectsByClass.flat())].sort((first, second) => first.localeCompare(second, 'vi')));
+        }
+      })
+      .catch((loadError: unknown) => {
+        console.error('Không thể tải môn học được phân công cho giáo viên.', loadError);
+        if (active) {
+          setAssignedSubjectsError(loadError instanceof Error ? loadError.message : 'Không thể tải môn học được phân công.');
+        }
+      })
+      .finally(() => {
+        if (active) setAssignedSubjectsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (initialMode === 'exam') {
@@ -59,6 +86,7 @@ export function AILessonBuilder({
     grade: string;
     questions: QuizQuestion[];
     durationMinutes?: number | null;
+    sourceReferences?: { title: string; url: string }[];
   }) => {
     try {
       const questionPoints = distributeAssignmentPoints(generated.questions.length);
@@ -95,6 +123,7 @@ export function AILessonBuilder({
     structureSummary?: string[];
     sectionPoints?: Record<NonNullable<QuizQuestion['type']>, number>;
     writtenSection?: string;
+    sourceReferences?: { title: string; url: string }[];
   }) => {
     try {
       const next = {
@@ -144,7 +173,7 @@ export function AILessonBuilder({
         ))}
       </div>
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
-      {mode === 'lesson' ? <LessonPlan />
+      {mode === 'lesson' ? <LessonPlan assignedSubjects={assignedSubjects} />
         : mode === 'lecture' ? (
           <>
             <div hidden={lessonFormat !== 'text'}>
@@ -152,21 +181,35 @@ export function AILessonBuilder({
                 format={lessonFormat}
                 onFormatChange={setLessonFormat}
                 onAssignToStudents={onAssignLesson}
+                assignedSubjects={assignedSubjects}
               />
             </div>
             <div hidden={lessonFormat !== 'slides'}>
-              <LessonSlides format={lessonFormat} onFormatChange={setLessonFormat} />
+              <LessonSlides
+                format={lessonFormat}
+                onFormatChange={setLessonFormat}
+                assignedSubjects={assignedSubjects}
+              />
             </div>
           </>
         )
           : (
-            <AIQuizGenerator
-              examMode={mode === 'assessment' && assessmentType === 'official'}
-              assessmentType={assessmentType}
-              onAssessmentTypeChange={setAssessmentType}
-              onSaveQuestions={mode === 'assessment' && assessmentType === 'official' ? saveExam : saveAssignment}
-              saveLabel={mode === 'assessment' && assessmentType === 'official' ? 'Lưu đề kiểm tra' : 'Lưu bài tập'}
-            />
+            assignedSubjectsLoading ? (
+              <p role="status" className="card p-6 text-center text-sm text-slate-600">Đang tải môn học được phân công...</p>
+            ) : assignedSubjectsError ? (
+              <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{assignedSubjectsError}</p>
+            ) : assignedSubjects.length === 0 ? (
+              <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Tài khoản giáo viên chưa được phân công môn học trong lớp nào.</p>
+            ) : (
+              <AIQuizGenerator
+                examMode={mode === 'assessment' && assessmentType === 'official'}
+                assessmentType={assessmentType}
+                assignedSubjects={assignedSubjects}
+                onAssessmentTypeChange={setAssessmentType}
+                onSaveQuestions={mode === 'assessment' && assessmentType === 'official' ? saveExam : saveAssignment}
+                saveLabel={mode === 'assessment' && assessmentType === 'official' ? 'Lưu đề kiểm tra' : 'Lưu bài tập'}
+              />
+            )
           )}
     </section>
   );
