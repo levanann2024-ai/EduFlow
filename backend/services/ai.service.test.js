@@ -77,6 +77,10 @@ test('student AI instructions consistently use toi-ban address', () => {
     assert.match(instruction, /xưng "tôi"/);
     assert.match(instruction, /gọi học sinh là "bạn"/);
     assert.doesNotMatch(instruction, /xưng hô với học sinh là "em"/);
+    if (type === 'student-chat') {
+      assert.match(instruction, /Không mở đầu bằng lời chào/);
+      assert.match(instruction, /chỉ ở chế độ Tư duy mới dẫn dắt/);
+    }
   }
 });
 
@@ -91,6 +95,9 @@ test('teacher honorific follows the authenticated account gender', () => {
       const instruction = getSystemInstruction(type, gender);
       assert.match(instruction, new RegExp(`gọi (?:người dùng|giáo viên) là "${honorific}"`));
       assert.match(instruction, /xưng "tôi"/);
+      if (type === 'teacher-chat') {
+        assert.match(instruction, /Không mở đầu bằng lời chào/);
+      }
     }
   }
   for (const type of ['teacher-chat', 'teacher-progress-analysis', 'teacher-schedule']) {

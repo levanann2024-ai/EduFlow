@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 
 export type AppLanguage = 'vi' | 'en';
 export type BackgroundPreset = 'default' | 'aurora' | 'mint' | 'sunset' | 'ocean' | 'custom';
-export type ExplanationStyle = 'concise' | 'detailed';
+export type ExplanationStyle = 'concise' | 'detailed' | 'thinking';
 
 export const MIN_FONT_SCALE_PERCENT = 85;
 export const MAX_FONT_SCALE_PERCENT = 115;
@@ -48,6 +48,10 @@ function validFontScalePercent(value: unknown): value is number {
     && (value - MIN_FONT_SCALE_PERCENT) % FONT_SCALE_STEP_PERCENT === 0;
 }
 
+function validExplanationStyle(value: unknown): value is ExplanationStyle {
+  return value === 'concise' || value === 'detailed' || value === 'thinking';
+}
+
 export function readUserSettings(userId: string, role: Role): { settings: UserSettings; error: string } {
   let settings = { ...DEFAULT_USER_SETTINGS };
   let error = '';
@@ -66,7 +70,7 @@ export function readUserSettings(userId: string, role: Role): { settings: UserSe
         ...(typeof parsed.animationsEnabled === 'boolean' ? { animationsEnabled: parsed.animationsEnabled } : {}),
         ...(parsed.language === 'vi' || parsed.language === 'en' ? { language: parsed.language } : {}),
         ...(validFontScalePercent(parsed.fontScalePercent) ? { fontScalePercent: parsed.fontScalePercent } : {}),
-        ...(parsed.explanationStyle === 'concise' || parsed.explanationStyle === 'detailed'
+        ...(validExplanationStyle(parsed.explanationStyle)
           ? { explanationStyle: parsed.explanationStyle }
           : {}),
       };
@@ -88,7 +92,7 @@ export function readUserSettings(userId: string, role: Role): { settings: UserSe
       if (legacy) {
         const parsed: unknown = JSON.parse(legacy);
         if (isRecord(parsed)) {
-          if (parsed.explanationStyle === 'concise' || parsed.explanationStyle === 'detailed') {
+          if (validExplanationStyle(parsed.explanationStyle)) {
             settings.explanationStyle = parsed.explanationStyle;
           }
         }
@@ -121,7 +125,7 @@ export function readExplanationStyle(userId: string, role: Role): { style: Expla
     if (stored) {
       const parsed: unknown = JSON.parse(stored);
       if (!isRecord(parsed)) throw new Error('Thiết lập AI đã lưu không đúng định dạng.');
-      if (parsed.explanationStyle === 'concise' || parsed.explanationStyle === 'detailed') {
+      if (validExplanationStyle(parsed.explanationStyle)) {
         return { style: parsed.explanationStyle, error: '' };
       }
       if (parsed.explanationStyle !== undefined) throw new Error('Thiết lập AI đã lưu không đúng định dạng.');
@@ -131,7 +135,7 @@ export function readExplanationStyle(userId: string, role: Role): { style: Expla
       const legacy = localStorage.getItem(role === 'student' ? STUDY_PREFERENCES_KEY : TEACHER_PREFERENCES_KEY);
       if (legacy) {
         const parsed: unknown = JSON.parse(legacy);
-        if (!isRecord(parsed) || (parsed.explanationStyle !== 'concise' && parsed.explanationStyle !== 'detailed')) {
+        if (!isRecord(parsed) || !validExplanationStyle(parsed.explanationStyle)) {
           throw new Error('Thiết lập AI đã lưu không đúng định dạng.');
         }
         return { style: parsed.explanationStyle, error: '' };

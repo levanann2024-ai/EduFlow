@@ -48,8 +48,9 @@ const copy = {
     ai: 'Học tập & AI',
     aiHint: 'Tùy chỉnh cách trợ lý AI giải thích trong cuộc trò chuyện.',
     style: 'Phong cách giải thích',
-    concise: 'Ngắn gọn, đi thẳng vào ý chính',
-    detailed: 'Từng bước, kèm giải thích và ví dụ',
+    concise: 'Ngắn gọn: giải luôn, không nói nhiều',
+    detailed: 'Chi tiết: giải đầy đủ',
+    thinking: 'Tư duy: gợi mở, hỏi từng bước',
     security: 'Bảo mật',
     securityHint: 'Dùng mật khẩu dài và riêng cho tài khoản EduFlow.',
     demoAccount: 'Đây là tài khoản trải nghiệm. Không thể đổi mật khẩu hoặc gửi yêu cầu xóa tài khoản demo.',
@@ -96,8 +97,9 @@ const copy = {
     ai: 'Learning & AI',
     aiHint: 'Choose how the AI assistant explains answers in chat.',
     style: 'Explanation style',
-    concise: 'Concise and focused',
-    detailed: 'Step-by-step, with explanations and examples',
+    concise: 'Concise: answer directly',
+    detailed: 'Detailed: explain fully',
+    thinking: 'Thinking: guide with questions',
     security: 'Security',
     securityHint: 'Use a long, unique password for your EduFlow account.',
     demoAccount: 'This is a demo account. Password changes and account deletion requests are unavailable.',
@@ -324,6 +326,7 @@ export function Settings({
             <select value={settings.explanationStyle} onChange={(event) => updateSettings({ explanationStyle: event.target.value as UserSettings['explanationStyle'] })} className="input-field mt-1.5">
               <option value="concise">{text.concise}</option>
               <option value="detailed">{text.detailed}</option>
+              <option value="thinking">{text.thinking}</option>
             </select>
           </label>
         </section>

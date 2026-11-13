@@ -830,7 +830,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
     const content = (text || input).trim() || (selectedImage ? 'Hãy mô tả và phân tích ảnh đính kèm.' : '');
     if (!content || thinking) return;
     const imageToSend = selectedImage;
-    let explanationStyle: 'concise' | 'detailed' = 'detailed';
+    let explanationStyle: ExplanationStyle = 'detailed';
     let weeklyPlanContext: ReturnType<typeof getStudentWeeklyPlanContext>;
     if (role === 'student' || role === 'lecturer') {
       if (!userId) {
@@ -870,7 +870,6 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
       if (activeConversationId) requestBody.append('conversationId', activeConversationId);
       requestBody.append('explanationStyle', explanationStyle);
       if (role === 'student') {
-        requestBody.append('userName', userName);
         requestBody.append('subject', subject);
         if (weeklyPlanContext) requestBody.append('weeklyPlanContext', JSON.stringify(weeklyPlanContext));
       }
@@ -1085,8 +1084,9 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                       </button>
                       <label className="block px-3 pt-2 text-xs font-medium text-slate-500" htmlFor="student-mobile-chat-style">Phong cách trả lời</label>
                       <select id="student-mobile-chat-style" aria-label="Chế độ trả lời của EduBot" value={explanationStyle} onChange={(event) => { updateExplanationStyle(event.target.value as ExplanationStyle); setMobileToolsOpen(false); }} disabled={thinking} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50">
-                        <option value="concise">Ngắn gọn</option>
-                        <option value="detailed">Chi tiết</option>
+                        <option value="concise">Ngắn gọn — giải luôn</option>
+                        <option value="detailed">Chi tiết — giải đầy đủ</option>
+                        <option value="thinking">Tư duy — hỏi gợi mở</option>
                       </select>
                     </div>
                   )}
@@ -1126,10 +1126,11 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                   value={explanationStyle}
                   onChange={(event) => updateExplanationStyle(event.target.value as ExplanationStyle)}
                   disabled={thinking}
-                  className="hidden h-11 w-[106px] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 md:block md:w-[128px] md:px-3 md:text-sm"
+                  className="hidden h-11 w-[184px] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 md:block md:px-3 md:text-sm"
                 >
-                  <option value="concise">Ngắn gọn</option>
-                  <option value="detailed">Chi tiết</option>
+                  <option value="concise">Ngắn gọn — giải luôn</option>
+                  <option value="detailed">Chi tiết — giải đầy đủ</option>
+                  <option value="thinking">Tư duy — hỏi gợi mở</option>
                 </select>
                 <div className="hidden md:block">
                   <SpeechButton speech={speech} disabled={thinking} />
@@ -1283,8 +1284,9 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                   </button>
                   <label className="block px-3 pt-2 text-xs font-medium text-slate-500" htmlFor="teacher-mobile-chat-style">Phong cách trả lời</label>
                   <select id="teacher-mobile-chat-style" aria-label="Chế độ trả lời của EduBot" value={explanationStyle} onChange={(event) => { updateExplanationStyle(event.target.value as ExplanationStyle); setMobileToolsOpen(false); }} disabled={thinking} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50">
-                    <option value="concise">Ngắn gọn</option>
-                    <option value="detailed">Chi tiết</option>
+                    <option value="concise">Ngắn gọn — giải luôn</option>
+                    <option value="detailed">Chi tiết — giải đầy đủ</option>
+                    <option value="thinking">Tư duy — hỏi gợi mở</option>
                   </select>
                 </div>
               )}

@@ -1,3 +1,5 @@
+const { randomUUID } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const { generateText, generateJson, generateGroundedJson } = require('../services/ai.service');
 const getStudentChatContext = require('../services/studentChatContext.service').createStudentChatContextService();
 const getTeacherChatContext = require('../services/teacherChatContext.service').createTeacherChatContextService();
@@ -35,14 +37,29 @@ async function testAI(req, res) {
 }
 
 async function chatAI(req, res) {
+  const requestStartedAt = performance.now();
+  const performanceMetrics = {
+    requestId: randomUUID(),
+    contextPreparationMs: null,
+    geminiRequestSetupMs: null,
+    queueWaitMs: null,
+    geminiResponseMs: null,
+    retryCount: 0,
+  };
   try {
     const message = requireText(req.body?.message, 'Message');
     const isStudent = req.auth?.role === 'student';
     const isTeacher = req.auth?.role === 'lecturer';
     const imageAttachment = req.file ? aiChatHistory.validateImageAttachment(req.file) : null;
-    const userName = optionalContext(req.body?.userName, 'bạn');
     const subject = optionalContext(req.body?.subject, 'chưa chọn môn');
-    const explanationStyle = req.body?.explanationStyle === 'concise' ? 'concise' : 'detailed';
+    const explanationStyle = ['concise', 'detailed', 'thinking'].includes(req.body?.explanationStyle)
+      ? req.body.explanationStyle
+      : 'detailed';
+    const styleInstruction = explanationStyle === 'concise'
+      ? 'Giải thẳng vào yêu cầu, đưa lời giải hoặc đáp án trực tiếp, dùng ít lời; không hỏi gợi mở ở cuối. Chỉ hỏi lại khi thiếu dữ kiện thiết yếu.'
+      : explanationStyle === 'thinking'
+        ? 'Dẫn dắt người dùng tự suy nghĩ từng bước: nêu một gợi ý ngắn rồi hỏi một câu cụ thể để người dùng trả lời. Chưa đưa đáp án cuối cùng ngay, trừ khi người dùng yêu cầu xem lời giải trực tiếp.'
+        : 'Giải trực tiếp và đầy đủ từng bước, giải thích lý do và nêu kết quả rõ ràng; không hỏi gợi mở ở cuối. Chỉ hỏi lại khi thiếu dữ kiện thiết yếu.';
     if (message.length > 12000) {
       const error = new Error('Câu hỏi không được vượt quá 12.000 ký tự.');
       error.statusCode = 413;
@@ -76,24 +93,29 @@ async function chatAI(req, res) {
       isStudent || isTeacher ? `Câu hỏi hiện tại: ${message}` : `Người dùng hỏi: ${message}`,
     ].filter(Boolean).join('\n');
     const prompt = isStudent ? [
-      `Tên học sinh: ${userName}.`,
       `Khối lớp: ${grade}.`,
       `Môn học từ ngữ cảnh trước (chỉ dùng nếu phù hợp): ${subject}.`,
-      `Cách giải thích: ${explanationStyle === 'concise' ? 'ngắn gọn, tập trung vào ý chính' : 'chi tiết, từng bước và kèm ví dụ phù hợp'}.`,
+      `Phong cách trả lời đã chọn: ${styleInstruction}`,
       contextPrompt,
     ].join('\n') : isTeacher ? [
-      `Cách trả lời: ${explanationStyle === 'concise' ? 'ngắn gọn, tập trung vào ý chính' : 'chi tiết, có cấu trúc và kèm ví dụ phù hợp'}.`,
+      `Phong cách trả lời đã chọn: ${styleInstruction}`,
       contextPrompt,
-    ].join('\n') : contextPrompt;
+    ].join('\n') : [
+      `Phong cách trả lời đã chọn: ${styleInstruction}`,
+      contextPrompt,
+    ].join('\n');
+    const generationPrompt = imageAttachment
+      ? [
+        { text: prompt },
+        { inlineData: { mimeType: imageAttachment.mimeType, data: imageAttachment.content.toString('base64') } },
+      ]
+      : prompt;
+    performanceMetrics.contextPreparationMs = performance.now() - requestStartedAt;
     const generatedReply = await generateText({
       type: isStudent ? 'student-chat' : isTeacher ? 'teacher-chat' : 'chat',
       teacherGender: isTeacher ? req.auth?.gender : null,
-      prompt: imageAttachment
-        ? [
-          { text: prompt },
-          { inlineData: { mimeType: imageAttachment.mimeType, data: imageAttachment.content.toString('base64') } },
-        ]
-        : prompt,
+      performanceMetrics,
+      prompt: generationPrompt,
     });
     const subjectMatch = isStudent ? generatedReply.match(/^\[\[SUBJECT:([^\]]+)\]\]\s*/) : null;
     const allowedSubjects = ['Toán học', 'Ngữ văn', 'Vật lý', 'Hóa học', 'Tiếng Anh', 'Tin học', 'Sinh học', 'Lịch sử', 'Địa lý', 'Giáo dục thể chất', 'Chưa phân loại'];
@@ -120,7 +142,22 @@ async function chatAI(req, res) {
     });
   } catch (error) {
     return sendError(res, error, 'Không thể trả lời trợ lý AI.');
+  } finally {
+    console.log([
+      '[AI PERFORMANCE]',
+      `Request ID: ${performanceMetrics.requestId}`,
+      `Queue wait: ${formatPerformanceDuration(performanceMetrics.queueWaitMs)}`,
+      `Context preparation: ${formatPerformanceDuration(performanceMetrics.contextPreparationMs)}`,
+      `Gemini request setup: ${formatPerformanceDuration(performanceMetrics.geminiRequestSetupMs)}`,
+      `Gemini response: ${formatPerformanceDuration(performanceMetrics.geminiResponseMs)}`,
+      `Retry count: ${performanceMetrics.retryCount}`,
+      `Total duration: ${formatPerformanceDuration(performance.now() - requestStartedAt)}`,
+    ].join('\n'));
   }
+}
+
+function formatPerformanceDuration(durationMs) {
+  return Number.isFinite(durationMs) ? `${(durationMs / 1000).toFixed(2)}s` : 'N/A';
 }
 
 async function listAIConversations(req, res) {

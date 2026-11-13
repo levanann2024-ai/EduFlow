@@ -4,7 +4,7 @@ import { Activity, BookMarked, BookOpen, Building2, CalendarDays, ChevronRight, 
 import type { AuthUser } from '@/auth/authApi';
 import { changePassword } from '@/auth/authApi';
 import { AccountProfileSection } from '@/components/AccountProfileSection';
-import { readUserSettings, saveUserSettings, type AppLanguage } from '@/settings/userSettings';
+import { readUserSettings, saveUserSettings, type AppLanguage, type ExplanationStyle } from '@/settings/userSettings';
 import {
   getTeacherExamRoomGrading,
   listClassAssignments,
@@ -20,7 +20,7 @@ import { readRecentSearches, type RecentSearch } from './profileActivity';
 import { getStudentWeeklyActivity, type StudentWeeklyActivity } from '@/api/studentLearningActivity';
 
 interface StudyPreferences {
-  explanationStyle: 'concise' | 'detailed';
+  explanationStyle: ExplanationStyle;
 }
 
 const PARENT_LINK_CODE = 'EDU-AN11-2026';
@@ -564,8 +564,9 @@ export function StudentProfile({
               onChange={(event) => updatePreferences({ ...preferences, explanationStyle: event.target.value as StudyPreferences['explanationStyle'] })}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:max-w-xs"
             >
-              <option value="concise">Giải thích ngắn gọn</option>
-              <option value="detailed">Giải thích chi tiết kèm ví dụ</option>
+              <option value="concise">Ngắn gọn: giải luôn</option>
+              <option value="detailed">Chi tiết: giải đầy đủ</option>
+              <option value="thinking">Tư duy: gợi mở, hỏi từng bước</option>
             </select>
           </div>
         </div>
