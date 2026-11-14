@@ -80,8 +80,31 @@ test('student AI instructions consistently use toi-ban address', () => {
     if (type === 'student-chat') {
       assert.match(instruction, /Không mở đầu bằng lời chào/);
       assert.match(instruction, /chỉ ở chế độ Tư duy mới dẫn dắt/);
+      assert.match(instruction, /khối đã xác minh từ lớp đang học trong CSDL EduFlow/);
+      assert.match(instruction, /không mặc định học sinh đã biết/);
     }
   }
+});
+
+test('AI question generation instructions stay within the provided grade curriculum', () => {
+  const instruction = getSystemInstruction('questions');
+  assert.match(instruction, /bám sát chương trình phổ thông đến khối đó/);
+  assert.match(instruction, /không tạo câu hỏi cần kiến thức vượt cấp/);
+});
+
+test('student schedule instructions do not ask the model to report missing data', () => {
+  const instruction = getSystemInstruction('student-schedule');
+  assert.match(instruction, /không tạo mục báo thiếu dữ liệu/);
+  assert.match(instruction, /không tạo hoạt động trong quá khứ/);
+  assert.match(instruction, /các môn ghi trong tổ hợp/);
+  assert.match(instruction, /mức trần thời gian tự học mỗi ngày/);
+  assert.match(instruction, /Deadline ngoài trường ưu tiên cao còn trong 14 ngày/);
+  assert.match(instruction, /deadlinePreparation/);
+  assert.match(instruction, /1-2 giờ mỗi ngày/);
+  assert.doesNotMatch(instruction, /Lịch cố định là khung bị chiếm/);
+  assert.match(instruction, /không phải hoạt động cần chép lại vào timeline/);
+  assert.match(instruction, /adjustments/);
+  assert.doesNotMatch(instruction, /gồm overview, lifeBalanceTip, dataNotes/);
 });
 
 test('teacher honorific follows the authenticated account gender', () => {

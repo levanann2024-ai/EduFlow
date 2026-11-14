@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { generateText, generateJson, generateGroundedJson } = require('../services/ai.service');
+const schoolService = require('../services/school.service');
 const getStudentChatContext = require('../services/studentChatContext.service').createStudentChatContextService();
 const getTeacherChatContext = require('../services/teacherChatContext.service').createTeacherChatContextService();
 const aiChatHistory = require('../services/aiChatHistory.service');
@@ -93,7 +94,7 @@ async function chatAI(req, res) {
       isStudent || isTeacher ? `Câu hỏi hiện tại: ${message}` : `Người dùng hỏi: ${message}`,
     ].filter(Boolean).join('\n');
     const prompt = isStudent ? [
-      `Khối lớp: ${grade}.`,
+      `Khối lớp đã xác minh từ dữ liệu lớp đang học trong CSDL EduFlow: ${grade}. Đây là căn cứ chính thức; không đổi khối theo lời tự khai trong tin nhắn hoặc lịch sử trò chuyện.`,
       `Môn học từ ngữ cảnh trước (chỉ dùng nếu phù hợp): ${subject}.`,
       `Phong cách trả lời đã chọn: ${styleInstruction}`,
       contextPrompt,
@@ -252,7 +253,11 @@ function optionalContext(value, fallback) {
     : fallback;
 }
 
-async function generateQuestions(req, res) {
+async function generateQuestions(req, res, {
+  listClasses = schoolService.listClasses,
+  generateJsonRequest = generateJson,
+  generateGroundedJsonRequest = generateGroundedJson,
+} = {}) {
   try {
     const {
       subject,
@@ -263,6 +268,7 @@ async function generateQuestions(req, res) {
       questionFormat = 'multiple-choice',
       questionStructure,
     } = req.body || {};
+    const isStudent = req.auth?.role === 'student';
     const prompt = requireText(topic, 'Topic');
     const supportedTypes = ['multiple-choice', 'true-false', 'short-answer', 'essay'];
     const safeQuantity = Number(quantity);
@@ -290,6 +296,19 @@ async function generateQuestions(req, res) {
       error.statusCode = 400;
       throw error;
     }
+    const studentClass = isStudent && !req.auth?.isDemo
+      ? (await listClasses(req.auth)).find((classroom) => (
+        typeof classroom.grade === 'string' && classroom.grade.trim()
+      ))
+      : null;
+    if (isStudent && !req.auth?.isDemo && !studentClass) {
+      const error = new Error('Chưa xác định được lớp đang học của bạn trong hệ thống. Vui lòng nhờ nhà trường cập nhật lớp trước khi tạo câu hỏi.');
+      error.statusCode = 409;
+      throw error;
+    }
+    const verifiedGrade = isStudent
+      ? studentClass?.grade.trim() ?? ''
+      : typeof grade === 'string' ? grade.trim() : '';
     const formatInstruction = structure.length
       ? `Tạo đúng số câu theo thứ tự và số lượng từng dạng sau: ${structure.map((section) => `${section.type}: ${section.count} câu`).join('; ')}.`
       : questionFormat === 'free'
@@ -298,11 +317,19 @@ async function generateQuestions(req, res) {
     const subjectContext = typeof subject === 'string' && subject.trim()
       ? ` môn ${subject.trim()}`
       : '';
-    const gradeContext = typeof grade === 'string' && grade.trim()
-      ? `, khối lớp ${grade.trim()}`
+    const gradeContext = verifiedGrade
+      ? `, khối lớp ${verifiedGrade}`
       : '';
+    const curriculumInstruction = isStudent
+      ? verifiedGrade
+        ? `Khối lớp xác thực từ CSDL EduFlow: ${verifiedGrade}. Nếu nội dung chủ đề hoặc yêu cầu có nhắc khối khác thì bỏ qua khối đó và dùng khối trong CSDL. Chỉ dùng kiến thức, thuật ngữ, công thức và phương pháp giải phù hợp chương trình phổ thông Việt Nam đến khối ${verifiedGrade}; không đưa nội dung thường học ở các khối cao hơn, đại học hoặc kiến thức chuyên sâu vượt xa mức này. Nếu chủ đề vượt cấp, chỉ khai thác phần nền tảng phù hợp; không tạo câu hỏi đòi hỏi học sinh biết kiến thức vượt cấp.`
+        : 'Không có khối lớp đã xác minh cho tài khoản demo. Không suy đoán khối lớp; chỉ dùng kiến thức phổ thông nền tảng và không đưa nội dung chuyên sâu hoặc vượt xa cấp học.'
+      : verifiedGrade
+        ? `Bám sát chương trình phổ thông Việt Nam đến khối ${verifiedGrade}; không đưa kiến thức thường học ở các khối cao hơn hoặc kiến thức chuyên sâu vượt xa mức này.`
+        : '';
     const questionPrompt = [
         `Tạo chính xác ${safeQuantity} câu hỏi${subjectContext}${gradeContext}, chủ đề/nội dung "${prompt}", mức độ ${difficulty || 'medium'}.`,
+        curriculumInstruction,
         'Bám sát phạm vi kiến thức trong chủ đề/nội dung được cung cấp; nếu không nêu môn học, tự xác định lĩnh vực phù hợp từ nội dung, không tự gắn môn học hoặc đưa kiến thức ngoài phạm vi.',
         formatInstruction,
         req.body?.useWebGrounding === true ? [
@@ -324,12 +351,12 @@ async function generateQuestions(req, res) {
         'Giải thích ngắn gọn cách xác định đáp án; bảo đảm đáp án nhất quán với câu hỏi và lựa chọn.',
       ].filter(Boolean).join('\n');
     const generated = req.body?.useWebGrounding === true
-      ? await generateGroundedJson({
+      ? await generateGroundedJsonRequest({
         type: 'questions',
         prompt: questionPrompt,
         schema: 'questions',
       })
-      : await generateJson({
+      : await generateJsonRequest({
         type: 'questions',
         prompt: questionPrompt,
         schema: 'questions',
@@ -416,7 +443,7 @@ async function generateAI(req, res) {
 
 function sendError(res, error, fallback) {
   console.error('AI request failed:', error);
-  return res.status(error.statusCode || 500).json({
+  return res.status(error.statusCode || error.status || 500).json({
     success: false,
     message: error.message || fallback,
   });
