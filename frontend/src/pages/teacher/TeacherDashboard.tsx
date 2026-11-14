@@ -97,6 +97,7 @@ interface TeacherDashboardData {
   academicYear: string;
   semester: ProgressSemester;
   timetable: TeacherTimetableResponse | null;
+  tomorrowTimetable: TeacherTimetableResponse | null;
   progress: ClassProgress[];
   recentDocuments: RecentSentDocument[];
   appeals: ExamAppeal[];
@@ -315,8 +316,8 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
   const [chatImage, setChatImage] = useState<File | null>(null);
   const [progressFilter, setProgressFilter] = useState('');
   const now = useMemo(() => new Date(), []);
-  const tomorrow = useMemo(() => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1), [now]);
-  const tomorrowWeekday = ((tomorrow.getDay() + 6) % 7) + 1;
+  const currentWeekStart = getWeekStart(now);
+  const upcomingWeekStart = getWeekStart(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
   const honorific = getTeacherHonorific(userGender);
   const greeting = now.getHours() < 11 ? 'buổi sáng' : now.getHours() < 14 ? 'buổi trưa' : now.getHours() < 18 ? 'buổi chiều' : 'buổi tối';
   const greetingName = honorific ? `${honorific} ${userName}` : userName;
@@ -331,12 +332,16 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
         const classes = await listClasses();
         const academicYear = [...new Set(classes.map((item) => item.academic_year))]
           .sort((first, second) => second.localeCompare(first, 'vi', { numeric: true }))[0] ?? '';
-        const semester = getCurrentSemester(tomorrow);
+        const semester = getCurrentSemester(now);
         const currentYearClasses = classes.filter((item) => item.academic_year === academicYear);
-        const [timetableResult, appealsResult, examsResult, progressResults, documentResults] = await Promise.all([
+        const nextWeekTimetableRequest = !academicYear || upcomingWeekStart === currentWeekStart
+          ? Promise.resolve({ value: null, error: null })
+          : loadSection('Thời khóa biểu tuần tới', getTeacherTimetable(academicYear, semester, upcomingWeekStart));
+        const [timetableResult, nextWeekTimetableResult, appealsResult, examsResult, progressResults, documentResults] = await Promise.all([
           loadSection('Thời khóa biểu', academicYear
-            ? getTeacherTimetable(academicYear, semester, getWeekStart(tomorrow))
+            ? getTeacherTimetable(academicYear, semester, currentWeekStart)
             : Promise.resolve(null)),
+          nextWeekTimetableRequest,
           loadSection('Yêu cầu phúc khảo', listTeacherExamAppeals()),
           loadSection('Lịch kiểm tra', listTeacherExamRooms<ExamRoomRecord>()),
           Promise.all(currentYearClasses.map((classItem) => (
@@ -356,7 +361,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
           ))),
         ]);
         if (!active) return;
-        const sectionErrors = [timetableResult, appealsResult, examsResult, ...progressResults, ...documentResults]
+        const sectionErrors = [timetableResult, nextWeekTimetableResult, appealsResult, examsResult, ...progressResults, ...documentResults]
           .flatMap((result) => result.error ? [result.error] : []);
         const recentDocuments = documentResults.flatMap((result) => result.value ?? [])
           .sort((first, second) => second.createdAt.localeCompare(first.createdAt))
@@ -366,6 +371,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
           academicYear,
           semester,
           timetable: timetableResult.value,
+          tomorrowTimetable: nextWeekTimetableResult.value ?? timetableResult.value,
           appeals: appealsResult.value ?? [],
           examRooms: examsResult.value ?? [],
           progress: progressResults.flatMap((result) => result.value ? [result.value] : []),
@@ -382,14 +388,28 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
     };
     void loadDashboard();
     return () => { active = false; };
-  }, [retryToken, tomorrow]);
+  }, [retryToken, now, currentWeekStart, upcomingWeekStart]);
 
-  const tomorrowEntries = useMemo(() => {
-    if (!dashboard?.timetable || dashboard.timetable.timetable?.isTemplate) return [];
-    return dashboard.timetable.entries
-      .filter((entry) => entry.weekday === tomorrowWeekday && entry.type !== 'cancelled')
-      .sort((first, second) => first.period - second.period);
-  }, [dashboard, tomorrowWeekday]);
+  const upcomingSchedule = useMemo(() => {
+    if (!dashboard) return null;
+    const weekTimetables = [dashboard.timetable, dashboard.tomorrowTimetable]
+      .filter((timetable, index, all): timetable is TeacherTimetableResponse => (
+        Boolean(timetable)
+        && all.findIndex((candidate) => candidate?.timetable?.weekStart === timetable?.timetable?.weekStart) === index
+      ));
+    for (let daysAhead = 1; daysAhead <= 7; daysAhead += 1) {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysAhead);
+      const weekday = ((date.getDay() + 6) % 7) + 1;
+      const weekStart = getWeekStart(date);
+      const week = weekTimetables.find((candidate) => candidate.timetable?.weekStart === weekStart);
+      if (!week || week.timetable?.isTemplate) continue;
+      const entries = week.entries
+        .filter((entry) => entry.weekday === weekday && entry.type !== 'cancelled')
+        .sort((first, second) => first.period - second.period);
+      if (entries.length > 0) return { date, entries };
+    }
+    return null;
+  }, [dashboard, now]);
   const upcomingWork = useMemo(() => {
     return [...(dashboard?.timetable?.upcomingWork ?? [])]
       .sort((first, second) => new Date(first.dueAt).getTime() - new Date(second.dueAt).getTime());
@@ -400,18 +420,24 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       .sort((first, second) => new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime())
   ), [dashboard, now]);
   const pendingAppeals = dashboard?.appeals.filter((appeal) => appeal.status === 'pending') ?? [];
-  const timetableWeek = dashboard?.timetable?.timetable;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const nextSevenDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+  const scheduleWeeks = [dashboard?.timetable, dashboard?.tomorrowTimetable]
+    .filter((response, index, all): response is TeacherTimetableResponse => (
+      Boolean(response?.timetable && !response.timetable.isTemplate)
+      && all.findIndex((candidate) => candidate?.timetable?.weekStart === response?.timetable?.weekStart) === index
+    ));
   const scheduleExamKeys = new Set<string>();
-  const timetableAttentionItems = timetableWeek && !timetableWeek.isTemplate
-    ? (dashboard?.timetable?.entries ?? []).flatMap((entry) => {
-      const scheduledDate = getWeekDate(timetableWeek.weekStart, entry.weekday);
-      if (!scheduledDate) return [];
+  const timetableAttentionItems = scheduleWeeks.flatMap(({ timetable, entries }) => (
+    entries.flatMap((entry) => {
+      const scheduledDate = getWeekDate(timetable?.weekStart ?? '', entry.weekday);
+      if (!scheduledDate || scheduledDate > nextSevenDays) return [];
       const items = [];
       if (entry.hasExam) {
         const examDateTime = entry.examStartsAt || entry.dueAt;
         const examDate = examDateTime ? getCalendarDate(examDateTime) : scheduledDate;
         const examHasNotStarted = !examDateTime || Date.parse(examDateTime) >= now.getTime();
-        if (examDate && examDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate()) && examHasNotStarted) {
+        if (examDate && examDate >= today && examDate <= nextSevenDays && examHasNotStarted) {
           const title = entry.examTitle || entry.title || 'Bài kiểm tra';
           scheduleExamKeys.add(`${title.trim().toLocaleLowerCase('vi')}:${getDateKey(examDate)}`);
           items.push({
@@ -428,7 +454,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
         const returnDateTime = entry.examReturnAt || (entry.type === 'exam_return' ? entry.dueAt : null);
         const returnDate = returnDateTime ? getCalendarDate(returnDateTime) : scheduledDate;
         const returnIsUpcoming = !returnDateTime || Date.parse(returnDateTime) >= now.getTime();
-        if (returnDate && returnDate >= new Date(now.getFullYear(), now.getMonth(), now.getDate()) && returnIsUpcoming) {
+        if (returnDate && returnDate >= today && returnDate <= nextSevenDays && returnIsUpcoming) {
           items.push({
             id: `scheduled-return-${getDateKey(returnDate)}-${entry.classId}-${entry.period}`,
             title: `Lịch trả bài: ${entry.examReturnNote || entry.classCode}`,
@@ -444,8 +470,9 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
         const homeworkDate = homeworkDueAt ? getCalendarDate(homeworkDueAt) : scheduledDate;
         const dueTimestamp = homeworkDueAt ? Date.parse(homeworkDueAt) : scheduledDate.getTime();
         if (homeworkDate
-          && dueTimestamp >= now.getTime()
-          && dueTimestamp - now.getTime() <= 3 * 24 * 60 * 60 * 1000) {
+          && homeworkDate >= today
+          && homeworkDate <= nextSevenDays
+          && dueTimestamp >= now.getTime()) {
           items.push({
             id: `scheduled-homework-${getDateKey(homeworkDate)}-${entry.classId}-${entry.period}`,
             title: `BTVN sắp đến hạn: ${entry.homeworkTitle || entry.title || entry.subject}`,
@@ -458,14 +485,18 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       }
       return items;
     })
-    : [];
+  ));
   const studentConcerns = (dashboard?.progress ?? []).flatMap((classProgress) => (
     classProgress.concerns.map((concern) => ({
       ...concern,
       className: classProgress.className,
       classCode: classProgress.classCode,
     }))
-  ));
+  )).sort((first, second) => {
+    if (first.kind !== second.kind) return first.kind === 'low' ? -1 : 1;
+    if (first.kind === 'low') return first.average - second.average;
+    return (second.previousAverage ?? 0) - second.average - ((first.previousAverage ?? 0) - first.average);
+  });
   const progressFilterOptions = useMemo(() => {
     const homeroomOptions: ProgressFilterOption[] = (dashboard?.progress ?? [])
       .filter((classProgress) => classProgress.isHomeroom)
@@ -518,8 +549,28 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
     1_000,
     selectedProgressFilter?.id,
   );
-  const tomorrowCycle = useDashboardCycle(tomorrowEntries.length, 2, 2_000);
-  const tomorrowDateLabel = tomorrow.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+  const upcomingScheduleEntries = upcomingSchedule?.entries ?? [];
+  const upcomingScheduleDateLabel = upcomingSchedule?.date.toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+  });
+  const tomorrowCycle = useDashboardCycle(upcomingScheduleEntries.length, 2, 2_000, upcomingScheduleDateLabel);
+  const currentWeekday = ((now.getDay() + 6) % 7) + 1;
+  const currentWeekNote = dashboard?.timetable?.timetable;
+  const timetableNoteItem = currentWeekday >= 6
+    && currentWeekNote
+    && !currentWeekNote.isTemplate
+    && currentWeekNote.dailyNote.trim()
+    ? [{
+      id: `timetable-note-${currentWeekNote.weekStart}`,
+      title: 'Ghi chú thời khóa biểu tuần này',
+      detail: currentWeekNote.dailyNote.replace(/\s+/g, ' ').trim(),
+      tone: 'blue' as const,
+      icon: CalendarDays,
+      onClick: () => onNavigate('schedule'),
+    }]
+    : [];
 
   const submitChatPrompt = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -529,25 +580,10 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
   };
 
   const attentionItems = [
-    ...pendingAppeals.slice(0, 3).map((appeal) => ({
-      id: `appeal-${appeal.id}`,
-      title: `Phúc khảo: ${appeal.examTitle}`,
-      detail: `${appeal.studentName ?? 'Học sinh'} - ${appeal.className} - ${appeal.subject}`,
-      tone: 'rose' as const,
-      icon: ClipboardCheck,
-      onClick: () => onNavigate('ai-grading'),
-    })),
+    ...timetableNoteItem,
     ...timetableAttentionItems,
-    ...studentConcerns.slice(0, 4).map((student) => ({
-      id: `student-${student.studentId}-${student.subject}`,
-      title: student.kind === 'low' ? `${student.studentName} có điểm thấp` : `Điểm ${student.studentName} đang giảm`,
-      detail: `${student.classCode} - ${student.subject} ${student.average.toFixed(1)}${student.previousAverage !== null && student.average < student.previousAverage ? ` - trước ${student.previousAverage.toFixed(1)}` : ''}`,
-      tone: student.kind === 'low' ? 'amber' as const : 'blue' as const,
-      icon: student.kind === 'low' ? AlertTriangle : TrendingDown,
-      onClick: () => onNavigate('analytics'),
-    })),
     ...upcomingExams
-      .filter((room) => new Date(room.startsAt).getTime() - now.getTime() <= 48 * 60 * 60 * 1000)
+      .filter((room) => new Date(room.startsAt).getTime() - now.getTime() <= 7 * 24 * 60 * 60 * 1000)
       .filter((room) => {
         const examDate = getCalendarDate(room.startsAt);
         return !examDate || !scheduleExamKeys.has(
@@ -567,7 +603,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       .filter((work) => {
         const due = new Date(work.dueAt).getTime();
         return isPastDue(work.dueAt)
-          || (due >= now.getTime() && due - now.getTime() <= 3 * 24 * 60 * 60 * 1000);
+          || (due >= now.getTime() && due - now.getTime() <= 7 * 24 * 60 * 60 * 1000);
       })
       .slice(0, 3)
       .map((work) => ({
@@ -578,6 +614,22 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
         icon: CalendarDays,
         onClick: () => onNavigate('classes'),
       })),
+    ...studentConcerns.slice(0, 4).map((student) => ({
+      id: `student-${student.studentId}-${student.subject}`,
+      title: student.kind === 'low' ? `${student.studentName} có điểm thấp` : `Điểm ${student.studentName} đang giảm`,
+      detail: `${student.classCode} - ${student.subject} ${student.average.toFixed(1)}${student.previousAverage !== null && student.average < student.previousAverage ? ` - trước ${student.previousAverage.toFixed(1)}` : ''}`,
+      tone: student.kind === 'low' ? 'amber' as const : 'blue' as const,
+      icon: student.kind === 'low' ? AlertTriangle : TrendingDown,
+      onClick: () => onNavigate('analytics'),
+    })),
+    ...pendingAppeals.slice(0, 3).map((appeal) => ({
+      id: `appeal-${appeal.id}`,
+      title: `Phúc khảo: ${appeal.examTitle}`,
+      detail: `${appeal.studentName ?? 'Học sinh'} - ${appeal.className} - ${appeal.subject}`,
+      tone: 'rose' as const,
+      icon: ClipboardCheck,
+      onClick: () => onNavigate('ai-grading'),
+    })),
     ...upcomingWork
       .filter((work) => work.ungradedCount > 0)
       .slice(0, 3)
@@ -907,7 +959,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
             <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
                 <CalendarDays className="h-5 w-5 text-blue-600" />
-                Lịch ngày mai - {tomorrowDateLabel}
+                Lịch dạy gần nhất{upcomingScheduleDateLabel ? ` · ${upcomingScheduleDateLabel}` : ' · 7 ngày tới'}
               </h2>
               <button type="button" onClick={() => onNavigate('schedule')} className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900">
                 Thời khóa biểu <ArrowRight className="ml-0.5 inline h-3.5 w-3.5" />
@@ -924,11 +976,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
               <div className="student-dashboard-cycle-viewport h-[192px]">
                 {loading ? (
                   <p className="flex h-full items-center justify-center text-sm text-slate-500">Đang tải lịch…</p>
-                ) : dashboard?.timetable?.timetable?.isTemplate ? (
-                  <p className="flex h-full items-center justify-center rounded-lg bg-blue-50 px-4 text-sm leading-6 text-blue-800">
-                    Đang dùng lịch mẫu, chưa có lịch riêng cho tuần này.
-                  </p>
-                ) : tomorrowEntries.length > 0 ? (
+                ) : upcomingScheduleEntries.length > 0 ? (
                   <div
                     className="student-dashboard-cycle-track h-full"
                     style={{
@@ -937,7 +985,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                     }}
                   >
                     {Array.from({ length: tomorrowCycle.pageCount }, (_, page) => {
-                      const pageEntries = tomorrowEntries.slice(page * 2, page * 2 + 2);
+                      const pageEntries = upcomingScheduleEntries.slice(page * 2, page * 2 + 2);
                       return (
                         <ul
                           key={page}
@@ -973,13 +1021,13 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
                   </div>
                 ) : (
                   <p className="flex h-full items-center justify-center rounded-lg bg-slate-50 px-4 text-center text-sm leading-6 text-slate-600">
-                    {dashboard ? 'Chưa có tiết dạy ngày mai được lưu trong thời khóa biểu.' : 'Chưa có dữ liệu lịch để hiển thị.'}
+                    {dashboard ? 'Chưa có tiết dạy được lưu trong 7 ngày tới.' : 'Chưa có dữ liệu lịch để hiển thị.'}
                   </p>
                 )}
               </div>
               <div className="mt-2 flex min-h-4 items-center justify-center gap-1">
                 {tomorrowCycle.pageCount > 1 && Array.from({ length: tomorrowCycle.pageCount }, (_, index) => (
-                  <button key={index} type="button" aria-label={`Xem lịch ngày mai trang ${index + 1}`} aria-pressed={index === tomorrowCycle.page} onClick={() => tomorrowCycle.setPage(index)} className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <button key={index} type="button" aria-label={`Xem lịch dạy gần nhất trang ${index + 1}`} aria-pressed={index === tomorrowCycle.page} onClick={() => tomorrowCycle.setPage(index)} className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
                     <span className={`block h-1.5 w-1.5 rounded-full transition-colors ${index === tomorrowCycle.page ? 'bg-blue-600' : 'bg-slate-300 hover:bg-blue-400'}`} />
                   </button>
                 ))}

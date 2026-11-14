@@ -131,9 +131,13 @@ export function AIPractice({
       if (!response.ok || !result.success || !Array.isArray(result.data) || result.data.length === 0) {
         throw new Error(result.message || 'Chưa tạo được câu hỏi. Bạn thử lại nhé.');
       }
+      const generatedQuestions = result.data.map((question) => ({
+        ...question,
+        difficulty,
+      }));
       setSubject(requestSubject || 'Tổng hợp');
       setTopic(requestTopic.trim());
-      setQuestions(result.data);
+      setQuestions(generatedQuestions);
       setIsSample(false);
       resetAttempt();
       setPhase('ready');
@@ -144,17 +148,6 @@ export function AIPractice({
       }
       const id = `quiz-${crypto.randomUUID()}`;
       setQuizId(id);
-      await saved.saveItem({
-        id,
-        type: 'quiz',
-        title: Array.from(requestTopic.trim().replace(/\s+/g, ' ')).slice(0, 400).join(''),
-        subject: requestSubject || 'Tổng hợp',
-        topic: requestTopic.trim(),
-        questionCount: result.data.length,
-        mode,
-        savedAt: new Date().toISOString(),
-        questions: result.data,
-      });
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : 'Không thể kết nối tới AI server.');
     } finally {
@@ -455,7 +448,7 @@ export function AIPractice({
                       <Settings2 className="h-4 w-4" /> Chỉnh cài đặt
                     </button>
                     {quizId && !isSample && (
-                      <button type="button" disabled={savingQuiz || saved.loading || Boolean(saved.error)} aria-label={quizSaved ? 'Bỏ lưu bộ câu hỏi' : 'Lưu bộ câu hỏi'} aria-pressed={quizSaved}
+                      <button type="button" disabled={savingQuiz || saved.loading || Boolean(saved.error)} aria-label={quizSaved ? 'Bỏ lưu bộ câu hỏi' : 'Lưu bộ câu hỏi vào Đã lưu'} title={quizSaved ? 'Bỏ lưu bộ câu hỏi' : 'Lưu bộ câu hỏi vào Đã lưu'} aria-pressed={quizSaved}
                         onClick={() => {
                           setSavingQuiz(true);
                           const action = quizSaved

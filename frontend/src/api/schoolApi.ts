@@ -2420,12 +2420,27 @@ export async function getStudentTimetable(
   return result;
 }
 
+export type StudentStudyPreferences = {
+  subjectCombination: string;
+  dailyStudyMinutes: number | null;
+  sessionMinutes: number | null;
+  preferredStudyTime: 'morning' | 'afternoon' | 'evening' | 'flexible' | 'custom';
+  customStudyTime: string;
+  habitNotes: string;
+};
+
+export type StudentExternalCommitment = {
+  title: string;
+  date: string;
+  priority: 'high' | 'medium' | 'low';
+};
+
 export async function generateStudentTimetableSuggestion(input: {
   semester: ProgressSemester;
-  weekStart: string;
-  tomorrowWeekday: number;
   availability: string;
   remainingTimeIsFree: boolean;
+  studyPreferences?: StudentStudyPreferences;
+  externalCommitments?: StudentExternalCommitment[];
 }): Promise<string> {
   const response = await authenticatedFetch('/api/student/timetable/suggestions', {
     method: 'POST',

@@ -281,6 +281,11 @@ function App() {
     setInitialSubjectTopic(topic);
   };
 
+  const openStudentAssignment = (subject: string, assignmentId?: string) => {
+    openScheduledContent(subject, '', 'homework');
+    if (assignmentId) setInitialAssignmentId(assignmentId);
+  };
+
   const openPublishedExamResult = (result: StudentExamResult) => {
     navigateToPage('my-classes');
     setResourceSubjectSeed(result.subject);
@@ -568,6 +573,7 @@ function App() {
             <StudentDashboard
               userName={authUser.fullName}
               onNavigate={navigateToPage}
+              onOpenAssignment={openStudentAssignment}
               onOpenResources={openSubjectResources}
               onOpenAssignments={openSubjectAssignments}
               onAskAI={askStudentDashboardAI}

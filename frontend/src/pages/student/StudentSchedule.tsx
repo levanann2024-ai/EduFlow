@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Pencil, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Pencil, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -12,6 +12,8 @@ import {
   generateStudentTimetableSuggestion,
   getStudentProgress,
   getStudentTimetable,
+  type StudentExternalCommitment,
+  type StudentStudyPreferences,
   type ProgressSemester,
   type StudentTimetableResponse,
 } from '@/api/schoolApi';
@@ -22,7 +24,7 @@ interface StudentScheduleProps {
 }
 
 const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
-const planWeekdays = ['', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+const planDayLabels = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 const studentPlanKinds = new Set(['study', 'homework', 'review', 'class', 'break', 'busy', 'personal', 'exam']);
 const priorityCards = [
   {
@@ -63,10 +65,12 @@ type StudentPlanKind = 'study' | 'homework' | 'review' | 'class' | 'break' | 'bu
 interface StudentSchedulePlan {
   overview: string;
   lifeBalanceTip: string;
-  dataNotes: string[];
+  startDate: string;
   priorities: Array<{ task: string; reason: string; durationMinutes: number }>;
+  adjustments: string[];
+  classWindows: Array<{ date: string; startTime: string; endTime: string }>;
   timeline: Array<{
-    weekday: number;
+    date: string;
     startTime: string;
     endTime: string;
     activity: string;
@@ -81,12 +85,16 @@ function parseStudentSchedulePlan(raw: string): StudentSchedulePlan | null {
     const plan = value as Record<string, unknown>;
     if (typeof plan.overview !== 'string'
       || (plan.lifeBalanceTip !== undefined && typeof plan.lifeBalanceTip !== 'string')
-      || !Array.isArray(plan.dataNotes)
-      || !plan.dataNotes.every((note) => typeof note === 'string')
+      || typeof plan.startDate !== 'string'
+      || !isValidDateKey(plan.startDate)
       || !Array.isArray(plan.priorities)
       || plan.priorities.length !== 3
       || !Array.isArray(plan.timeline)
-      || plan.timeline.length > 28) return null;
+      || plan.timeline.length > 28
+      || (plan.adjustments !== undefined
+        && (!Array.isArray(plan.adjustments)
+          || plan.adjustments.length > 3
+          || !plan.adjustments.every((item) => typeof item === 'string')))) return null;
 
     const priorities = plan.priorities.map((item) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
@@ -104,27 +112,48 @@ function parseStudentSchedulePlan(raw: string): StudentSchedulePlan | null {
     const timeline = plan.timeline.map((item) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
       const entry = item as Record<string, unknown>;
-      if (typeof entry.weekday !== 'number'
-        || !Number.isInteger(entry.weekday)
+      if (typeof entry.date !== 'string'
+        || !isValidDateKey(entry.date)
         || typeof entry.startTime !== 'string'
         || typeof entry.endTime !== 'string'
+        || !/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.startTime)
+        || !/^([01]\d|2[0-3]):[0-5]\d$/.test(entry.endTime)
+        || entry.startTime >= entry.endTime
         || typeof entry.activity !== 'string'
         || typeof entry.kind !== 'string'
         || !studentPlanKinds.has(entry.kind)) return null;
       return {
-        weekday: entry.weekday,
+        date: entry.date,
         startTime: entry.startTime,
         endTime: entry.endTime,
         activity: entry.activity,
         kind: entry.kind as StudentPlanKind,
       };
     });
-    if (priorities.some((item) => item === null) || timeline.some((item) => item === null)) return null;
+    const classWindows = Array.isArray(plan.classWindows)
+      ? plan.classWindows.map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+        const window = item as Record<string, unknown>;
+        if (typeof window.date !== 'string'
+          || !isValidDateKey(window.date)
+          || typeof window.startTime !== 'string'
+          || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.startTime)
+          || typeof window.endTime !== 'string'
+          || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.endTime)
+          || window.startTime >= window.endTime) return null;
+        return { date: window.date, startTime: window.startTime, endTime: window.endTime };
+      })
+      : [];
+    if (priorities.some((item) => item === null)
+      || timeline.some((item) => item === null)
+      || classWindows.some((item) => item === null)) return null;
     return {
       overview: plan.overview,
       lifeBalanceTip: typeof plan.lifeBalanceTip === 'string' ? plan.lifeBalanceTip : '',
-      dataNotes: plan.dataNotes as string[],
+      startDate: plan.startDate,
       priorities: priorities as StudentSchedulePlan['priorities'],
+      adjustments: Array.isArray(plan.adjustments) ? plan.adjustments as string[] : [],
+      classWindows: classWindows as StudentSchedulePlan['classWindows'],
       timeline: timeline as StudentSchedulePlan['timeline'],
     };
   } catch {
@@ -151,8 +180,175 @@ function dateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function addDateKeyDays(value: string, amount: number) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function getPlanDateTime() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date()).reduce<Record<string, string>>((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
+function planDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return `${planDayLabels[date.getUTCDay()]} · ${date.toLocaleDateString('vi-VN', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: '2-digit',
+  })}`;
+}
+
+function isValidDateKey(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function getAvailabilityIntervals(text: string, startDate: string, defaultSection: 'free' | 'busy' = 'free') {
+  const intervals: Array<{ date: string; startTime: string; endTime: string }> = [];
+  const weekdayPattern = /(chủ\s*nhật|thứ\s*[2-7](?:\s*(?:,|và|&)?\s*[2-7])*)/giu;
+  const timeRangePattern = /(\d{1,2}(?::\d{2}|h\d{0,2})?)\s*(sáng|trưa|chiều|tối)?\s*(?:-|–|—|đến|tới)\s*(\d{1,2}(?::\d{2}|h\d{0,2})?)\s*(sáng|trưa|chiều|tối)?/giu;
+  let section = defaultSection;
+  const parseTime = (value: string, period: string) => {
+    const match = value.match(/^(\d{1,2})(?::(\d{2})|h(\d{1,2})?)?$/iu);
+    if (!match) return null;
+    let hour = Number(match[1]);
+    const minute = Number(match[2] ?? match[3] ?? 0);
+    if (hour > 23 || minute > 59) return null;
+    if (period === 'sáng' && hour === 12) hour = 0;
+    if (['trưa', 'chiều', 'tối'].includes(period) && hour > 0 && hour < 12) hour += 12;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  };
+  for (const line of text.split(/\r?\n/)) {
+    if (/thời gian rảnh/i.test(line)) section = 'free';
+    if (/thời gian bận/i.test(line)) section = 'busy';
+    const weekdays = [...line.matchAll(weekdayPattern)].flatMap((match) => (
+      match[0].toLocaleLowerCase('vi').startsWith('chủ')
+        ? [7]
+        : [...match[0].matchAll(/[2-7]/g)].map((weekdayMatch) => Number(weekdayMatch[0]) - 1)
+    ));
+    const timeRanges = [...line.matchAll(timeRangePattern)].flatMap((match) => {
+      const sharedPeriod = match[4] || match[2] || '';
+      const start = parseTime(match[1], match[2] || sharedPeriod);
+      const end = parseTime(match[3], match[4] || sharedPeriod);
+      if (!start || !end || start >= end) return [];
+      const ranges = [{ startTime: start, endTime: end }];
+      if (section === 'busy' && !match[2] && !match[4]) {
+        const afternoonStart = parseTime(match[1], 'chiều');
+        const afternoonEnd = parseTime(match[3], 'chiều');
+        if (afternoonStart && afternoonEnd && afternoonStart < afternoonEnd
+          && (afternoonStart !== start || afternoonEnd !== end)) {
+          ranges.push({ startTime: afternoonStart, endTime: afternoonEnd });
+        }
+      }
+      return ranges;
+    });
+    for (const weekday of weekdays) {
+      for (let dayOffset = 0; dayOffset <= 7; dayOffset += 1) {
+        const date = addDateKeyDays(startDate, dayOffset);
+        const dateWeekday = new Date(`${date}T00:00:00.000Z`).getUTCDay() || 7;
+        if (dateWeekday !== weekday) continue;
+        intervals.push(...timeRanges.map((range) => ({ date, ...range })));
+      }
+    }
+  }
+  return intervals;
+}
+
 function noteKey(studentId: string, weekStart: string) {
   return `eduflow-student-week-plan:${studentId}:${weekStart}`;
+}
+
+function preferencesKey(studentId: string) {
+  return `eduflow-student-study-preferences:${studentId}`;
+}
+
+function emptyStudyPreferences(): StudentStudyPreferences {
+  return {
+    subjectCombination: '',
+    dailyStudyMinutes: null,
+    sessionMinutes: null,
+    preferredStudyTime: 'flexible',
+    customStudyTime: '',
+    habitNotes: '',
+  };
+}
+
+function loadStudentStudyPreferences(key: string) {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) {
+      return { preferences: emptyStudyPreferences(), commitments: [] as StudentExternalCommitment[], error: '' };
+    }
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Dữ liệu thiết lập không đúng định dạng.');
+    }
+    const value = parsed as Record<string, unknown>;
+    const rawPreferences = value.preferences && typeof value.preferences === 'object'
+      && !Array.isArray(value.preferences)
+      ? value.preferences as Record<string, unknown>
+      : {};
+    const priorities = ['high', 'medium', 'low'] as const;
+    const preferredTimes = ['morning', 'afternoon', 'evening', 'flexible', 'custom'] as const;
+    const preferences: StudentStudyPreferences = {
+      subjectCombination: typeof rawPreferences.subjectCombination === 'string'
+        ? rawPreferences.subjectCombination.slice(0, 200) : '',
+      dailyStudyMinutes: Number.isInteger(rawPreferences.dailyStudyMinutes)
+        && Number(rawPreferences.dailyStudyMinutes) >= 15
+        && Number(rawPreferences.dailyStudyMinutes) <= 480
+        ? Number(rawPreferences.dailyStudyMinutes) : null,
+      sessionMinutes: Number.isInteger(rawPreferences.sessionMinutes)
+        && Number(rawPreferences.sessionMinutes) >= 10
+        && Number(rawPreferences.sessionMinutes) <= 180
+        ? Number(rawPreferences.sessionMinutes) : null,
+      preferredStudyTime: preferredTimes.includes(rawPreferences.preferredStudyTime as typeof preferredTimes[number])
+        ? rawPreferences.preferredStudyTime as typeof preferredTimes[number] : 'flexible',
+      customStudyTime: typeof rawPreferences.customStudyTime === 'string'
+        ? rawPreferences.customStudyTime.slice(0, 120) : '',
+      habitNotes: typeof rawPreferences.habitNotes === 'string'
+        ? rawPreferences.habitNotes.slice(0, 600) : '',
+    };
+    const commitments = Array.isArray(value.commitments)
+      ? value.commitments.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+        const commitment = item as Record<string, unknown>;
+        if (typeof commitment.title !== 'string' || !commitment.title.trim()
+          || typeof commitment.date !== 'string'
+          || !isValidDateKey(commitment.date)
+          || (commitment.type !== undefined && commitment.type !== 'deadline')
+          || !priorities.includes(commitment.priority as typeof priorities[number])) return [];
+        return [{
+          title: commitment.title.slice(0, 120),
+          date: commitment.date,
+          priority: commitment.priority as StudentExternalCommitment['priority'],
+        }];
+      }).slice(0, 20)
+      : [];
+    return { preferences, commitments, error: '' };
+  } catch {
+    return {
+      preferences: emptyStudyPreferences(),
+      commitments: [] as StudentExternalCommitment[],
+      error: 'Không thể đọc thiết lập học tập đã lưu trên thiết bị này.',
+    };
+  }
 }
 
 function loadSavedPlan(key: string) {
@@ -203,6 +399,15 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
   const [scheduleData, setScheduleData] = useState<StudentTimetableResponse | null>(null);
   const [freeTime, setFreeTime] = useState('');
   const [busyTime, setBusyTime] = useState('');
+  const [studyPreferences, setStudyPreferences] = useState<StudentStudyPreferences>(emptyStudyPreferences);
+  const [externalCommitments, setExternalCommitments] = useState<StudentExternalCommitment[]>([]);
+  const [preferencesLoadedFor, setPreferencesLoadedFor] = useState('');
+  const [studyPreferencesDirty, setStudyPreferencesDirty] = useState(false);
+  const [commitmentDraft, setCommitmentDraft] = useState({
+    title: '',
+    date: getPlanDateTime().date,
+    priority: 'medium' as StudentExternalCommitment['priority'],
+  });
   const [remainingTimeIsFree, setRemainingTimeIsFree] = useState(false);
   const [suggestion, setSuggestion] = useState('');
   const [completedPriorities, setCompletedPriorities] = useState<number[]>([]);
@@ -216,10 +421,24 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
   const [calendarExportError, setCalendarExportError] = useState('');
   const [storageError, setStorageError] = useState('');
   const [retryToken, setRetryToken] = useState(0);
+  const [planClock, setPlanClock] = useState(getPlanDateTime);
 
   const weekStartKey = dateKey(weekStart);
   const storageKey = noteKey(studentId, weekStartKey);
-  const plan = useMemo(() => parseStudentSchedulePlan(suggestion), [suggestion]);
+  const studyPreferencesStorageKey = preferencesKey(studentId);
+  const plan = useMemo(() => {
+    const parsed = parseStudentSchedulePlan(suggestion);
+    if (!parsed) return null;
+    const endDate = addDateKeyDays(parsed.startDate, 7);
+    return {
+      ...parsed,
+      timeline: parsed.timeline.filter((item) => (
+        item.date >= planClock.date
+        && item.date <= endDate
+        && (item.date > planClock.date || item.startTime > planClock.time)
+      )),
+    };
+  }, [planClock, suggestion]);
   const availability = [
     freeTime.trim() ? `Thời gian rảnh:\n${freeTime.trim()}` : '',
     busyTime.trim() ? `Thời gian bận:\n${busyTime.trim()}` : '',
@@ -228,6 +447,11 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     label,
     date: addDays(weekStart, index),
   })), [weekStart]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setPlanClock(getPlanDateTime()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const saved = loadSavedPlan(storageKey);
@@ -241,6 +465,28 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     setTimelineDraft(null);
     setStorageError(saved.error);
   }, [storageKey]);
+
+  useEffect(() => {
+    const saved = loadStudentStudyPreferences(studyPreferencesStorageKey);
+    setStudyPreferences(saved.preferences);
+    setExternalCommitments(saved.commitments);
+    setPreferencesLoadedFor(studentId);
+    setStudyPreferencesDirty(false);
+    if (saved.error) setStorageError(saved.error);
+  }, [studentId, studyPreferencesStorageKey]);
+
+  useEffect(() => {
+    if (preferencesLoadedFor !== studentId || !studyPreferencesDirty) return;
+    try {
+      localStorage.setItem(studyPreferencesStorageKey, JSON.stringify({
+        preferences: studyPreferences,
+        commitments: externalCommitments,
+      }));
+      setStudyPreferencesDirty(false);
+    } catch {
+      setStorageError('Không thể lưu thiết lập học tập trên thiết bị này. Nội dung vẫn được giữ trong phiên hiện tại.');
+    }
+  }, [externalCommitments, preferencesLoadedFor, studyPreferences, studyPreferencesDirty, studyPreferencesStorageKey, studentId]);
 
   useEffect(() => {
     let active = true;
@@ -302,6 +548,37 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
       setStorageError('Không thể lưu ghi chú trên thiết bị này. Nội dung vẫn được giữ trong phiên hiện tại.');
     }
   };
+  const updateStudyPreferences = (nextPreferences: StudentStudyPreferences) => {
+    setStudyPreferences(nextPreferences);
+    setStudyPreferencesDirty(true);
+    setSuggestion('');
+    setCompletedPriorities([]);
+    savePlan(freeTime, busyTime, '', []);
+  };
+  const updateExternalCommitments = (nextCommitments: StudentExternalCommitment[]) => {
+    setExternalCommitments(nextCommitments);
+    setStudyPreferencesDirty(true);
+    setSuggestion('');
+    setCompletedPriorities([]);
+    savePlan(freeTime, busyTime, '', []);
+  };
+  const addExternalCommitment = () => {
+    if (!commitmentDraft.title.trim() || !isValidDateKey(commitmentDraft.date)) {
+      setError('Hãy nhập tên hoạt động và ngày hợp lệ.');
+      return;
+    }
+    if (externalCommitments.length >= 20) {
+      setError('Bạn có thể thêm tối đa 20 hoạt động ngoài trường.');
+      return;
+    }
+    updateExternalCommitments([...externalCommitments, {
+      title: commitmentDraft.title.trim(),
+      date: commitmentDraft.date,
+      priority: commitmentDraft.priority,
+    }]);
+    setCommitmentDraft((current) => ({ ...current, title: '' }));
+    setError('');
+  };
   const cancelPlanSectionEdit = () => {
     setEditingPlanSection(null);
     setPriorityDraft(null);
@@ -347,15 +624,69 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
   };
   const saveTimelineDraft = () => {
     if (!plan || !timelineDraft) return;
+    const now = getPlanDateTime();
+    const endDate = addDateKeyDays(plan.startDate, 7);
+    const busyIntervals = getAvailabilityIntervals(busyTime, plan.startDate, 'busy');
+    const freeIntervals = getAvailabilityIntervals(freeTime, plan.startDate);
+    const sortedTimeline = [...timelineDraft].sort((left, right) => (
+      left.date.localeCompare(right.date) || left.startTime.localeCompare(right.startTime)
+    ));
+    const previousEndByDate = new Map<string, string>();
+    const studyMinutesByDate = new Map<string, number>();
     if (timelineDraft.length > 28 || timelineDraft.some((item) => (
-      item.weekday < 1 || item.weekday > 7
+      item.date < plan.startDate || item.date > endDate
+      || (item.date < now.date)
+      || (item.date === now.date && item.startTime <= now.time)
       || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.startTime)
       || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.endTime)
       || item.startTime >= item.endTime
       || !item.activity.trim()
     ))) {
-      setError('Hãy kiểm tra ngày, giờ và nội dung hoạt động; mỗi khung giờ cần kết thúc sau giờ bắt đầu.');
+      setError('Lịch cá nhân chỉ được có giờ từ hôm nay đến hết cùng thứ tuần sau, không được đặt vào quá khứ và giờ kết thúc phải sau giờ bắt đầu.');
       return;
+    }
+    for (const item of sortedTimeline) {
+      const previousEnd = previousEndByDate.get(item.date);
+      if (previousEnd && item.startTime < previousEnd) {
+        setError('Các hoạt động trong lịch cá nhân không được trùng giờ.');
+        return;
+      }
+      if (busyIntervals.some((interval) => (
+        interval.date === item.date && item.startTime < interval.endTime && item.endTime > interval.startTime
+      ))) {
+        setError('Khung giờ trong lịch cá nhân đang trùng với thời gian bận đã ghi.');
+        return;
+      }
+      if (plan.classWindows.some((window) => (
+        window.date === item.date && item.startTime < window.endTime && item.endTime > window.startTime
+      ))) {
+        setError('Khung giờ trong lịch cá nhân đang trùng với tiết học đã có trong thời khóa biểu.');
+        return;
+      }
+      if (!remainingTimeIsFree && !freeIntervals.some((interval) => (
+        interval.date === item.date
+        && item.startTime >= interval.startTime
+        && item.endTime <= interval.endTime
+      ))) {
+        setError('Chỉ lưu hoạt động nằm trọn trong khung giờ rảnh đã ghi, hoặc bật “Thời gian chưa ghi là rảnh”.');
+        return;
+      }
+      if (['study', 'homework', 'review'].includes(item.kind)) {
+        const [startHour, startMinute] = item.startTime.split(':').map(Number);
+        const [endHour, endMinute] = item.endTime.split(':').map(Number);
+        const duration = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+        const dailyTotal = (studyMinutesByDate.get(item.date) ?? 0) + duration;
+        if (studyPreferences.sessionMinutes !== null && duration > studyPreferences.sessionMinutes) {
+          setError(`Mỗi phiên tự học không được dài hơn ${studyPreferences.sessionMinutes} phút theo thiết lập của bạn.`);
+          return;
+        }
+        if (studyPreferences.dailyStudyMinutes !== null && dailyTotal > studyPreferences.dailyStudyMinutes) {
+          setError(`Tổng thời gian tự học trong ngày không được vượt ${studyPreferences.dailyStudyMinutes} phút theo thiết lập của bạn.`);
+          return;
+        }
+        studyMinutesByDate.set(item.date, dailyTotal);
+      }
+      previousEndByDate.set(item.date, item.endTime);
     }
     saveEditedPlan({
       ...plan,
@@ -387,17 +718,37 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     : isCurrentWeek ? 'Tuần này' : 'Về tuần này';
 
   const createPlan = async () => {
+    if (studyPreferences.preferredStudyTime === 'custom' && !studyPreferences.customStudyTime.trim()) {
+      setError('Hãy nhập khung giờ học phù hợp của bạn.');
+      return;
+    }
+    let commitmentsForPlan = externalCommitments;
+    if (commitmentDraft.title.trim()) {
+      if (!isValidDateKey(commitmentDraft.date)) {
+        setError('Hãy nhập ngày hợp lệ cho hoạt động ngoài trường.');
+        return;
+      }
+      if (externalCommitments.length >= 20) {
+        setError('Bạn có thể thêm tối đa 20 hoạt động ngoài trường.');
+        return;
+      }
+      commitmentsForPlan = [...externalCommitments, {
+        title: commitmentDraft.title.trim(),
+        date: commitmentDraft.date,
+        priority: commitmentDraft.priority,
+      }];
+      updateExternalCommitments(commitmentsForPlan);
+      setCommitmentDraft((current) => ({ ...current, title: '' }));
+    }
     setPlanning(true);
     setError('');
     try {
-      const currentDay = new Date().getDay();
-      const tomorrowWeekday = (currentDay + 1) % 7 === 0 ? 7 : ((currentDay + 1 + 6) % 7) + 1;
       const result = await generateStudentTimetableSuggestion({
         semester,
-        weekStart: weekStartKey,
-        tomorrowWeekday,
         availability,
         remainingTimeIsFree,
+        studyPreferences,
+        externalCommitments: commitmentsForPlan,
       });
       if (!parseStudentSchedulePlan(result)) {
         throw new Error('AI chưa tạo được kế hoạch đúng định dạng. Bạn thử tạo lại nhé.');
@@ -650,6 +1001,167 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               </span>
             </span>
           </label>
+          <details className="mt-3 rounded-2xl border border-slate-200 bg-white/75 p-4">
+            <summary className="cursor-pointer text-sm font-bold text-slate-800">
+              Cá nhân hóa kế hoạch <span className="font-normal text-slate-500">(không bắt buộc)</span>
+            </summary>
+            <div className="mt-4 space-y-5">
+              <section>
+                <label className="block text-xs font-semibold text-slate-600">
+                  Tổ hợp môn muốn tập trung
+                  <input
+                    value={studyPreferences.subjectCombination}
+                    onChange={(event) => updateStudyPreferences({ ...studyPreferences, subjectCombination: event.target.value })}
+                    maxLength={200}
+                    placeholder="Ví dụ: Toán – Hóa – Sinh"
+                    aria-label="Tổ hợp môn muốn tập trung"
+                    className="input-field mt-1 text-sm font-normal"
+                  />
+                </label>
+              </section>
+
+              <section>
+                <h3 className="text-sm font-bold text-slate-800">Thói quen học tập</h3>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="text-xs font-semibold text-slate-600">
+                    Mục tiêu tự học mỗi ngày
+                    <select
+                      value={studyPreferences.dailyStudyMinutes ?? ''}
+                      onChange={(event) => updateStudyPreferences({
+                        ...studyPreferences,
+                        dailyStudyMinutes: event.target.value ? Number(event.target.value) : null,
+                      })}
+                      className="input-field mt-1 text-sm font-normal"
+                    >
+                      <option value="">Không đặt giới hạn</option>
+                      {[60, 90, 120, 150, 180, 240, 300].map((minutes) => (
+                        <option key={minutes} value={minutes}>{minutes >= 60 ? `${minutes / 60} giờ` : `${minutes} phút`}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Thời lượng tối đa mỗi phiên
+                    <select
+                      value={studyPreferences.sessionMinutes ?? ''}
+                      onChange={(event) => updateStudyPreferences({
+                        ...studyPreferences,
+                        sessionMinutes: event.target.value ? Number(event.target.value) : null,
+                      })}
+                      className="input-field mt-1 text-sm font-normal"
+                    >
+                      <option value="">Linh hoạt</option>
+                      {[25, 30, 45, 60, 90, 120].map((minutes) => (
+                        <option key={minutes} value={minutes}>{minutes} phút</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Buổi học thoải mái nhất
+                    <select
+                      value={studyPreferences.preferredStudyTime}
+                      onChange={(event) => updateStudyPreferences({
+                        ...studyPreferences,
+                        preferredStudyTime: event.target.value as StudentStudyPreferences['preferredStudyTime'],
+                      })}
+                      className="input-field mt-1 text-sm font-normal"
+                    >
+                      <option value="flexible">Linh hoạt</option>
+                      <option value="morning">Buổi sáng</option>
+                      <option value="afternoon">Buổi chiều</option>
+                      <option value="evening">Buổi tối</option>
+                      <option value="custom">Khung giờ khác</option>
+                    </select>
+                  </label>
+                </div>
+                {studyPreferences.preferredStudyTime === 'custom' && (
+                  <input
+                    value={studyPreferences.customStudyTime}
+                    onChange={(event) => updateStudyPreferences({ ...studyPreferences, customStudyTime: event.target.value })}
+                    maxLength={120}
+                    placeholder="Ví dụ: 16:30–18:00"
+                    aria-label="Khung giờ học phù hợp"
+                    className="input-field mt-3 text-sm"
+                  />
+                )}
+                <label className="mt-3 block text-xs font-semibold text-slate-600">
+                  Thói quen hoặc lưu ý khác
+                  <textarea
+                    value={studyPreferences.habitNotes}
+                    onChange={(event) => updateStudyPreferences({ ...studyPreferences, habitNotes: event.target.value })}
+                    maxLength={600}
+                    rows={2}
+                    placeholder="Ví dụ: thích học theo từng phiên ngắn và nghỉ giữa giờ."
+                    className="input-field mt-1 resize-y text-sm font-normal"
+                  />
+                </label>
+              </section>
+
+              <section>
+                <h3 className="text-sm font-bold text-slate-800">Công việc ngoài trường</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Chỉ thêm deadline; lịch bận cố định hãy ghi ở mục Thời gian bận. Nội dung còn trong ô nhập cũng sẽ được lưu và gửi khi bạn lập kế hoạch.</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <input
+                    value={commitmentDraft.title}
+                    onChange={(event) => setCommitmentDraft({ ...commitmentDraft, title: event.target.value })}
+                    maxLength={120}
+                    placeholder="Tên hoạt động"
+                    aria-label="Tên công việc ngoài trường"
+                    className="input-field text-sm lg:col-span-2"
+                  />
+                  <input
+                    type="date"
+                    value={commitmentDraft.date}
+                    onChange={(event) => setCommitmentDraft({ ...commitmentDraft, date: event.target.value })}
+                    aria-label="Hạn hoàn thành"
+                    className="input-field text-sm"
+                  />
+                  <select
+                    value={commitmentDraft.priority}
+                    onChange={(event) => setCommitmentDraft({
+                      ...commitmentDraft,
+                      priority: event.target.value as StudentExternalCommitment['priority'],
+                    })}
+                    aria-label="Mức ưu tiên hoạt động"
+                    className="input-field text-sm"
+                  >
+                    <option value="high">Ưu tiên cao</option>
+                    <option value="medium">Ưu tiên vừa</option>
+                    <option value="low">Ưu tiên thấp</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={addExternalCommitment}
+                    disabled={!commitmentDraft.title.trim()}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" /> Thêm hoạt động
+                  </button>
+                </div>
+                {externalCommitments.length > 0 && (
+                  <ul className="mt-3 space-y-2">
+                    {externalCommitments.map((commitment, index) => (
+                      <li key={`${commitment.date}-${commitment.title}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        <span>
+                          <strong>{commitment.title}</strong>
+                          <span className="ml-2 text-xs text-slate-500">
+                            Deadline · {commitment.date}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateExternalCommitments(externalCommitments.filter((_, itemIndex) => itemIndex !== index))}
+                          aria-label={`Xóa hoạt động ${commitment.title}`}
+                          className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          </details>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <span></span>
             <span className="rounded-full bg-white/70 px-2.5 py-1 font-medium text-slate-500">{availability.length}/4000</span>
@@ -660,7 +1172,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
           {error && scheduleData && (
             <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{error}</p>
           )}
-          {suggestion && (
+          {suggestion && plan && (
             <article className="relative mt-6 overflow-hidden rounded-3xl border border-white/80 bg-white/90 shadow-xl shadow-indigo-100/70 ring-1 ring-indigo-100/80">
               <div aria-hidden="true" className="h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 via-violet-500 to-fuchsia-400" />
               <div className="relative overflow-hidden p-4 sm:p-6">
@@ -671,35 +1183,21 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                       {plan.overview}
                     </p>
 
+                    {plan.adjustments.length > 0 && (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900" role="status">
+                        <p className="font-semibold">Điều chỉnh cần lưu ý</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5">
+                          {plan.adjustments.map((adjustment, index) => <li key={`${index}-${adjustment}`}>{adjustment}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
                     {plan.lifeBalanceTip && (
                       <p className="flex items-start gap-2 rounded-2xl border border-fuchsia-100 bg-gradient-to-r from-fuchsia-50 to-amber-50 px-4 py-3 text-sm leading-6 text-slate-700">
                         <Sparkles className="mt-1 h-4 w-4 shrink-0 text-fuchsia-500" />
                         <span>{plan.lifeBalanceTip}</span>
                       </p>
                     )}
-
-                    <section className={`rounded-2xl border p-4 ${plan.dataNotes.length ? 'border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50' : 'border-sky-200 bg-gradient-to-r from-sky-50 to-indigo-50'}`}>
-                      <h4 className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                        <span className={`grid h-7 w-7 place-items-center rounded-lg ${plan.dataNotes.length ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}>
-                          <BookOpen className="h-4 w-4" />
-                        </span>
-                        Thông tin dữ liệu còn thiếu / Chưa cập nhật
-                      </h4>
-                      {plan.dataNotes.length ? (
-                        <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-700">
-                          {plan.dataNotes.map((note, index) => (
-                            <li key={`${index}-${note}`} className="flex items-start gap-2">
-                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                              <span>{note}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
-                          Không có dữ liệu thiếu nào cần lưu ý cho kế hoạch này.
-                        </p>
-                      )}
-                    </section>
 
                     <section>
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -791,7 +1289,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                                 <p className="mt-1 text-xs leading-5 text-slate-600">{priority.reason}</p>
                                 <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs font-semibold text-slate-600">
                                   <Clock3 className="h-3.5 w-3.5 text-indigo-500" />
-                                  {priority.durationMinutes} phút dự kiến
+                                  {priority.durationMinutes} phút {priority.task.startsWith('Ưu tiên cao:') ? 'mỗi ngày dự kiến' : 'dự kiến'}
                                 </div>
                               </article>
                             );
@@ -831,18 +1329,21 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                       {editingPlanSection === 'timeline' && timelineDraft ? (
                         <div className="space-y-3">
                           {timelineDraft.map((item, index) => (
-                            <article key={`${index}-${item.weekday}`} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+                            <article key={`${index}-${item.date}`} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
                               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(120px,0.7fr)_minmax(110px,0.6fr)_minmax(110px,0.6fr)_minmax(200px,1.5fr)_auto]">
                                 <label className="text-xs font-semibold text-slate-600">
                                   Ngày
                                   <select
-                                    value={item.weekday}
+                                    value={item.date}
                                     onChange={(event) => setTimelineDraft((current) => current?.map((entry, entryIndex) => (
-                                      entryIndex === index ? { ...entry, weekday: Number(event.target.value) } : entry
+                                      entryIndex === index ? { ...entry, date: event.target.value } : entry
                                     )) ?? null)}
                                     className="input-field mt-1 text-sm font-normal"
                                   >
-                                    {planWeekdays.slice(1).map((day, dayIndex) => <option key={day} value={dayIndex + 1}>{day}</option>)}
+                                    {Array.from({ length: 8 }, (_, dayIndex) => {
+                                      const date = addDateKeyDays(plan.startDate, dayIndex);
+                                      return <option key={date} value={date}>{planDateLabel(date)}</option>;
+                                    })}
                                   </select>
                                 </label>
                                 <label className="text-xs font-semibold text-slate-600">
@@ -893,7 +1394,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                           <button
                             type="button"
                             onClick={() => setTimelineDraft((current) => current && current.length < 28
-                              ? [...current, { weekday: 1, startTime: '19:00', endTime: '19:45', activity: '', kind: 'study' }]
+                              ? [...current, { date: plan.startDate, startTime: '19:00', endTime: '19:45', activity: '', kind: 'study' }]
                               : current)}
                             disabled={timelineDraft.length >= 28}
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -903,27 +1404,26 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                         </div>
                       ) : plan.timeline.length ? (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          {[...new Set(plan.timeline.map((item) => item.weekday))]
-                            .sort((left, right) => left - right)
-                            .map((weekday) => {
+                          {[...new Set(plan.timeline.map((item) => item.date))]
+                            .sort()
+                            .map((date) => {
                               const dayItems = plan.timeline
-                                .filter((item) => item.weekday === weekday)
+                                .filter((item) => item.date === date)
                                 .sort((left, right) => left.startTime.localeCompare(right.startTime));
-                              const dayDate = addDays(weekStart, weekday - 1);
                               return (
                                 <article
-                                  key={weekday}
-                                  className={`rounded-2xl border p-3.5 shadow-sm ${timelineDayStyles[weekday]}`}
+                                  key={date}
+                                  className={`rounded-2xl border p-3.5 shadow-sm ${timelineDayStyles[new Date(`${date}T00:00:00.000Z`).getUTCDay() || 7]}`}
                                 >
                                   <div className="flex items-center justify-between gap-2 border-b border-white/80 pb-2">
-                                    <h5 className="font-bold text-slate-800">{planWeekdays[weekday]}</h5>
-                                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[0.6875rem] font-semibold text-slate-600">
-                                      {dayDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
-                                    </span>
+                                    <h5 className="font-bold text-slate-800">{planDateLabel(date)}</h5>
+                                    {date === getPlanDateTime().date && (
+                                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[0.6875rem] font-semibold text-slate-600">Hôm nay</span>
+                                    )}
                                   </div>
                                   <div className="mt-3 space-y-3">
                                     {dayItems.map((item, index) => (
-                                      <div key={`${weekday}-${item.startTime}-${index}`} className="flex gap-3">
+                                      <div key={`${date}-${item.startTime}-${index}`} className="flex gap-3">
                                         <span className="shrink-0 rounded-lg bg-white/80 px-2 py-1 text-[0.6875rem] font-bold tabular-nums text-indigo-700">
                                           {item.startTime}<br />{item.endTime}
                                         </span>

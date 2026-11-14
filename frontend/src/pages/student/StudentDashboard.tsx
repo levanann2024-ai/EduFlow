@@ -36,6 +36,7 @@ import { useDashboardCycle } from '@/hooks/useDashboardCycle';
 interface StudentDashboardProps {
   userName: string;
   onNavigate: (page: Page) => void;
+  onOpenAssignment: (subject: string, assignmentId?: string) => void;
   onOpenResources: (subjectCode: string) => void;
   onOpenAssignments: (subjectCode: string, topic?: string) => void;
   onAskAI: (prompt: string, image?: File) => void;
@@ -213,7 +214,14 @@ function SubjectCarousel({
   );
 }
 
-export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpenAssignments, onAskAI }: StudentDashboardProps) {
+export function StudentDashboard({
+  userName,
+  onNavigate,
+  onOpenAssignment,
+  onOpenResources,
+  onOpenAssignments,
+  onAskAI,
+}: StudentDashboardProps) {
   const [chatPrompt, setChatPrompt] = useState('');
   const [chatImage, setChatImage] = useState<File | null>(null);
   const [activityFilter, setActivityFilter] = useState<'upcoming' | 'submitted' | 'graded'>('upcoming');
@@ -247,6 +255,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
       subject: string;
       date: Date;
       destination: Page;
+      assignmentId?: string;
     };
     const items = new Map<string, LearningItem>();
     const addItem = (item: LearningItem) => {
@@ -316,6 +325,7 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
           subject: assignment.subject,
           date,
           destination: 'assignments',
+          assignmentId: assignment.id,
         });
       }
     }
@@ -680,7 +690,9 @@ export function StudentDashboard({ userName, onNavigate, onOpenResources, onOpen
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => onNavigate(item.destination)}
+                          onClick={() => item.kind === 'homework'
+                            ? onOpenAssignment(item.subject, item.assignmentId)
+                            : onNavigate(item.destination)}
                           className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50"
                         >
                           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isExam ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'}`}>
