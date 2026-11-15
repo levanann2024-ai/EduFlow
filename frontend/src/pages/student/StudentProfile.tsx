@@ -18,6 +18,7 @@ import {
 import type { ExamRoomRecord } from '@/pages/teacher/examRoomDemoData';
 import { readRecentSearches, type RecentSearch } from './profileActivity';
 import { getStudentWeeklyActivity, type StudentWeeklyActivity } from '@/api/studentLearningActivity';
+import { localizeStudentSubject, t } from '@/i18n/i18n';
 
 interface StudyPreferences {
   explanationStyle: ExplanationStyle;
@@ -33,13 +34,13 @@ interface ProfileActivityItem {
   icon: 'assignment' | 'exam' | 'grading';
 }
 
-function activityDateLabel(value: string | null) {
+function activityDateLabel(value: string | null, language: AppLanguage) {
   if (!value || Number.isNaN(Date.parse(value))) return '';
-  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-function weekdayLabel(value: string) {
-  return new Intl.DateTimeFormat('vi-VN', { weekday: 'short', timeZone: 'UTC' })
+function weekdayLabel(value: string, language: AppLanguage) {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'vi-VN', { weekday: 'short', timeZone: 'UTC' })
     .format(new Date(`${value}T00:00:00Z`));
 }
 
@@ -255,33 +256,33 @@ export function StudentProfile({
       setPreferences(next);
       setError('');
     } catch {
-      setError('Không thể lưu thiết lập học tập trên thiết bị này.');
+      setError(t(language, 'studentProfile.settings.saveError'));
     }
   };
 
   const copyParentCode = async () => {
     try {
       await navigator.clipboard.writeText(PARENT_LINK_CODE);
-      showToast('Đã sao chép mã liên kết.');
+      showToast(t(language, 'studentProfile.parentCode.copied'));
       setError('');
     } catch {
-      setError('Không thể sao chép mã. Hãy chọn và sao chép mã thủ công.');
+      setError(t(language, 'studentProfile.parentCode.copyError'));
     }
   };
 
   const requestPasswordChange = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (user.isDemo) {
-      showToast('Chế độ demo không lưu thay đổi mật khẩu.', 'info');
+      showToast(t(language, 'studentProfile.password.demo'), 'info');
       return;
     }
     try {
       await changePassword(currentPassword, newPassword);
       setCurrentPassword('');
       setNewPassword('');
-      showToast('Đã đổi mật khẩu.');
+      showToast(t(language, 'studentProfile.password.changed'));
     } catch (passwordError) {
-      setError(passwordError instanceof Error ? passwordError.message : 'Không thể đổi mật khẩu.');
+      setError(passwordError instanceof Error ? passwordError.message : t(language, 'studentProfile.password.error'));
     }
   };
 
@@ -320,7 +321,7 @@ export function StudentProfile({
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700"><Icon className="h-5 w-5" /></span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-800">{item.title}</p>
-                          <p className="truncate text-xs text-slate-500">{item.detail}{item.date ? ` · ${activityDateLabel(item.date)}` : ''}</p>
+                          <p className="truncate text-xs text-slate-500">{item.detail}{item.date ? ` · ${activityDateLabel(item.date, language)}` : ''}</p>
                         </div>
                         <button
                           type="button"
@@ -380,15 +381,15 @@ export function StudentProfile({
         </>
       ) : (
         user.isDemo && (
-          <section aria-label="Mã liên kết phụ huynh" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <section aria-label={t(language, 'studentProfile.parentCode')} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="flex flex-col gap-4 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mã liên kết phụ huynh</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t(language, 'studentProfile.parentCode')}</p>
                 <p className="mt-1 font-mono text-lg font-bold tracking-wider text-slate-900">{PARENT_LINK_CODE}</p>
-                <p className="mt-1 text-xs text-slate-500">Phụ huynh có thể dùng mã này để gửi yêu cầu liên kết.</p>
+                <p className="mt-1 text-xs text-slate-500">{t(language, 'studentProfile.parentCode.description')}</p>
               </div>
               <button type="button" onClick={() => void copyParentCode()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:text-blue-700">
-                <Copy className="h-4 w-4" />Sao chép mã
+                <Copy className="h-4 w-4" />{t(language, 'studentProfile.parentCode.copy')}
               </button>
             </div>
           </section>
@@ -401,38 +402,38 @@ export function StudentProfile({
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><Activity className="h-5 w-5" /></span>
             <div>
-              <h2 id="learning-journey-title" className="text-lg font-bold text-slate-900">Hành trình học tập</h2>
-              <p className="mt-1 text-sm text-slate-500">Ghi nhận những lần bạn thực sự học và luyện tập.</p>
+              <h2 id="learning-journey-title" className="text-lg font-bold text-slate-900">{t(language, 'studentProfile.learningJourney')}</h2>
+              <p className="mt-1 text-sm text-slate-500">{t(language, 'studentProfile.learningJourney.description')}</p>
             </div>
           </div>
         </div>
         {user.isDemo ? (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-center text-sm text-slate-500">
-            Hoạt động học tập thật sẽ được ghi nhận khi bạn sử dụng tài khoản cá nhân.
+            {t(language, 'studentProfile.demoActivity')}
           </p>
         ) : activityLoading ? (
-          <p role="status" className="mt-6 py-5 text-center text-sm text-slate-500">Đang tải hành trình học tập...</p>
+          <p role="status" className="mt-6 py-5 text-center text-sm text-slate-500">{t(language, 'studentProfile.loadingJourney')}</p>
         ) : weeklyActivity ? (
           <>
             <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-3xl font-extrabold tracking-tight text-slate-900">
-                  {weeklyActivity.activeDays}<span className="ml-1 text-base font-semibold text-slate-400">/ 7 ngày</span>
+                  {weeklyActivity.activeDays}<span className="ml-1 text-base font-semibold text-slate-400">/ 7 {t(language, 'studentProfile.days')}</span>
                 </p>
-                <p className="mt-1 text-sm font-medium text-slate-600">có hoạt động học tập</p>
+                <p className="mt-1 text-sm font-medium text-slate-600">{t(language, 'studentProfile.activeDays')}</p>
               </div>
               <p className="rounded-xl bg-white/80 px-3 py-2 text-sm font-semibold text-sky-800">
-                {weeklyActivity.activityCount} hoạt động trong tuần
+                {weeklyActivity.activityCount} {t(language, 'studentProfile.activitiesThisWeek')}
               </p>
             </div>
             <div className="mt-5 grid grid-cols-7 gap-2 sm:gap-3">
               {weeklyActivity.days.map((day) => {
                 const fill = Math.min(day.count / 4, 1) * 100;
                 return (
-                  <div key={day.date} className="flex min-w-0 flex-col items-center gap-2" title={`${weekdayLabel(day.date)}: ${day.count} hoạt động`}>
+                  <div key={day.date} className="flex min-w-0 flex-col items-center gap-2" title={`${weekdayLabel(day.date, language)}: ${day.count} ${t(language, 'studentProfile.activityCount')}`}>
                     <span className={`text-xs font-bold ${day.count ? 'text-sky-800' : 'text-slate-300'}`}>{day.count || '·'}</span>
                     <div
-                      aria-label={`${weekdayLabel(day.date)}: ${day.count} hoạt động học tập`}
+                      aria-label={`${weekdayLabel(day.date, language)}: ${day.count} ${t(language, 'studentProfile.activityCount')}`}
                       className="flex h-[76px] w-full max-w-10 items-end overflow-hidden rounded-[18px] border-2 border-sky-200 bg-white/80 p-[3px] shadow-inner"
                     >
                       <div
@@ -440,7 +441,7 @@ export function StudentProfile({
                         style={{ height: `${fill}%` }}
                       />
                     </div>
-                    <span className="text-[0.6875rem] font-medium capitalize text-slate-500">{weekdayLabel(day.date)}</span>
+                    <span className="text-[0.6875rem] font-medium capitalize text-slate-500">{weekdayLabel(day.date, language)}</span>
                   </div>
                 );
               })}
@@ -448,7 +449,7 @@ export function StudentProfile({
           </>
         ) : (
           <p className="mt-6 rounded-xl border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-center text-sm text-slate-500">
-            Chưa có dữ liệu hoạt động học tập trong tuần này.
+            {t(language, 'studentProfile.noWeeklyActivity')}
           </p>
         )}
       </section>}
@@ -456,12 +457,12 @@ export function StudentProfile({
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Activity className="h-5 w-5" /></span>
           <div>
-            <h2 id="recent-activity-title" className="text-lg font-bold text-slate-900">{isTeacher ? 'Công việc giảng dạy' : 'Hoạt động gần đây'}</h2>
+            <h2 id="recent-activity-title" className="text-lg font-bold text-slate-900">{isTeacher ? 'Công việc giảng dạy' : t(language, 'studentProfile.recentActivity')}</h2>
           </div>
         </div>
         {activityError && <p role="alert" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />{activityError}</p>}
         {activityLoading ? (
-          <p role="status" className="py-6 text-center text-sm text-slate-500">Đang tải hoạt động...</p>
+          <p role="status" className="py-6 text-center text-sm text-slate-500">{t(language, 'studentProfile.loadingActivity')}</p>
         ) : isTeacher ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(220px,0.7fr)]">
             <div>
@@ -481,7 +482,7 @@ export function StudentProfile({
                         }`}><Icon className="h-4 w-4" /></span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-800">{item.title}</p>
-                          <p className="truncate text-xs text-slate-500">{item.detail}{item.date ? ` · ${activityDateLabel(item.date)}` : ''}</p>
+                          <p className="truncate text-xs text-slate-500">{item.detail}{item.date ? ` · ${activityDateLabel(item.date, language)}` : ''}</p>
                         </div>
                         <button type="button" onClick={() => onNavigate(destination)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50">
                           {actionLabel}
@@ -512,32 +513,32 @@ export function StudentProfile({
         ) : (
           <div className="space-y-5">
             <div>
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><Search className="h-4 w-4 text-blue-600" />Tra cứu gần đây</h3>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><Search className="h-4 w-4 text-blue-600" />{t(language, 'studentProfile.recentSearches')}</h3>
               {recentSearches.length ? (
                 <ul className="space-y-2">{recentSearches.slice(0, 5).map((item) => (
                   <li key={`${item.query}:${item.searchedAt}`} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5">
                     <span className="min-w-0 truncate text-sm font-medium text-slate-700">{item.query}</span>
-                    <span className="shrink-0 text-xs text-slate-400">{activityDateLabel(item.searchedAt)}</span>
+                    <span className="shrink-0 text-xs text-slate-400">{activityDateLabel(item.searchedAt, language)}</span>
                   </li>
                 ))}</ul>
-              ) : <p className="text-sm text-slate-500">Các nội dung bạn tìm kiếm sẽ hiển thị ở đây.</p>}
+              ) : <p className="text-sm text-slate-500">{t(language, 'studentProfile.recentSearches.empty')}</p>}
             </div>
             <div>
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><History className="h-4 w-4 text-blue-600" />Lịch sử thi đã có điểm</h3>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-800"><History className="h-4 w-4 text-blue-600" />{t(language, 'studentProfile.examHistory')}</h3>
               {recentStudentExams.length ? (
                 <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100">
                   {recentStudentExams.map((result) => (
                     <li key={result.sessionId} className="flex items-center gap-3 px-3 py-3">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-slate-800">{result.title}</span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-500">{result.subject} · {activityDateLabel(result.grade.gradedAt)}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">{localizeStudentSubject(result.subject, language)} · {activityDateLabel(result.grade.gradedAt, language)}</span>
                       </span>
-                      <strong className="shrink-0 text-sm font-bold text-blue-700">{result.grade.totalScore} điểm</strong>
-                      <button type="button" onClick={() => onOpenExamResult(result)} className="shrink-0 text-xs font-semibold text-blue-700 hover:underline">Xem</button>
+                      <strong className="shrink-0 text-sm font-bold text-blue-700">{result.grade.totalScore} {t(language, 'studentProfile.points')}</strong>
+                      <button type="button" onClick={() => onOpenExamResult(result)} className="shrink-0 text-xs font-semibold text-blue-700 hover:underline">{t(language, 'studentProfile.view')}</button>
                     </li>
                   ))}
                 </ul>
-              ) : <p className="text-sm text-slate-500">Chưa có bài thi được công bố điểm.</p>}
+              ) : <p className="text-sm text-slate-500">{t(language, 'studentProfile.examHistory.empty')}</p>}
             </div>
           </div>
         )}
@@ -546,7 +547,7 @@ export function StudentProfile({
 
       <section aria-labelledby="study-settings-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-5">
-          <h1 id="study-settings-title" className="text-lg font-bold text-slate-900\">Cài đặt tài khoản và AI</h1>
+          <h1 id="study-settings-title" className="text-lg font-bold text-slate-900\">{t(language, 'studentProfile.studySettings')}</h1>
         </div>
 
         <div className="divide-y divide-slate-100">
@@ -554,19 +555,19 @@ export function StudentProfile({
             <div className="flex gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><Sparkles className="h-5 w-5" /></span>
               <div>
-                <h3 className="font-semibold text-slate-800">Thiết lập AI</h3>
-                <p className="mt-1 text-sm text-slate-500">{isTeacher ? 'Chọn mức độ chi tiết khi EduBot hỗ trợ công việc.' : 'Chọn mức độ chi tiết khi EduBot giải thích.'}</p>
+                <h3 className="font-semibold text-slate-800">{t(language, 'studentProfile.aiSettings')}</h3>
+                <p className="mt-1 text-sm text-slate-500">{t(language, isTeacher ? 'studentProfile.aiSettings.teacherDescription' : 'studentProfile.aiSettings.studentDescription')}</p>
               </div>
             </div>
             <select
-              aria-label="Mức độ giải thích của EduBot"
+              aria-label={t(language, 'studentProfile.aiSettings.label')}
               value={preferences.explanationStyle}
               onChange={(event) => updatePreferences({ ...preferences, explanationStyle: event.target.value as StudyPreferences['explanationStyle'] })}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:max-w-xs"
             >
-              <option value="concise">Ngắn gọn: giải luôn</option>
-              <option value="detailed">Chi tiết: giải đầy đủ</option>
-              <option value="thinking">Tư duy: gợi mở, hỏi từng bước</option>
+              <option value="concise">{t(language, 'studentProfile.aiStyle.concise')}</option>
+              <option value="detailed">{t(language, 'studentProfile.aiStyle.detailed')}</option>
+              <option value="thinking">{t(language, 'studentProfile.aiStyle.thinking')}</option>
             </select>
           </div>
         </div>
@@ -575,27 +576,27 @@ export function StudentProfile({
           <div className="mb-4 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><ShieldCheck className="h-5 w-5" /></span>
           <div>
-            <h2 id="account-security-title" className="font-bold text-slate-900">Tài khoản &amp; bảo mật</h2>
-            <p className="mt-1 text-sm text-slate-500">Quản lý mật khẩu và phiên đăng nhập.</p>
+            <h2 id="account-security-title" className="font-bold text-slate-900">{t(language, 'studentProfile.security')}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t(language, 'studentProfile.security.description')}</p>
           </div>
           </div>
           <form onSubmit={(event) => void requestPasswordChange(event)} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <label className="block text-sm font-medium text-slate-700">
-            Mật khẩu hiện tại
-            <input required type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder="Nhập mật khẩu hiện tại" />
+            {t(language, 'studentProfile.password.current')}
+            <input required type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder={t(language, 'studentProfile.password.current.placeholder')} />
           </label>
           <label className="block text-sm font-medium text-slate-700">
-            Mật khẩu mới
-            <input required type="password" autoComplete="new-password" minLength={12} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder="Tối thiểu 12 ký tự" />
+            {t(language, 'studentProfile.password.new')}
+            <input required type="password" autoComplete="new-password" minLength={12} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder={t(language, 'studentProfile.password.new.placeholder')} />
           </label>
           <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
-            <KeyRound className="h-4 w-4" /> Đổi mật khẩu
+            <KeyRound className="h-4 w-4" /> {t(language, 'studentProfile.password.change')}
           </button>
           </form>
           <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500"></p>
             <button type="button" onClick={onLogout} className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-              <LogOut className="h-4 w-4" /> Đăng xuất
+              <LogOut className="h-4 w-4" /> {t(language, 'studentProfile.logout')}
             </button>
           </div>
         </div>

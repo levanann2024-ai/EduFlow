@@ -1,12 +1,15 @@
 import { Trophy } from 'lucide-react';
 import { StudentFeaturePage } from './StudentFeaturePage';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { t } from '@/i18n/i18n';
 
 export function Leaderboard() {
+  const language = useAppLanguage();
   return (
     <StudentFeaturePage
       icon={Trophy}
-      title="Bảng xếp hạng & Huy hiệu"
-      description="Thành tích học tập, thứ hạng và các huy hiệu bạn đạt được sẽ hiển thị tại đây."
+      title={t(language, 'leaderboard.title')}
+      description={t(language, 'leaderboard.description')}
     />
   );
 }

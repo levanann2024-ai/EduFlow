@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowUp, Check, CircleHelp, Clock3, Download, FileText, Send, X } from 'lucide-react';
 import type { ExamSubmissionSummary } from './ExamWorkspace';
 import { examQuestions, type ExamQuestion } from './examQuestions';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { studentLocale, t } from '@/i18n/i18n';
 
 interface ExamResultAnalyticsProps {
   examTitle: string;
@@ -10,14 +12,14 @@ interface ExamResultAnalyticsProps {
   onBack: () => void;
 }
 
-function formatDuration(totalSeconds: number) {
+function formatDuration(totalSeconds: number, language: 'vi' | 'en') {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes} phút ${String(seconds).padStart(2, '0')} giây`;
+  return t(language, 'examResult.duration', { minutes, seconds: String(seconds).padStart(2, '0') });
 }
 
-function displayAnswer(question: ExamQuestion, rawAnswer: string | undefined) {
-  if (!rawAnswer) return 'Chưa trả lời';
+function displayAnswer(question: ExamQuestion, rawAnswer: string | undefined, language: 'vi' | 'en') {
+  if (!rawAnswer) return t(language, 'examResult.unanswered');
   if (question.kind === 'choice') {
     return question.options?.[Number(rawAnswer)] ?? rawAnswer;
   }
@@ -26,7 +28,7 @@ function displayAnswer(question: ExamQuestion, rawAnswer: string | undefined) {
       const parsed = JSON.parse(rawAnswer) as Record<number, string>;
       return Object.entries(parsed)
         .map(([index, value]) => `${String.fromCharCode(97 + Number(index))}. ${value}`)
-        .join(' - ') || 'Chưa trả lời';
+        .join(' - ') || t(language, 'examResult.unanswered');
     } catch {
       return rawAnswer;
     }
@@ -34,12 +36,12 @@ function displayAnswer(question: ExamQuestion, rawAnswer: string | undefined) {
   return rawAnswer;
 }
 
-function displayCorrectAnswer(question: ExamQuestion) {
+function displayCorrectAnswer(question: ExamQuestion, language: 'vi' | 'en') {
   if (typeof question.correctAnswer === 'string') {
     if (question.kind === 'choice') {
       return question.options?.[Number(question.correctAnswer)] ?? question.correctAnswer;
     }
-    if (question.kind === 'essay' && !question.correctAnswer) return 'Giáo viên chấm thủ công';
+    if (question.kind === 'essay' && !question.correctAnswer) return t(language, 'examResult.teacherManualGrade');
     return question.correctAnswer;
   }
   return Object.entries(question.correctAnswer)
@@ -64,6 +66,7 @@ function isAnswerCorrect(question: ExamQuestion, rawAnswer: string | undefined) 
 }
 
 export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: ExamResultAnalyticsProps) {
+  const language = useAppLanguage();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [appealOpen, setAppealOpen] = useState(false);
   const [appealReason, setAppealReason] = useState('');
@@ -80,7 +83,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
     const syncDecision = () => {
       try {
         const stored: unknown = JSON.parse(localStorage.getItem('eduflow-exam-appeals') ?? '[]');
-        if (!Array.isArray(stored)) throw new Error('Danh sách phúc khảo không đúng định dạng.');
+        if (!Array.isArray(stored)) throw new Error(t(language, 'examResult.error.invalidAppeals'));
         const appeal = stored.find((item): item is Record<string, unknown> => (
           typeof item === 'object' && item !== null && 'id' in item && item.id === appealId
         ));
@@ -89,7 +92,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
         }
       } catch (error) {
         console.error('Không thể đồng bộ trạng thái phúc khảo trên thiết bị.', error);
-        setAppealError('Không thể kiểm tra trạng thái phúc khảo trên thiết bị này.');
+        setAppealError(t(language, 'examResult.error.syncAppeal'));
       }
     };
     const syncOnStorage = (event: StorageEvent) => {
@@ -102,7 +105,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
       window.removeEventListener('storage', syncOnStorage);
       window.removeEventListener('eduflow-appeal-updated', syncDecision);
     };
-  }, [appealId]);
+  }, [appealId, language]);
 
   const getAppealEvidence = () => ({
     examTitle,
@@ -122,7 +125,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
       auditLog: getAppealEvidence(),
       aiMonitoringLog: {
         available: false,
-        reason: 'Phòng thi hiện chưa có chức năng ghi hình giám sát AI.',
+        reason: t(language, 'examResult.error.cameraUnavailable'),
       },
     };
     const file = new Blob([JSON.stringify(evidence, null, 2)], { type: 'application/json' });
@@ -136,7 +139,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
 
   const submitAppeal = () => {
     if (!appealReason) {
-      setAppealError('Vui lòng chọn lý do phúc khảo.');
+      setAppealError(t(language, 'examResult.error.selectReason'));
       return;
     }
     const appeal = {
@@ -149,7 +152,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
         deviceAuditLog: getAppealEvidence(),
         aiMonitoringLog: {
           available: false,
-          reason: 'Phòng thi hiện chưa có chức năng ghi hình giám sát AI.',
+          reason: t(language, 'examResult.error.cameraUnavailable'),
         },
       },
       delivery: 'local-only',
@@ -163,7 +166,7 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
       setAppealSubmitted(true);
     } catch (error) {
       console.error('Không thể lưu yêu cầu phúc khảo trên thiết bị.', error);
-      setAppealError('Không thể lưu yêu cầu trên thiết bị này. Hãy tải nhật ký thiết bị và liên hệ giáo viên.');
+      setAppealError(t(language, 'examResult.error.saveAppealHelp'));
     }
   };
 
@@ -172,8 +175,8 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
       <div className="mx-auto max-w-4xl space-y-4">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Mã đề: 188 - {subject}</p>
-            <h1 className="mt-1 text-xl font-extrabold text-slate-900">Kết quả bài thi</h1>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{t(language, 'examResult.code')} 188 - {subject}</p>
+            <h1 className="mt-1 text-xl font-extrabold text-slate-900">{t(language, 'examResult.title')}</h1>
             <p className="mt-1 text-sm text-slate-500">{examTitle}</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -182,48 +185,48 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
               onClick={() => setAppealOpen(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 active:scale-[0.98]"
             >
-              <CircleHelp className="h-4 w-4" /> Phúc khảo
+              <CircleHelp className="h-4 w-4" /> {t(language, 'examResult.appeal')}
             </button>
             <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">
-              <ArrowLeft className="h-4 w-4" /> Danh sách phòng thi
+              <ArrowLeft className="h-4 w-4" /> {t(language, 'examResult.backToRooms')}
             </button>
           </div>
         </header>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="mb-5 flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Đã nộp bài</span>
-            <span className="text-xs text-slate-500">Kết quả đề minh họa - Câu hỏi mở cần giáo viên chấm</span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">{t(language, 'examResult.submitted')}</span>
+            <span className="text-xs text-slate-500">{t(language, 'examResult.demoNote')}</span>
           </div>
 
           <div className="grid grid-cols-2 gap-5 text-center sm:grid-cols-4">
             <div>
-              <p className="text-xs font-medium text-slate-500">Điểm số</p>
+              <p className="text-xs font-medium text-slate-500">{t(language, 'examResult.score')}</p>
               <p className="mt-1 text-2xl font-extrabold text-slate-800">{score.toFixed(2)}<span className="text-sm font-semibold text-slate-400">/10</span></p>
             </div>
             <div>
-              <p className="flex items-center justify-center gap-1 text-xs font-medium text-slate-500"><Clock3 className="h-3.5 w-3.5" /> Thời gian</p>
-              <p className="mt-1 text-lg font-bold text-slate-800">{formatDuration(summary.durationSeconds)}</p>
+              <p className="flex items-center justify-center gap-1 text-xs font-medium text-slate-500"><Clock3 className="h-3.5 w-3.5" /> {t(language, 'examResult.time')}</p>
+              <p className="mt-1 text-lg font-bold text-slate-800">{formatDuration(summary.durationSeconds, language)}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500">Đúng</p>
+              <p className="text-xs font-medium text-slate-500">{t(language, 'examResult.correct')}</p>
               <p className="mt-1 text-2xl font-extrabold text-emerald-600">{correctCount}/{summary.total}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500">Sai</p>
+              <p className="text-xs font-medium text-slate-500">{t(language, 'examResult.wrong')}</p>
               <p className="mt-1 text-2xl font-extrabold text-rose-600">{wrongCount}</p>
             </div>
           </div>
 
-          <div className="mt-6 h-2.5 overflow-hidden rounded-full bg-rose-100" aria-label={`Đúng ${correctCount}, sai ${wrongCount}`}>
+          <div className="mt-6 h-2.5 overflow-hidden rounded-full bg-rose-100" aria-label={t(language, 'examResult.scoreSummary', { correct: correctCount, wrong: wrongCount })}>
             <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${summary.total ? (correctCount / summary.total) * 100 : 0}%` }} />
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Nộp lúc {new Date(summary.submittedAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+            {t(language, 'examResult.submittedAt')} {new Date(summary.submittedAt).toLocaleString(studentLocale(language), { dateStyle: 'short', timeStyle: 'short' })}
           </p>
           <div className={`mt-3 rounded-lg px-3 py-2 text-xs leading-5 ${summary.offscreenViolations > 0 ? 'bg-rose-50 text-rose-800' : 'bg-slate-50 text-slate-600'}`}>
-            <p><span className="font-semibold">Lý do nộp:</span> {summary.submitReason}</p>
-            <p>{summary.auditSaved ? 'Nhật ký đã lưu trên thiết bị này.' : 'Không lưu được nhật ký bảo mật trên thiết bị này.'}</p>
+            <p><span className="font-semibold">{t(language, 'examResult.submitReason')}</span> {summary.submitReason}</p>
+            <p>{summary.auditSaved ? t(language, 'examResult.auditSaved') : t(language, 'examResult.auditNotSaved')}</p>
           </div>
         </section>
 
@@ -235,8 +238,8 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
             className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-50 sm:px-6"
           >
             <span>
-              <span className="block font-bold text-slate-900">Chi tiết bài làm</span>
-              <span className="mt-1 block text-xs text-slate-500">Đúng {correctCount}/{summary.total} câu - Xem đáp án đã chọn và đáp án đúng</span>
+              <span className="block font-bold text-slate-900">{t(language, 'examResult.details')}</span>
+              <span className="mt-1 block text-xs text-slate-500">{t(language, 'examResult.detailsHint', { correct: correctCount, total: summary.total })}</span>
             </span>
             {detailsOpen ? <ArrowUp className="h-5 w-5 text-slate-500" /> : <ArrowDown className="h-5 w-5 text-slate-500" />}
           </button>
@@ -253,23 +256,23 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
                         {manualGrade ? <CircleHelp className="h-3.5 w-3.5" /> : correct ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold leading-6 text-slate-800">Câu {question.id}. {question.prompt}</p>
-                        <p className="mt-2 text-sm leading-6 text-slate-600"><span className="font-semibold">Bài làm:</span> {displayAnswer(question, summary.answers[question.id])}</p>
+                        <p className="text-sm font-semibold leading-6 text-slate-800">{t(language, 'examResult.question')} {question.id}. {question.prompt}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600"><span className="font-semibold">{t(language, 'examResult.yourAnswer')}</span> {displayAnswer(question, summary.answers[question.id], language)}</p>
                         {summary.images[question.id]?.length > 0 && (
                           <div className="mt-3">
-                            <p className="text-sm font-semibold leading-6 text-slate-600">Ảnh bài làm đính kèm</p>
+                            <p className="text-sm font-semibold leading-6 text-slate-600">{t(language, 'examResult.imageAttachments')}</p>
                             <div className="mt-2 flex flex-wrap gap-2">
                               {summary.images[question.id].map((image) => (
                                 <figure key={`${image.name}-${image.dataUrl.slice(-20)}`} className="max-w-48">
-                                  <img src={image.dataUrl} alt={`Ảnh bài làm ${image.name}`} className="max-h-48 rounded-lg border border-slate-200 object-contain" />
+                                  <img src={image.dataUrl} alt={`${t(language, 'examResult.imageAttachments')} ${image.name}`} className="max-h-48 rounded-lg border border-slate-200 object-contain" />
                                   <figcaption className="mt-1 truncate text-xs text-slate-500">{image.name}</figcaption>
                                 </figure>
                               ))}
                             </div>
                           </div>
                         )}
-                        <p className="mt-1 text-sm leading-6 text-emerald-700"><span className="font-semibold">Đáp án:</span> {displayCorrectAnswer(question)}</p>
-                        {manualGrade && <p className="mt-1 text-xs font-semibold text-amber-700">Chờ giáo viên chấm</p>}
+                        <p className="mt-1 text-sm leading-6 text-emerald-700"><span className="font-semibold">{t(language, 'examResult.answer')}</span> {displayCorrectAnswer(question, language)}</p>
+                        {manualGrade && <p className="mt-1 text-xs font-semibold text-amber-700">{t(language, 'examResult.pendingGrade')}</p>}
                       </div>
                     </div>
                   </article>
@@ -285,39 +288,39 @@ export function ExamResultAnalytics({ examTitle, subject, summary, onBack }: Exa
           <section role="dialog" aria-modal="true" aria-labelledby="appeal-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 id="appeal-title" className="text-lg font-bold text-slate-900">Yêu cầu phúc khảo</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Chọn lý do để lưu yêu cầu trên thiết bị. Nhật ký thiết bị sẽ được đính kèm tự động.</p>
+                <h2 id="appeal-title" className="text-lg font-bold text-slate-900">{t(language, 'examResult.appeal.title')}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{t(language, 'examResult.appeal.instructions')}</p>
               </div>
-              <button type="button" onClick={() => setAppealOpen(false)} aria-label="Đóng" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setAppealOpen(false)} aria-label={t(language, 'examResult.close')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
             {appealSubmitted ? (
               <div className="mt-5 space-y-3">
                 <p role="status" className={`rounded-lg px-3 py-2 text-sm leading-5 ${appealDecision === 'Đã duyệt' ? 'bg-emerald-50 text-emerald-800' : appealDecision === 'Đã từ chối' ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-900'}`}>
-                  {appealDecision === 'Đã duyệt' ? 'Giáo viên đã duyệt yêu cầu. Bạn có thể liên hệ giáo viên để nhận lượt thi lại.' : appealDecision === 'Đã từ chối' ? 'Giáo viên đã từ chối yêu cầu phúc khảo.' : 'Yêu cầu và nhật ký đã lưu trên thiết bị này, đang chờ giáo viên xem xét trong cùng môi trường demo.'}
+                  {appealDecision === 'Đã duyệt' ? t(language, 'examResult.appeal.approved') : appealDecision === 'Đã từ chối' ? t(language, 'examResult.appeal.rejected') : t(language, 'examResult.appeal.pending')}
                 </p>
-                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Bản ghi giám sát AI/video 5 giây chưa khả dụng vì chức năng ghi hình AI chưa được kết nối.</p>
-                <button type="button" onClick={downloadAppealEvidence} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"><Download className="h-4 w-4" /> Tải nhật ký thiết bị để gửi giáo viên</button>
-                <button type="button" onClick={() => setAppealOpen(false)} className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700">Đóng</button>
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{t(language, 'examResult.videoUnavailable')}</p>
+                <button type="button" onClick={downloadAppealEvidence} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"><Download className="h-4 w-4" /> {t(language, 'examResult.downloadLog')}</button>
+                <button type="button" onClick={() => setAppealOpen(false)} className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700">{t(language, 'examResult.close')}</button>
               </div>
             ) : (
               <div className="mt-5 space-y-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-semibold text-slate-800">Lý do phúc khảo</span>
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-800">{t(language, 'examResult.appeal.reason')}</span>
                   <select value={appealReason} onChange={(event) => { setAppealReason(event.target.value); setAppealError(''); }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <option value="">Chọn lý do</option>
-                    <option value="Gặp sự cố phần mềm/thông báo máy tính">Gặp sự cố phần mềm/thông báo máy tính</option>
-                    <option value="Lỡ tay thoát toàn màn hình">Lỡ tay thoát toàn màn hình</option>
-                    <option value="Mất kết nối mạng">Mất kết nối mạng</option>
-                    <option value="Lý do khác">Lý do khác</option>
+                    <option value="">{t(language, 'examResult.appeal.choose')}</option>
+                    <option value="Gặp sự cố phần mềm/thông báo máy tính">{t(language, 'examResult.appeal.software')}</option>
+                    <option value="Lỡ tay thoát toàn màn hình">{t(language, 'examResult.appeal.fullscreen')}</option>
+                    <option value="Mất kết nối mạng">{t(language, 'examResult.appeal.network')}</option>
+                    <option value="Lý do khác">{t(language, 'examResult.appeal.other')}</option>
                   </select>
                 </label>
                 <div className="space-y-2 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">
-                  <p className="flex items-center gap-2 font-semibold text-slate-800"><FileText className="h-4 w-4" /> Đính kèm tự động</p>
-                  <p>Nhật ký thiết bị: có sẵn</p>
-                  <p>Bản ghi giám sát AI/video 5 giây: chưa khả dụng, chức năng ghi hình AI chưa được kết nối.</p>
+                  <p className="flex items-center gap-2 font-semibold text-slate-800"><FileText className="h-4 w-4" /> {t(language, 'examResult.automaticAttachments')}</p>
+                  <p>{t(language, 'examResult.deviceLogAvailable')}</p>
+                  <p>{t(language, 'examResult.videoUnavailable')}</p>
                 </div>
                 {appealError && <p role="alert" className="text-sm text-rose-700">{appealError}</p>}
-                <button type="button" onClick={submitAppeal} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"><Send className="h-4 w-4" /> Lưu yêu cầu phúc khảo</button>
+                <button type="button" onClick={submitAppeal} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-700"><Send className="h-4 w-4" /> {t(language, 'examResult.saveAppeal')}</button>
               </div>
             )}
           </section>

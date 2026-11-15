@@ -8,6 +8,8 @@ import type { QuizQuestion } from '@/types';
 import { useSavedItems } from './savedItems';
 import { authenticatedFetch } from '@/auth/authApi';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, t } from '@/i18n/i18n';
 
 type PracticeMode = 'practice' | 'test';
 type PracticePhase = 'setup' | 'ready' | 'answering' | 'results';
@@ -32,6 +34,17 @@ const topicSuggestions: Record<string, string[]> = {
   'Tin học': ['Mạng máy tính và Internet', 'Thông tin và dữ liệu'],
   'Sinh học': ['Tế bào nhân thực', 'Trao đổi chất ở tế bào'],
   'Lịch sử': ['Văn minh cổ đại', 'Các quốc gia cổ đại'],
+};
+
+const englishTopicSuggestions: Record<string, string[]> = {
+  'Toán học': ['Quadratic functions', 'Equations and systems of equations'],
+  'Ngữ văn': ['Vietnamese folk tales', 'Writing an argumentative essay'],
+  'Vật lý': ["Newton's laws", 'Linear motion'],
+  'Hóa học': ['Atomic structure', 'Periodic table'],
+  'Tiếng Anh': ['Unit 4 vocabulary', 'Present and past tenses'],
+  'Tin học': ['Computer networks and the Internet', 'Information and data'],
+  'Sinh học': ['Eukaryotic cells', 'Cell metabolism'],
+  'Lịch sử': ['Ancient civilizations', 'Ancient states'],
 };
 
 function normalizePrompt(value: string) {
@@ -73,6 +86,7 @@ export function AIPractice({
   initialSavedId?: string;
   isDemo?: boolean;
 }) {
+  const language = useAppLanguage();
   const [subject, setSubject] = useState(initialSubject);
   const [mode, setMode] = useState<PracticeMode>(initialMode);
   const [topic, setTopic] = useState(initialTopic);
@@ -125,17 +139,18 @@ export function AIPractice({
           topic: requestTopic.trim(),
           quantity: requestQuantity,
           difficulty,
+          language,
         }),
       });
       const result: { success: boolean; data?: QuizQuestion[]; message?: string } = await response.json();
       if (!response.ok || !result.success || !Array.isArray(result.data) || result.data.length === 0) {
-        throw new Error(result.message || 'Chưa tạo được câu hỏi. Bạn thử lại nhé.');
+        throw new Error(result.message || t(language, "Chưa tạo được câu hỏi. Bạn thử lại nhé."));
       }
       const generatedQuestions = result.data.map((question) => ({
         ...question,
         difficulty,
       }));
-      setSubject(requestSubject || 'Tổng hợp');
+      setSubject(requestSubject || t(language, "Tổng hợp"));
       setTopic(requestTopic.trim());
       setQuestions(generatedQuestions);
       setIsSample(false);
@@ -149,7 +164,7 @@ export function AIPractice({
       const id = `quiz-${crypto.randomUUID()}`;
       setQuizId(id);
     } catch (generationError) {
-      setError(generationError instanceof Error ? generationError.message : 'Không thể kết nối tới AI server.');
+      setError(generationError instanceof Error ? generationError.message : t(language, "Không thể kết nối tới AI server."));
     } finally {
       setGenerating(false);
     }
@@ -160,26 +175,34 @@ export function AIPractice({
     const sampleQuestions: QuizQuestion[] = [
       {
         id: 'sample-1',
-        question: `Khi học chủ đề “${topic.trim() || 'kiến thức mới'}” trong môn ${subject}, cách nào giúp bạn bắt đầu giải bài hiệu quả?`,
-        options: ['Đọc kỹ yêu cầu và xác định dữ kiện đã cho', 'Chọn đáp án bất kỳ trước khi đọc đề', 'Bỏ qua các khái niệm liên quan', 'Ghi lại mọi công thức mà không xem đề'],
+        question: language === 'en'
+          ? `When studying “${topic.trim() || 'a new topic'}” in ${localizeStudentSubject(subject, language)}, what is the best way to start solving a problem?`
+          : `Khi học chủ đề “${topic.trim() || 'kiến thức mới'}” trong môn ${subject}, cách nào giúp bạn bắt đầu giải bài hiệu quả?`,
+        options: language === 'en'
+          ? ['Read the prompt carefully and identify the given information', 'Choose any answer before reading the prompt', 'Ignore related concepts', 'Write down every formula without reviewing the question']
+          : ['Đọc kỹ yêu cầu và xác định dữ kiện đã cho', 'Chọn đáp án bất kỳ trước khi đọc đề', 'Bỏ qua các khái niệm liên quan', 'Ghi lại mọi công thức mà không xem đề'],
         correctIndex: 0,
-        explanation: 'Đọc kỹ đề giúp bạn xác định cần tìm gì và chọn kiến thức phù hợp.',
+        explanation: t(language, "Đọc kỹ đề giúp bạn xác định cần tìm gì và chọn kiến thức phù hợp."),
         difficulty: 'easy',
       },
       {
         id: 'sample-2',
-        question: 'Sau khi chọn được cách giải, bạn nên làm gì để hạn chế sai sót?',
-        options: ['Kiểm tra lại từng bước và đối chiếu với yêu cầu', 'Bỏ qua đơn vị và điều kiện', 'Chỉ xem đáp án cuối', 'Dừng ngay khi có kết quả đầu tiên'],
+        question: t(language, "Sau khi chọn được cách giải, bạn nên làm gì để hạn chế sai sót?"),
+        options: language === 'en'
+          ? ['Check each step against the prompt', 'Ignore units and conditions', 'Look only at the final answer', 'Stop as soon as you get a result']
+          : ['Kiểm tra lại từng bước và đối chiếu với yêu cầu', 'Bỏ qua đơn vị và điều kiện', 'Chỉ xem đáp án cuối', 'Dừng ngay khi có kết quả đầu tiên'],
         correctIndex: 0,
-        explanation: 'Kiểm tra lại từng bước giúp phát hiện lỗi tính toán hoặc bỏ sót điều kiện.',
+        explanation: t(language, "Kiểm tra lại từng bước giúp phát hiện lỗi tính toán hoặc bỏ sót điều kiện."),
         difficulty: 'medium',
       },
       {
         id: 'sample-3',
-        question: 'Nếu chưa hiểu một câu hỏi, lựa chọn nào phù hợp nhất?',
-        options: ['Tách câu hỏi thành ý nhỏ và xem lại kiến thức liên quan', 'Bỏ luôn câu hỏi', 'Chọn đáp án theo cảm tính', 'Chép lời giải mà không đọc'],
+        question: t(language, "Nếu chưa hiểu một câu hỏi, lựa chọn nào phù hợp nhất?"),
+        options: language === 'en'
+          ? ['Break it into smaller parts and review related concepts', 'Skip the question entirely', 'Guess an answer', 'Copy the solution without reading it']
+          : ['Tách câu hỏi thành ý nhỏ và xem lại kiến thức liên quan', 'Bỏ luôn câu hỏi', 'Chọn đáp án theo cảm tính', 'Chép lời giải mà không đọc'],
         correctIndex: 0,
-        explanation: 'Chia nhỏ vấn đề và kết nối với kiến thức đã học là cách tốt để tự tìm lời giải.',
+        explanation: t(language, "Chia nhỏ vấn đề và kết nối với kiến thức đã học là cách tốt để tự tìm lời giải."),
         difficulty: 'medium',
       },
     ];
@@ -230,73 +253,73 @@ export function AIPractice({
           onClick={onExit}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         >
-          <ArrowLeft className="h-4 w-4" /> Thoát
+          <ArrowLeft className="h-4 w-4" /> {t(language, "Thoát")}
         </button>
       )}
       {phase === 'setup' && questions.length === 0 ? (
-        <section className="mx-auto max-w-3xl space-y-5" aria-label="Tạo bài luyện bằng AI">
+        <section className="mx-auto max-w-3xl space-y-5" aria-label={t(language, "Tạo bài luyện bằng AI")}>
           <header className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 px-6 py-8 shadow-sm sm:px-9 sm:py-10">
             <div className="mx-auto max-w-3xl text-center">
               <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200">
                 <Sparkles className="h-7 w-7" />
               </span>
-              <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-blue-800 sm:text-4xl">AI Ôn luyện</h1>
+              <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-blue-800 sm:text-4xl">{t(language, "AI Ôn luyện")}</h1>
               <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-                Mô tả nội dung bạn muốn luyện, EduBot sẽ chuẩn bị câu hỏi phù hợp.
+                {t(language, "Mô tả nội dung bạn muốn luyện, EduBot sẽ chuẩn bị câu hỏi phù hợp.")}
               </p>
             </div>
           </header>
           <form onSubmit={submitNaturalPrompt} className="card space-y-4 p-5 sm:p-6">
-            <label htmlFor="practice-natural-prompt" className="block text-sm font-semibold text-slate-800">Bạn muốn luyện nội dung gì?</label>
+            <label htmlFor="practice-natural-prompt" className="block text-sm font-semibold text-slate-800">{t(language, "Bạn muốn luyện nội dung gì?")}</label>
             <textarea
               id="practice-natural-prompt"
               value={naturalPrompt}
               onChange={(event) => setNaturalPrompt(event.target.value)}
-              placeholder="Ví dụ: Luyện 5 câu dao động điều hóa lớp 11"
+              placeholder={t(language, "Ví dụ: Luyện 5 câu dao động điều hòa lớp 11")}
               rows={3}
               className="input-field min-h-24 resize-y"
             />
-            <p className="-mt-2 text-xs text-slate-500">Có thể ghi số câu trong yêu cầu; tối đa 20 câu mỗi lần tạo.</p>
+            <p className="-mt-2 text-xs text-slate-500">{t(language, "Có thể ghi số câu trong yêu cầu; tối đa 20 câu mỗi lần tạo.")}</p>
             <details className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <summary className="cursor-pointer text-sm font-semibold text-slate-700">Tùy chọn nâng cao</summary>
+              <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t(language, "Tùy chọn nâng cao")}</summary>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-medium text-slate-700">
-                  Môn học (không bắt buộc)
+                  {t(language, "Môn học (không bắt buộc)")}
                   <select value={subject} onChange={(event) => setSubject(event.target.value)} className="input-field mt-2">
-                    <option value="">Để AI tự nhận diện</option>
-                    {subjects.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                    <option value="">{t(language, "Để AI tự nhận diện")}</option>
+                    {subjects.map((item) => <option key={item.name} value={item.name}>{localizeStudentSubject(item.name, language)}</option>)}
                   </select>
                 </label>
                 <label className="text-sm font-medium text-slate-700">
-                  Mức độ
+                  {t(language, "Mức độ")}
                   <select className="input-field mt-2" value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>
-                    <option value="easy">Dễ</option>
-                    <option value="medium">Vừa sức</option>
-                    <option value="hard">Thử thách</option>
+                    <option value="easy">{t(language, "Dễ")}</option>
+                    <option value="medium">{t(language, "Vừa sức")}</option>
+                    <option value="hard">{t(language, "Thử thách")}</option>
                   </select>
                 </label>
                 <label className="text-sm font-medium text-slate-700">
-                  Số câu mặc định
+                  {t(language, "Số câu mặc định")}
                   <select className="input-field mt-2" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>
-                    <option value={5}>5 câu</option>
-                    <option value={10}>10 câu</option>
-                    <option value={15}>15 câu</option>
+                    <option value={5}>{t(language, "5 câu")}</option>
+                    <option value={10}>{t(language, "10 câu")}</option>
+                    <option value={15}>{t(language, "15 câu")}</option>
                   </select>
                 </label>
                 <label className="text-sm font-medium text-slate-700">
-                  Hình thức
+                  {t(language, "Hình thức")}
                   <select className="input-field mt-2" value={mode} onChange={(event) => setMode(event.target.value as PracticeMode)}>
-                    <option value="practice">Luyện tập</option>
-                    <option value="test">Làm đề có tính giờ</option>
+                    <option value="practice">{t(language, "Luyện tập")}</option>
+                    <option value="test">{t(language, "Làm đề có tính giờ")}</option>
                   </select>
                 </label>
                 {mode === 'test' && (
                   <label className="text-sm font-medium text-slate-700 sm:col-span-2">
-                    Thời gian làm đề
+                    {t(language, "Thời gian làm đề")}
                     <select className="input-field mt-2" value={testMinutes} onChange={(event) => setTestMinutes(Number(event.target.value))}>
-                      <option value={10}>10 phút</option>
-                      <option value={15}>15 phút</option>
-                      <option value={30}>30 phút</option>
+                      <option value={10}>{t(language, "10 phút")}</option>
+                      <option value={15}>{t(language, "15 phút")}</option>
+                      <option value={30}>{t(language, "30 phút")}</option>
                     </select>
                   </label>
                 )}
@@ -305,7 +328,7 @@ export function AIPractice({
             {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
             <button type="submit" disabled={!naturalPrompt.trim() || generating} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
               {generating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-              {generating ? 'Đang tạo câu hỏi...' : mode === 'practice' ? 'Tạo bài luyện' : 'Tạo đề kiểm tra'}
+              {generating ? t(language, "Đang tạo câu hỏi...") : mode === 'practice' ? t(language, "Tạo bài luyện") : t(language, "Tạo đề kiểm tra")}
             </button>
           </form>
         </section>
@@ -318,39 +341,39 @@ export function AIPractice({
                   <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${selectedSubject?.color} font-bold text-white`}>
                     {selectedSubject?.icon}
                   </span>
-                  <p className="font-semibold text-slate-900">{subject}</p>
+                  <p className="font-semibold text-slate-900">{localizeStudentSubject(subject, language)}</p>
                 </div>
                 <button type="button" onClick={() => setSubject('')} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-indigo-700">
-                  <ArrowLeft className="h-3.5 w-3.5" /> Đổi môn
+                  <ArrowLeft className="h-3.5 w-3.5" /> {t(language, "Đổi môn")}
                 </button>
               </div>
 
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">Bạn muốn</p>
+                <p className="mb-2 text-sm font-medium text-slate-700">{t(language, "Bạn muốn")}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <ModeButton selected={mode === 'practice'} onClick={() => changeMode('practice')}>
-                    <Target className="h-4 w-4" /> Luyện tập
+                    <Target className="h-4 w-4" /> {t(language, "Luyện tập")}
                   </ModeButton>
                   <ModeButton selected={mode === 'test'} onClick={() => changeMode('test')}>
-                    <ClipboardIcon /> Làm đề
+                    <ClipboardIcon /> {t(language, "Làm đề")}
                   </ModeButton>
                 </div>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  {mode === 'practice' ? 'Làm từng câu, xem đáp án và lời giải ngay.' : 'Làm bài có tính giờ, xem điểm sau khi nộp.'}
+                  {mode === 'practice' ? t(language, "Làm từng câu, xem đáp án và lời giải ngay.") : t(language, "Làm bài có tính giờ, xem điểm sau khi nộp.")}
                 </p>
               </div>
 
               <div>
-                <label htmlFor="practice-topic" className="mb-2 block text-sm font-medium text-slate-700">Chủ đề</label>
+                <label htmlFor="practice-topic" className="mb-2 block text-sm font-medium text-slate-700">{t(language, "Chủ đề")}</label>
                 <input
                   id="practice-topic"
                   className="input-field"
-                  placeholder="VD: Hàm số bậc hai"
+                  placeholder={t(language, "VD: Hàm số bậc hai")}
                   value={topic}
                   onChange={(event) => setTopic(event.target.value)}
                 />
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {(topicSuggestions[subject] ?? []).map((suggestion) => (
+                  {((language === 'en' ? englishTopicSuggestions[subject] : topicSuggestions[subject]) ?? []).map((suggestion) => (
                     <button
                       key={suggestion}
                       type="button"
@@ -365,29 +388,29 @@ export function AIPractice({
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-sm font-medium text-slate-700">
-                  Số câu
+                  {t(language, "Số câu")}
                   <select className="input-field mt-2" value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>
-                    <option value={5}>5 câu</option>
-                    <option value={10}>10 câu</option>
-                    <option value={15}>15 câu</option>
+                    <option value={5}>{t(language, "5 câu")}</option>
+                    <option value={10}>{t(language, "10 câu")}</option>
+                    <option value={15}>{t(language, "15 câu")}</option>
                   </select>
                 </label>
                 <label className="text-sm font-medium text-slate-700">
-                  Mức độ
+                  {t(language, "Mức độ")}
                   <select className="input-field mt-2" value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>
-                    <option value="easy">Dễ</option>
-                    <option value="medium">Vừa sức</option>
-                    <option value="hard">Thử thách</option>
+                    <option value="easy">{t(language, "Dễ")}</option>
+                    <option value="medium">{t(language, "Vừa sức")}</option>
+                    <option value="hard">{t(language, "Thử thách")}</option>
                   </select>
                 </label>
               </div>
               {mode === 'test' && (
                 <label className="block text-sm font-medium text-slate-700">
-                  Thời gian làm đề
+                  {t(language, "Thời gian làm đề")}
                   <select className="input-field mt-2" value={testMinutes} onChange={(event) => setTestMinutes(Number(event.target.value))}>
-                    <option value={10}>10 phút</option>
-                    <option value={15}>15 phút</option>
-                    <option value={30}>30 phút</option>
+                    <option value={10}>{t(language, "10 phút")}</option>
+                    <option value={15}>{t(language, "15 phút")}</option>
+                    <option value={30}>{t(language, "30 phút")}</option>
                   </select>
                 </label>
               )}
@@ -399,10 +422,10 @@ export function AIPractice({
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {generating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-                {generating ? 'Đang chuẩn bị...' : mode === 'practice' ? 'Tạo bài luyện' : 'Tạo đề kiểm tra'}
+                {generating ? t(language, "Đang chuẩn bị...") : mode === 'practice' ? t(language, "Tạo bài luyện") : t(language, "Tạo đề kiểm tra")}
               </button>
               <button type="button" onClick={loadSampleQuestions} className="w-full text-xs font-medium text-blue-700 hover:text-blue-900">
-                Xem thử dữ liệu mẫu
+                {t(language, "Xem thử dữ liệu mẫu")}
               </button>
             </aside>
           )}
@@ -414,21 +437,21 @@ export function AIPractice({
             {generating ? (
               <div className="card flex min-h-72 flex-col items-center justify-center p-8 text-center">
                 <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
-                <p className="mt-4 font-semibold text-slate-800">Đang tạo câu hỏi...</p>
+                <p className="mt-4 font-semibold text-slate-800">{t(language, "Đang tạo câu hỏi...")}</p>
               </div>
             ) : phase === 'setup' ? (
               <div className="card flex min-h-72 flex-col items-center justify-center p-8 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
                   {mode === 'practice' ? <Target className="h-7 w-7" /> : <BookOpen className="h-7 w-7" />}
                 </div>
-                <h3 className="mt-4 text-lg font-bold text-slate-900">{mode === 'practice' ? 'Bắt đầu luyện tập' : 'Chuẩn bị làm đề'}</h3>
+                <h3 className="mt-4 text-lg font-bold text-slate-900">{mode === 'practice' ? t(language, "Bắt đầu luyện tập") : t(language, "Chuẩn bị làm đề")}</h3>
                 <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
                   {mode === 'practice'
-                    ? 'Chọn chủ đề và mức độ. Bài luyện sẽ hiện từng câu để bạn làm, xem đáp án và đọc lời giải ngay.'
-                    : 'Chọn chủ đề, số câu và thời gian. Khi bắt đầu, phần cài đặt sẽ ẩn để bạn tập trung làm bài.'}
+                    ? t(language, "Chọn chủ đề và mức độ. Bài luyện sẽ hiện từng câu để bạn làm, xem đáp án và đọc lời giải ngay.")
+                    : t(language, "Chọn chủ đề, số câu và thời gian. Khi bắt đầu, phần cài đặt sẽ ẩn để bạn tập trung làm bài.")}
                 </p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  {(topicSuggestions[subject] ?? []).map((suggestion) => (
+                  {((language === 'en' ? englishTopicSuggestions[subject] : topicSuggestions[subject]) ?? []).map((suggestion) => (
                     <button key={suggestion} type="button" onClick={() => setTopic(suggestion)} className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100">
                       {suggestion}
                     </button>
@@ -439,22 +462,22 @@ export function AIPractice({
               <div className="card space-y-5 p-5 sm:p-7">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-blue-700">{isSample ? 'Bộ câu hỏi minh họa - Dữ liệu mẫu' : mode === 'practice' ? 'Bài luyện đã sẵn sàng' : 'Đề kiểm tra đã sẵn sàng'}</p>
-                    <h3 className="mt-1 text-xl font-bold text-slate-900">{topic || 'Câu hỏi minh họa'}</h3>
-                    <p className="mt-1 text-sm text-slate-500">{subject} - {questions.length} câu - {difficulty === 'easy' ? 'Dễ' : difficulty === 'hard' ? 'Thử thách' : 'Vừa sức'}</p>
+                    <p className="text-sm font-semibold text-blue-700">{isSample ? t(language, "Bộ câu hỏi minh họa - Dữ liệu mẫu") : mode === 'practice' ? t(language, "Bài luyện đã sẵn sàng") : t(language, "Đề kiểm tra đã sẵn sàng")}</p>
+                    <h3 className="mt-1 text-xl font-bold text-slate-900">{topic || t(language, "Câu hỏi minh họa")}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{localizeStudentSubject(subject, language)} - {questions.length} {t(language, "câu")} - {difficulty === 'easy' ? t(language, "Dễ") : difficulty === 'hard' ? t(language, "Thử thách") : t(language, "Vừa sức")}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => setPhase('setup')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                      <Settings2 className="h-4 w-4" /> Chỉnh cài đặt
+                      <Settings2 className="h-4 w-4" /> {t(language, "Chỉnh cài đặt")}
                     </button>
                     {quizId && !isSample && (
-                      <button type="button" disabled={savingQuiz || saved.loading || Boolean(saved.error)} aria-label={quizSaved ? 'Bỏ lưu bộ câu hỏi' : 'Lưu bộ câu hỏi vào Đã lưu'} title={quizSaved ? 'Bỏ lưu bộ câu hỏi' : 'Lưu bộ câu hỏi vào Đã lưu'} aria-pressed={quizSaved}
+                      <button type="button" disabled={savingQuiz || saved.loading || Boolean(saved.error)} aria-label={quizSaved ? t(language, "Bỏ lưu bộ câu hỏi") : t(language, "Lưu bộ câu hỏi vào Đã lưu")} title={quizSaved ? t(language, "Bỏ lưu bộ câu hỏi") : t(language, "Lưu bộ câu hỏi vào Đã lưu")} aria-pressed={quizSaved}
                         onClick={() => {
                           setSavingQuiz(true);
                           const action = quizSaved
                             ? saved.removeSavedItem('quiz', quizId)
                             : saved.saveItem({ id: quizId, type: 'quiz', title: Array.from(topic.trim().replace(/\s+/g, ' ')).slice(0, 400).join(''), subject, topic, questionCount: questions.length, mode, savedAt: new Date().toISOString(), questions });
-                          void action.then(() => setError('')).catch((saveError: unknown) => setError(saveError instanceof Error ? saveError.message : 'Không thể cập nhật kho lưu trữ.')).finally(() => setSavingQuiz(false));
+                            void action.then(() => setError('')).catch((saveError: unknown) => setError(saveError instanceof Error ? saveError.message : t(language, "Không thể cập nhật kho lưu trữ."))).finally(() => setSavingQuiz(false));
                         }}
                         className="rounded-lg border border-slate-200 p-2 text-slate-400 hover:bg-slate-50 disabled:opacity-50">
                         <Star className={`h-5 w-5 ${quizSaved ? 'fill-amber-400 text-amber-500' : ''}`} />
@@ -464,24 +487,24 @@ export function AIPractice({
                 </div>
                 <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">
                   {mode === 'practice'
-                    ? 'Bạn sẽ làm lần lượt từng câu. Sau mỗi lựa chọn, đáp án đúng và lời giải sẽ hiện ra để bạn tự kiểm tra.'
-                    : `Bài làm có ${testMinutes} phút. Đáp án và điểm số chỉ hiển thị sau khi bạn nộp bài.`}
+                    ? t(language, "Bạn sẽ làm lần lượt từng câu. Sau mỗi lựa chọn, đáp án đúng và lời giải sẽ hiện ra để bạn tự kiểm tra.")
+                    : t(language, 'aiPractice.test.instructions', { minutes: testMinutes })}
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Câu 1 - Xem trước</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t(language, "Câu 1 - Xem trước")}</p>
                   <MathText text={questions[0]?.question ?? ''} className="mt-2 font-medium leading-6 text-slate-900" />
                 </div>
                 <button type="button" onClick={startAttempt} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700">
                   {mode === 'practice' ? <Target className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
-                  {mode === 'practice' ? 'Bắt đầu luyện' : 'Bắt đầu làm đề'}
+                  {mode === 'practice' ? t(language, "Bắt đầu luyện") : t(language, "Bắt đầu làm đề")}
                 </button>
               </div>
             ) : phase === 'answering' && currentQuestion ? (
               <div className="card space-y-5 p-5 sm:p-7">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
                   <div>
-                    <p className="text-sm font-semibold text-blue-700">{mode === 'practice' ? 'Luyện tập' : 'Đang làm đề'}</p>
-                    <h3 className="mt-1 font-bold text-slate-900">{subject} - {topic}</h3>
+                    <p className="text-sm font-semibold text-blue-700">{mode === 'practice' ? t(language, "Luyện tập") : t(language, "Đang làm đề")}</p>
+                    <h3 className="mt-1 font-bold text-slate-900">{localizeStudentSubject(subject, language)} - {topic}</h3>
                   </div>
                   {mode === 'test' && (
                     <div className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 font-bold tabular-nums ${timeLeft < 60 ? 'bg-rose-50 text-rose-700' : 'bg-blue-50 text-blue-700'}`}>
@@ -491,18 +514,18 @@ export function AIPractice({
                 </div>
                 <div>
                   <div className="mb-3 flex items-center justify-between text-sm text-slate-500">
-                    <span>Câu {currentIndex + 1} / {questions.length}</span>
-                    <span>{Object.keys(answers).length} câu đã chọn</span>
+                    <span>{t(language, "Câu")} {currentIndex + 1} / {questions.length}</span>
+                    <span>{Object.keys(answers).length} {t(language, "câu đã chọn")}</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                     <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} />
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2" aria-label="Chọn câu hỏi">
+                  <div className="mt-3 flex flex-wrap gap-2" aria-label={t(language, "Chọn câu hỏi")}>
                     {questions.map((question, index) => (
                       <button
                         key={question.id}
                         type="button"
-                        aria-label={`Đến câu ${index + 1}`}
+                        aria-label={`${t(language, "Đến câu")} ${index + 1}`}
                         aria-current={index === currentIndex ? 'step' : undefined}
                         onClick={() => setCurrentIndex(index)}
                         className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold ${
@@ -542,22 +565,22 @@ export function AIPractice({
                   </div>
                   {mode === 'practice' && currentAnswer !== undefined && (
                     <div className="mt-4 rounded-xl bg-blue-50 p-4 text-sm leading-6 text-slate-700">
-                      <p className="font-semibold text-blue-900">{currentAnswer === currentQuestion.correctIndex ? 'Chính xác!' : 'Mình cùng xem lại nhé.'}</p>
+                      <p className="font-semibold text-blue-900">{currentAnswer === currentQuestion.correctIndex ? t(language, "Chính xác!") : t(language, "Mình cùng xem lại nhé.")}</p>
                       <MathText text={currentQuestion.explanation} className="mt-1" />
                     </div>
                   )}
                 </article>
                 <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                  <button type="button" disabled={currentIndex === 0} onClick={() => setCurrentIndex((index) => index - 1)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">Câu trước</button>
+                  <button type="button" disabled={currentIndex === 0} onClick={() => setCurrentIndex((index) => index - 1)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">{t(language, "Câu trước")}</button>
                   {mode === 'test' ? (
                     <div className="flex gap-2">
                       {currentIndex < questions.length - 1 && (
-                        <button type="button" onClick={() => setCurrentIndex((index) => index + 1)} className="rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50">Câu tiếp theo</button>
+                        <button type="button" onClick={() => setCurrentIndex((index) => index + 1)} className="rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50">{t(language, "Câu tiếp theo")}</button>
                       )}
-                      <button type="button" disabled={Object.keys(answers).length !== questions.length} onClick={submitAttempt} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Nộp bài ({Object.keys(answers).length}/{questions.length})</button>
+                      <button type="button" disabled={Object.keys(answers).length !== questions.length} onClick={submitAttempt} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{t(language, 'phrase:Nộp bài::Submit')} ({Object.keys(answers).length}/{questions.length})</button>
                     </div>
                   ) : (
-                    <button type="button" disabled={currentAnswer === undefined} onClick={() => currentIndex === questions.length - 1 ? submitAttempt() : setCurrentIndex((index) => index + 1)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{currentIndex === questions.length - 1 ? 'Hoàn thành' : 'Câu tiếp theo'}</button>
+                    <button type="button" disabled={currentAnswer === undefined} onClick={() => currentIndex === questions.length - 1 ? submitAttempt() : setCurrentIndex((index) => index + 1)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{currentIndex === questions.length - 1 ? t(language, "Hoàn thành") : t(language, "Câu tiếp theo")}</button>
                   )}
                 </div>
               </div>
@@ -565,16 +588,16 @@ export function AIPractice({
               <div className="space-y-4">
                 <div className="card flex flex-wrap items-center justify-between gap-4 border-blue-100 bg-blue-50 p-5 sm:p-7">
                   <div>
-                    <p className="font-semibold text-blue-800">{mode === 'practice' ? 'Hoàn thành luyện tập' : 'Kết quả bài làm'}</p>
-                    <h3 className="mt-1 text-2xl font-bold text-slate-900">Đúng {correctCount}/{questions.length} câu</h3>
-                    {mode === 'test' && <p className="mt-1 text-sm text-slate-600">Thời gian còn lại: {formatTime(timeLeft)}</p>}
+                    <p className="font-semibold text-blue-800">{mode === 'practice' ? t(language, "Hoàn thành luyện tập") : t(language, "Kết quả bài làm")}</p>
+                    <h3 className="mt-1 text-2xl font-bold text-slate-900">{t(language, "Đúng")}: {correctCount}/{questions.length} {t(language, "câu")}</h3>
+                    {mode === 'test' && <p className="mt-1 text-sm text-slate-600">{t(language, "Thời gian còn lại:")} {formatTime(timeLeft)}</p>}
                   </div>
                   <button type="button" onClick={isSample ? loadSampleQuestions : () => void generateQuestions()} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700">
-                    <RefreshCw className="h-4 w-4" /> Tạo đề khác
+                    <RefreshCw className="h-4 w-4" /> {t(language, "Tạo đề khác")}
                   </button>
                 </div>
                 <button type="button" onClick={() => setPhase('setup')} className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-900">
-                  <Settings2 className="h-4 w-4" /> Chỉnh cài đặt
+                  <Settings2 className="h-4 w-4" /> {t(language, "Chỉnh cài đặt")}
                 </button>
                 {questions.map((question, index) => (
                   <article key={question.id} className="card space-y-3 p-4 sm:p-5">
@@ -583,11 +606,11 @@ export function AIPractice({
                       {question.options.map((option, optionIndex) => (
                         <div key={`${question.id}-result-${optionIndex}`} className={`rounded-xl border p-3 text-sm ${optionIndex === question.correctIndex ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : answers[question.id] === optionIndex ? 'border-rose-300 bg-rose-50 text-rose-800' : 'border-slate-100 text-slate-600'}`}>
                           <MathText text={`${String.fromCharCode(65 + optionIndex)}. ${option}`} />
-                          {optionIndex === question.correctIndex && <span className="ml-2 font-semibold">Đáp án đúng</span>}
+                          {optionIndex === question.correctIndex && <span className="ml-2 font-semibold">{t(language, "Đáp án đúng")}</span>}
                         </div>
                       ))}
                     </div>
-                    <div className="rounded-xl bg-slate-50 p-3 text-sm leading-5 text-slate-600"><strong className="text-slate-800">Giải thích: </strong><MathText text={question.explanation} /></div>
+                    <div className="rounded-xl bg-slate-50 p-3 text-sm leading-5 text-slate-600"><strong className="text-slate-800">{t(language, "Giải thích:")} </strong><MathText text={question.explanation} /></div>
                   </article>
                 ))}
               </div>

@@ -1,4 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { t } from '@/i18n/i18n';
 
 interface StudentFeaturePageProps {
   icon: LucideIcon;
@@ -7,6 +9,7 @@ interface StudentFeaturePageProps {
 }
 
 export function StudentFeaturePage({ icon: Icon, title, description }: StudentFeaturePageProps) {
+  const language = useAppLanguage();
   return (
     <section className="card min-h-[320px] p-8 flex flex-col items-center justify-center text-center">
       <div className="w-14 h-14 rounded-2xl bg-violet-50 flex items-center justify-center">
@@ -15,7 +18,7 @@ export function StudentFeaturePage({ icon: Icon, title, description }: StudentFe
       <h2 className="mt-5 text-lg font-semibold text-slate-900">{title}</h2>
       <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
       <span className="mt-5 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-        Khu vực đang được chuẩn bị
+        {t(language, 'feature.comingSoon')}
       </span>
     </section>
   );

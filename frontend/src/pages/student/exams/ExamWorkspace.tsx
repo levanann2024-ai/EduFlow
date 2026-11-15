@@ -22,6 +22,8 @@ import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
 import type { ExamQuestion } from './examQuestions';
 import { authenticatedFetch } from '@/auth/authApi';
+import type { AppLanguage } from '@/settings/userSettings';
+import { studentLocale, t } from '@/i18n/i18n';
 import {
   createStudentExamMobileUploadSession,
   deleteStudentExamMobileUpload,
@@ -34,25 +36,43 @@ import {
 
 type QuestionLayout = 'vertical' | 'horizontal';
 
-const fallbackSectionLabels: Record<ExamQuestion['kind'], { title: string; instruction: string }> = {
-  choice: { title: 'Trắc nghiệm nhiều phương án', instruction: 'Thí sinh chọn một phương án đúng cho mỗi câu.' },
-  'true-false': { title: 'Trắc nghiệm đúng / sai', instruction: 'Thí sinh chọn đúng hoặc sai cho từng ý.' },
-  short: { title: 'Trắc nghiệm trả lời ngắn', instruction: 'Thí sinh ghi câu trả lời ngắn cho từng câu.' },
-  essay: { title: 'Tự luận', instruction: 'Thí sinh trình bày lời giải và lập luận.' },
-};
+function fallbackSectionLabels(language: AppLanguage): Record<ExamQuestion['kind'], { title: string; instruction: string }> {
+  return {
+    choice: {
+      title: t(language, 'examWorkspace.multipleChoice'),
+      instruction: t(language, 'examWorkspace.multipleChoiceInstruction'),
+    },
+    'true-false': {
+      title: t(language, 'examWorkspace.trueFalse'),
+      instruction: t(language, 'examWorkspace.trueFalseInstruction'),
+    },
+    short: {
+      title: t(language, 'examWorkspace.shortQuestion'),
+      instruction: t(language, 'examWorkspace.shortQuestionInstruction'),
+    },
+    essay: {
+      title: t(language, 'examWorkspace.essay'),
+      instruction: t(language, 'examWorkspace.essayInstruction'),
+    },
+  };
+}
 
-const behaviorSignalLabels: Record<StudentExamBehaviorEventData['event_type'], string> = {
-  tab_hidden: 'Chuyển tab hoặc ẩn trang thi',
-  face_missing: 'Không phát hiện khuôn mặt trong khung hình',
-  multiple_faces: 'Phát hiện nhiều khuôn mặt',
-  speech_activity: 'Phát hiện hoạt động giọng nói',
-};
+function behaviorSignalLabel(eventType: StudentExamBehaviorEventData['event_type'], language: AppLanguage) {
+  const keys: Record<StudentExamBehaviorEventData['event_type'], string> = {
+    tab_hidden: 'examWorkspace.signal.tabHidden',
+    face_missing: 'examWorkspace.signal.faceMissing',
+    multiple_faces: 'examWorkspace.signal.multipleFaces',
+    speech_activity: 'examWorkspace.signal.speechActivity',
+  };
+  return t(language, keys[eventType]);
+}
 
 function formatPoints(points: number) {
   return Number(points.toFixed(2)).toString();
 }
 
 interface ExamWorkspaceProps {
+  language: AppLanguage;
   examTitle: string;
   subject: string;
   roomCode: string;
@@ -176,6 +196,7 @@ function getMobileUploadUrl(token: string) {
 }
 
 export function ExamWorkspace({
+  language,
   examTitle,
   subject,
   roomCode,
@@ -221,7 +242,8 @@ export function ExamWorkspace({
   const [formatErrors, setFormatErrors] = useState<Record<number, string>>({});
   const [imageStatus, setImageStatus] = useState<Record<number, string>>({});
   const essayTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const gradeLabel = examTitle.match(/khối\s*\d+/i)?.[0] ?? 'Khối 11';
+  const gradeNumber = examTitle.match(/khối\s*(\d+)/i)?.[1] ?? '11';
+  const gradeLabel = t(language, 'examWorkspace.grade', { number: gradeNumber });
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -254,7 +276,7 @@ export function ExamWorkspace({
         monitorSpeech: settings.monitorSpeech,
         sendEventToBackend: (eventData) => sendStudentExamBehaviorEvent(sessionId, eventData),
         onDetection: (eventData) => {
-          const message = behaviorSignalLabels[eventData.event_type];
+          const message = behaviorSignalLabel(eventData.event_type, language);
           setBehaviorWarnings((current) => [...current, {
             id: `${eventData.event_type}:${eventData.timestamp}`,
             message,
@@ -292,7 +314,7 @@ export function ExamWorkspace({
       stopBehaviorMonitorRef.current?.();
       stopBehaviorMonitorRef.current = null;
     };
-  }, [sessionId, settings.monitorFace, settings.monitorSpeech, settings.monitorTabSwitch, stream]);
+  }, [language, sessionId, settings.monitorFace, settings.monitorSpeech, settings.monitorTabSwitch, stream]);
   useEffect(() => {
     essayImagesRef.current = essayImages;
   }, [essayImages]);
@@ -310,16 +332,16 @@ export function ExamWorkspace({
           [source[index], source[swapIndex]] = [source[swapIndex], source[index]];
         }
       }
-      const labels = fallbackSectionLabels[source[0].kind];
+      const labels = fallbackSectionLabels(language)[source[0].kind];
       return source.map((question, index) => ({
         ...question,
         sectionId,
         displayNumber: index + 1,
-        sectionTitle: question.sectionTitle ?? `Phần ${index + 1}: ${labels.title}`,
+        sectionTitle: question.sectionTitle ?? t(language, 'examWorkspace.section', { number: index + 1, title: labels.title }),
         sectionInstruction: question.sectionInstruction ?? labels.instruction,
       }));
     });
-  }, [questions, settings.shuffleQuestions]);
+  }, [language, questions, settings.shuffleQuestions]);
   const answeredCount = new Set([
     ...Object.keys(answers),
     ...Object.entries(essayImages).filter(([, images]) => images.length > 0).map(([questionId]) => questionId),
@@ -816,17 +838,17 @@ export function ExamWorkspace({
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white"><BookIcon /></span>
           <div className="min-w-0">
             <p className="text-sm font-extrabold text-blue-700">EduFlow</p>
-            <p className="max-w-[70vw] text-sm font-semibold leading-5 text-slate-800 sm:max-w-[calc(100vw-220px)] sm:text-base">{subject} - {examTitle} - {gradeLabel} - Mã phòng {roomCode}</p>
+            <p className="max-w-[70vw] text-sm font-semibold leading-5 text-slate-800 sm:max-w-[calc(100vw-220px)] sm:text-base">{subject} - {examTitle} - {gradeLabel} - {t(language, 'examWorkspace.roomCode', { code: roomCode })}</p>
           </div>
         </div>
         <button type="button" onClick={onExit} className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
-          <ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Thoát bài thi</span>
+          <ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">{t(language, 'examWorkspace.exit')}</span>
         </button>
       </header>
 
       {!isFullscreen && (
         <div role="status" className="flex shrink-0 items-center gap-2 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-900">
-          <AlertTriangle className="h-4 w-4 shrink-0" /> Bài thi hiện không ở chế độ toàn màn hình. Sự việc được ghi nhận trên thiết bị.
+          <AlertTriangle className="h-4 w-4 shrink-0" /> {t(language, 'examWorkspace.notFullscreen')}
         </div>
       )}
       <div
@@ -841,26 +863,26 @@ export function ExamWorkspace({
       >
         <span>
           Webcam: {settings.monitorFace
-            ? behaviorMonitorStatus === 'active' ? 'đang theo dõi' : behaviorMonitorStatus === 'error' ? 'có lỗi, xem cảnh báo' : 'đang khởi động'
-            : 'không bật phát hiện'}
+            ? behaviorMonitorStatus === 'active' ? t(language, 'examWorkspace.monitoring') : behaviorMonitorStatus === 'error' ? t(language, 'examWorkspace.monitorError') : t(language, 'examWorkspace.monitorStarting')
+            : t(language, 'examWorkspace.monitorDisabled')}
         </span>
         <span>
           Micro: {settings.monitorSpeech
-            ? behaviorMonitorStatus === 'active' ? 'đang theo dõi' : behaviorMonitorStatus === 'error' ? 'có lỗi, xem cảnh báo' : 'đang khởi động'
-            : 'không bật phát hiện'}
+            ? behaviorMonitorStatus === 'active' ? t(language, 'examWorkspace.monitoring') : behaviorMonitorStatus === 'error' ? t(language, 'examWorkspace.monitorError') : t(language, 'examWorkspace.monitorStarting')
+            : t(language, 'examWorkspace.monitorDisabled')}
         </span>
-        {behaviorMonitorStatus === 'disabled' && <span>Giáo viên chưa bật phát hiện trong cấu hình phòng; chỉ mở quyền webcam/micro thì hệ thống chưa giám sát.</span>}
+        {behaviorMonitorStatus === 'disabled' && <span>{t(language, 'examWorkspace.monitorDisabledHint')}</span>}
       </div>
       {behaviorWarnings.length > 0 && (
         <section role="status" aria-live="polite" className="max-h-28 shrink-0 overflow-y-auto border-b border-amber-400 bg-amber-50 px-4 py-2 text-xs text-amber-950">
-          <p className="font-bold">Đã ghi nhận tín hiệu cần giáo viên xem xét:</p>
+          <p className="font-bold">{t(language, 'examWorkspace.signalsRecorded')}</p>
           <ul className="mt-1 space-y-0.5">
             {behaviorWarnings.map((warning) => (
               <li key={warning.id}>
                 {warning.message}
-                {warning.durationSeconds > 0 && ` - ${warning.durationSeconds.toFixed(1)} giây`}
+                {warning.durationSeconds > 0 && ` - ${warning.durationSeconds.toFixed(1)} ${t(language, 'examWorkspace.seconds')}`}
                 {' - '}
-                {new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(warning.timestamp))}
+                {new Intl.DateTimeFormat(studentLocale(language), { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(warning.timestamp))}
               </li>
             ))}
           </ul>
@@ -872,21 +894,21 @@ export function ExamWorkspace({
             <div className="flex items-start justify-between gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700"><AlertTriangle className="h-5 w-5" /></span>
             </div>
-            <h2 id="exam-security-alert-title" className="mt-3 text-lg font-bold text-slate-900">Nhắc nhở trong phòng thi</h2>
+            <h2 id="exam-security-alert-title" className="mt-3 text-lg font-bold text-slate-900">{t(language, 'examWorkspace.securityTitle')}</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">{securityAlert}</p>
-            <button type="button" autoFocus onClick={() => setSecurityAlert('')} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700">Đã hiểu</button>
+            <button type="button" autoFocus onClick={() => setSecurityAlert('')} className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700">{t(language, 'examWorkspace.understood')}</button>
           </section>
         </div>
       )}
       {cameraQuestionId !== null && (
         <div className="fixed inset-0 z-[2147483002] flex items-center justify-center bg-slate-950/75 p-4">
-          <section role="dialog" aria-modal="true" aria-label="Chụp ảnh bài làm bằng webcam" className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label={t(language, 'examWorkspace.webcamCapture')} className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
             <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <h2 className="font-bold text-slate-900">Chụp ảnh câu {cameraQuestionId}</h2>
+              <h2 className="font-bold text-slate-900">{t(language, 'examWorkspace.captureQuestion', { number: cameraQuestionId })}</h2>
               <button
                 type="button"
                 onClick={() => { stopCamera(); setCameraError(''); }}
-                aria-label="Đóng camera"
+                aria-label={t(language, 'examWorkspace.closeCamera')}
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
               >
                 <X className="h-5 w-5" />
@@ -901,7 +923,7 @@ export function ExamWorkspace({
                 className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 font-bold text-white hover:bg-blue-800"
               >
                 <Camera className="h-5 w-5" />
-                Chụp
+                {t(language, 'examWorkspace.capture')}
               </button>
             </div>
           </section>
@@ -909,16 +931,16 @@ export function ExamWorkspace({
       )}
       {mobileQrSession && (
         <div className="fixed inset-0 z-[2147483002] flex items-center justify-center bg-slate-950/75 p-4">
-          <section role="dialog" aria-modal="true" aria-label="Chụp ảnh bài làm bằng điện thoại" className="w-full max-w-md rounded-2xl bg-white p-5 text-center shadow-2xl">
+          <section role="dialog" aria-modal="true" aria-label={t(language, 'examWorkspace.phoneCapture')} className="w-full max-w-md rounded-2xl bg-white p-5 text-center shadow-2xl">
             <div className="flex items-center justify-between gap-3 text-left">
               <div>
-                <h2 className="font-bold text-slate-900">Chụp bằng Điện thoại (Quét QR)</h2>
-                <p className="mt-1 text-xs text-slate-500">Câu {mobileQrSession.questionNumber}</p>
+                <h2 className="font-bold text-slate-900">{t(language, 'examWorkspace.phoneCapture')}</h2>
+                <p className="mt-1 text-xs text-slate-500">{t(language, 'examWorkspace.question', { number: mobileQrSession.questionNumber })}</p>
               </div>
               <button
                 type="button"
                 onClick={() => void closeMobileQr()}
-                aria-label="Đóng mã QR"
+                aria-label={t(language, 'examWorkspace.closeQr')}
                 className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
               >
                 <X className="h-5 w-5" />
@@ -932,13 +954,13 @@ export function ExamWorkspace({
                 includeMargin
               />
             </div>
-            <p role="status" className="mt-3 text-sm text-slate-600">Quét mã bằng điện thoại. Ảnh sẽ tự đồng bộ lên bài làm.</p>
+            <p role="status" className="mt-3 text-sm text-slate-600">{t(language, 'examWorkspace.scanQr')}</p>
             <p className="mt-1 text-xs text-slate-500">
-              Mã có hiệu lực đến {new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(new Date(mobileQrSession.expiresAt))}.
+              {t(language, 'examWorkspace.qrExpires', { time: new Intl.DateTimeFormat(studentLocale(language), { hour: '2-digit', minute: '2-digit' }).format(new Date(mobileQrSession.expiresAt)) })}
             </p>
             {mobileQrError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{mobileQrError}</p>}
             <button type="button" onClick={() => void closeMobileQr()} className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Đóng và hủy mã
+              {t(language, 'examWorkspace.cancelQr')}
             </button>
           </section>
         </div>
@@ -976,10 +998,10 @@ export function ExamWorkspace({
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <section className="min-w-0 space-y-4 p-3 sm:p-5 lg:overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <p className="text-sm font-semibold text-slate-700">Cách hiển thị câu hỏi</p>
+            <p className="text-sm font-semibold text-slate-700">{t(language, 'examWorkspace.questionLayout')}</p>
             <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-              <button type="button" onClick={() => setQuestionLayout('vertical')} aria-pressed={questionLayout === 'vertical'} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${questionLayout === 'vertical' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>Trải dọc</button>
-              <button type="button" onClick={() => setQuestionLayout('horizontal')} aria-pressed={questionLayout === 'horizontal'} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${questionLayout === 'horizontal' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>Ngang</button>
+              <button type="button" onClick={() => setQuestionLayout('vertical')} aria-pressed={questionLayout === 'vertical'} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${questionLayout === 'vertical' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>{t(language, 'examWorkspace.vertical')}</button>
+              <button type="button" onClick={() => setQuestionLayout('horizontal')} aria-pressed={questionLayout === 'horizontal'} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${questionLayout === 'horizontal' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'}`}>{t(language, 'examWorkspace.horizontal')}</button>
             </div>
           </div>
 
@@ -995,13 +1017,13 @@ export function ExamWorkspace({
             const firstQuestionPoints = questionsInSection[0]?.points;
             const hasSameQuestionPoints = questionsInSection.every((question) => question.points === firstQuestionPoints);
             const sectionPointLabel = hasSameQuestionPoints && item.kind !== 'true-false'
-              ? `(${formatPoints(firstQuestionPoints ?? 0)} điểm/câu)`
-              : `(Tổng điểm phần: ${formatPoints(sectionPoints)})`;
+              ? t(language, 'examWorkspace.pointsPerQuestion', { points: formatPoints(firstQuestionPoints ?? 0) })
+              : t(language, 'examWorkspace.sectionPoints', { points: formatPoints(sectionPoints) });
             return (
               <article id={`exam-question-${item.id}`} key={item.id} className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
                 {firstInSection && (
                   <header className="mb-5 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-                    <h2 className="font-extrabold tracking-tight text-slate-900">{item.sectionTitle} <span className="whitespace-nowrap">({formatPoints(sectionPoints)} điểm)</span></h2>
+                    <h2 className="font-extrabold tracking-tight text-slate-900">{item.sectionTitle} <span className="whitespace-nowrap">({formatPoints(sectionPoints)} {t(language, 'examWorkspace.points')})</span></h2>
                     <p className="mt-2 text-sm leading-6 text-slate-800">
                       <strong>
                         {item.sectionInstruction} {sectionPointLabel}
@@ -1010,8 +1032,8 @@ export function ExamWorkspace({
                   </header>
                 )}
                 <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-slate-100 pb-4">
-                  <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">Câu {item.displayNumber}</h2>
-                  <span className="text-sm font-medium text-slate-800">({formatPoints(item.points)} điểm)</span>
+                  <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">{t(language, 'examWorkspace.question', { number: item.displayNumber })}</h2>
+                  <span className="text-sm font-medium text-slate-800">({formatPoints(item.points)} {t(language, 'examWorkspace.points')})</span>
                 </div>
 
                 <h3 className="mb-5 text-lg font-semibold leading-8 text-slate-900 sm:text-xl"><MathText text={item.prompt} /></h3>
@@ -1038,7 +1060,7 @@ export function ExamWorkspace({
                         <p className="text-base leading-7 text-slate-700"><strong className="mr-2 text-slate-900">{String.fromCharCode(97 + index)}.</strong><MathText text={statement} /></p>
                         <div className="flex gap-2">
                           {(['Đúng', 'Sai'] as const).map((value) => (
-                            <button key={value} type="button" onClick={() => setTrueFalse(item.id, index, value)} aria-pressed={answerState[index] === value} className={`min-w-20 rounded-lg border px-4 py-2 text-sm font-semibold transition ${answerState[index] === value ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{value}</button>
+                            <button key={value} type="button" onClick={() => setTrueFalse(item.id, index, value)} aria-pressed={answerState[index] === value} className={`min-w-20 rounded-lg border px-4 py-2 text-sm font-semibold transition ${answerState[index] === value ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{t(language, value === 'Đúng' ? 'examWorkspace.true' : 'examWorkspace.false')}</button>
                           ))}
                         </div>
                       </div>
@@ -1049,11 +1071,11 @@ export function ExamWorkspace({
                 {item.kind === 'short' && (
                   <div>
                     <label className="block">
-                      <span className="text-sm font-medium text-slate-700">Câu trả lời ngắn</span>
+                      <span className="text-sm font-medium text-slate-700">{t(language, 'examWorkspace.shortAnswer')}</span>
                       <input
                         value={answers[item.id] ?? ''}
                         onChange={(event) => setAnswer(item.id, event.target.value)}
-                        placeholder="Nhập đáp án..."
+                        placeholder={t(language, 'examWorkspace.answerPlaceholder')}
                         className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-base outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       />
                     </label>
@@ -1062,7 +1084,7 @@ export function ExamWorkspace({
 
                 {item.kind === 'essay' && (
                   <div className="space-y-3">
-                    <p className="text-sm text-slate-500">Tự trình bày lời giải bằng văn bản hoặc đính kèm ảnh bài làm.</p>
+                    <p className="text-sm text-slate-500">{t(language, 'examWorkspace.essayHint')}</p>
                     <div
                       className="space-y-3"
                       onBlurCapture={(event) => {
@@ -1077,12 +1099,12 @@ export function ExamWorkspace({
                         }
                       }}
                     >
-                      <span className="text-sm font-medium text-slate-700">Bài làm</span>
+                      <span className="text-sm font-medium text-slate-700">{t(language, 'examWorkspace.yourWork')}</span>
                       {answers[item.id]?.trim() && !editingEssay[item.id] ? (
                         <button
                           type="button"
                           onClick={() => setEditingEssay((current) => ({ ...current, [item.id]: true }))}
-                          title="Bấm để sửa văn bản và LaTeX"
+                          title={t(language, 'examWorkspace.editAnswer')}
                           className="mt-2 flex min-h-32 w-full flex-col items-start justify-start select-text whitespace-pre-wrap rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-base font-normal leading-7 text-slate-800 hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                         >
                           <AnswerPreview text={answers[item.id]} />
@@ -1094,38 +1116,38 @@ export function ExamWorkspace({
                             value={answers[item.id] ?? ''}
                             onChange={(event) => setAnswer(item.id, event.target.value)}
                             rows={6}
-                            aria-label="Bài làm tự luận"
-                            placeholder="Trình bày lời giải..."
+                            aria-label={t(language, 'examWorkspace.essayLabel')}
+                            placeholder={t(language, 'examWorkspace.essayPlaceholder')}
                             className="block min-h-32 w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-left align-top text-base leading-6 outline-none [align-content:start] transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                           />
                         </div>
                       )}
                     {essayImages[item.id]?.length ? (
-                      <div className="mt-3 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3" aria-label="Ảnh bài làm đã đính kèm">
+                      <div className="mt-3 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3" aria-label={t(language, 'examWorkspace.attachments')}>
                         {essayImages[item.id].map((image) => (
                           <div key={image.id} className="flex min-w-0 items-start gap-2">
                             <button
                               type="button"
                               disabled={!image.dataUrl}
                               onClick={() => setSelectedEssayImage(image)}
-                              aria-label={`Xem ảnh ${image.name}`}
+                              aria-label={t(language, 'examWorkspace.viewImage', { name: image.name })}
                               className="block h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white disabled:cursor-wait"
                             >
                               {image.dataUrl ? (
                                 <img src={image.dataUrl} alt={image.name} className="h-full w-full object-contain" />
                               ) : (
-                                <span className="flex h-full items-center justify-center text-xs text-slate-400">Đang tải...</span>
+                                <span className="flex h-full items-center justify-center text-xs text-slate-400">{t(language, 'examWorkspace.loading')}</span>
                               )}
                             </button>
                             <div className="min-w-0 pt-1">
                               <p className="max-w-48 truncate text-xs font-semibold text-slate-700">{image.name}</p>
-                              <p className="mt-1 text-[0.6875rem] text-emerald-700">Đã đính kèm</p>
+                              <p className="mt-1 text-[0.6875rem] text-emerald-700">{t(language, 'examWorkspace.attached')}</p>
                             </div>
                             <button
                               type="button"
                               onClick={() => void removeEssayImage(item.id, image)}
-                              aria-label={`Xóa ảnh ${image.name}`}
-                              title="Xóa ảnh đính kèm"
+                              aria-label={t(language, 'examWorkspace.removeImage')}
+                              title={t(language, 'examWorkspace.removeImage')}
                               className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-100 hover:text-rose-700"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1142,7 +1164,7 @@ export function ExamWorkspace({
                       className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Sparkles className="h-4 w-4" />
-                      {formattingQuestionId === item.id ? 'Đang chuẩn hóa...' : 'Chuẩn hóa ký hiệu'}
+                      {formattingQuestionId === item.id ? t(language, 'examWorkspace.normalizeLoading') : t(language, 'examWorkspace.normalize')}
                     </button>
                     {formatErrors[item.id] && <p role="alert" className="text-sm text-rose-700">{formatErrors[item.id]}</p>}
                     {!essayImages[item.id]?.length && (
@@ -1154,7 +1176,7 @@ export function ExamWorkspace({
                             onClick={() => void openWebcam(item.id)}
                             className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <Camera className="h-4 w-4" /> Chụp bằng Webcam máy tính
+                            <Camera className="h-4 w-4" /> {t(language, 'examWorkspace.webcamButton')}
                           </button>
                           <button
                             type="button"
@@ -1163,10 +1185,10 @@ export function ExamWorkspace({
                             className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Smartphone className="h-4 w-4" />
-                            {mobileQrLoading ? 'Đang tạo mã QR...' : 'Chụp bằng Điện thoại (Quét QR)'}
+                            {mobileQrLoading ? t(language, 'examWorkspace.qrLoading') : t(language, 'examWorkspace.phoneCapture')}
                           </button>
                         </div>
-                        <p className="text-xs text-slate-500">Tối đa 5 ảnh toàn bài thi, mỗi ảnh không quá 10 MB.</p>
+                        <p className="text-xs text-slate-500">{t(language, 'examWorkspace.imageLimit')}</p>
                       </>
                     )}
                     {imageStatus[item.id] && <p role="status" className="text-sm text-blue-700">{imageStatus[item.id]}</p>}
@@ -1177,10 +1199,10 @@ export function ExamWorkspace({
                 {questionLayout === 'horizontal' && (
                   <footer className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
                     <button type="button" disabled={currentIndex === 0 || !settings.allowBackNavigation} onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40">
-                      <ArrowLeft className="h-4 w-4" /> Câu trước
+                      <ArrowLeft className="h-4 w-4" /> {t(language, 'examWorkspace.previous')}
                     </button>
                     <button type="button" onClick={() => currentIndex === attemptQuestions.length - 1 ? setConfirmSubmit(true) : setCurrentIndex((index) => index + 1)} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700">
-                      {currentIndex === attemptQuestions.length - 1 ? 'Hoàn thành' : 'Câu tiếp theo'} <ArrowRight className="h-4 w-4" />
+                      {t(language, currentIndex === attemptQuestions.length - 1 ? 'examWorkspace.finish' : 'examWorkspace.next')} <ArrowRight className="h-4 w-4" />
                     </button>
                   </footer>
                 )}
@@ -1191,20 +1213,20 @@ export function ExamWorkspace({
 
         <aside className="min-w-0 space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4 lg:overflow-y-auto lg:border-l lg:border-t-0">
           <section className={`rounded-xl border p-3 ${isTimeLow ? 'border-rose-200 bg-rose-50' : 'border-blue-100 bg-blue-50'}`}>
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Clock3 className="h-4 w-4" /> Thời gian còn lại</p>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Clock3 className="h-4 w-4" /> {t(language, 'examWorkspace.timeRemaining')}</p>
             <p className={`mt-1 text-2xl font-extrabold tabular-nums ${isTimeLow ? 'text-rose-700' : 'text-blue-800'}`}>{formatDuration(secondsLeft)}</p>
           </section>
 
           <section className="rounded-xl border border-slate-200 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-bold text-slate-800">Ma trận câu hỏi</h2>
+              <h2 className="text-sm font-bold text-slate-800">{t(language, 'examWorkspace.questionMatrix')}</h2>
             </div>
             <div className="mt-3 grid grid-cols-6 gap-1.5">
               {attemptQuestions.map((item, index) => (
                 <button key={item.id} type="button" disabled={!settings.allowBackNavigation && index < currentIndex} onClick={() => {
                   setCurrentIndex(index);
                   if (questionLayout === 'vertical') document.getElementById(`exam-question-${item.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }} aria-label={`Đi đến ${item.sectionTitle}, câu ${item.displayNumber}`} aria-current={currentIndex === index ? 'step' : undefined} className={`flex aspect-square items-center justify-center rounded-md text-xs font-bold transition ${currentIndex === index ? 'bg-blue-600 text-white ring-2 ring-blue-200' : answeredQuestions.has(item.id) ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                }} aria-label={t(language, 'examWorkspace.goToQuestion', { section: item.sectionTitle, number: item.displayNumber })} aria-current={currentIndex === index ? 'step' : undefined} className={`flex aspect-square items-center justify-center rounded-md text-xs font-bold transition ${currentIndex === index ? 'bg-blue-600 text-white ring-2 ring-blue-200' : answeredQuestions.has(item.id) ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                   {item.displayNumber}
                 </button>
               ))}
@@ -1215,26 +1237,26 @@ export function ExamWorkspace({
             <section className="overflow-hidden rounded-xl border border-slate-200">
               <div className="flex items-center justify-between px-3 py-2">
                 <h2 className="text-xs font-bold text-slate-800">Webcam</h2>
-                <span className="inline-flex items-center gap-1 text-[0.625rem] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> Bật trên thiết bị</span>
+                <span className="inline-flex items-center gap-1 text-[0.625rem] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" /> {t(language, 'examWorkspace.deviceActive')}</span>
               </div>
               <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full bg-slate-950 object-cover" />
-              <p className="px-3 py-2 text-[0.625rem] text-slate-500">Chỉ hiển thị cục bộ; video không được gửi lên máy chủ.</p>
+              <p className="px-3 py-2 text-[0.625rem] text-slate-500">{t(language, 'examWorkspace.videoLocalOnly')}</p>
             </section>
           )}
           {settings.requireMicrophone && (
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-              <Mic className="h-4 w-4 text-emerald-700" /> Micro đã được kiểm tra trên thiết bị; không ghi âm.
+              <Mic className="h-4 w-4 text-emerald-700" /> {t(language, 'examWorkspace.microphoneChecked')}
             </div>
           )}
 
           <button type="button" onClick={() => setConfirmSubmit(true)} disabled={!settings.allowEarlySubmit && secondsLeft > 0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">
-            <Send className="h-4 w-4" /> Nộp bài
+            <Send className="h-4 w-4" /> {t(language, 'examWorkspace.submit')}
           </button>
-          {!settings.allowEarlySubmit && secondsLeft > 0 && <p className="text-xs text-slate-500">Phòng thi chỉ cho phép nộp bài khi hết thời gian.</p>}
+          {!settings.allowEarlySubmit && secondsLeft > 0 && <p className="text-xs text-slate-500">{t(language, 'examWorkspace.submitAtEndOnly')}</p>}
           {submissionError && (
             <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800">
               <p>{submissionError}</p>
-              <button type="button" onClick={() => void submitExam('Nộp lại bài thi')} className="mt-2 font-bold underline">Thử lưu bài lại</button>
+              <button type="button" onClick={() => void submitExam('Nộp lại bài thi')} className="mt-2 font-bold underline">{t(language, 'examWorkspace.retrySave')}</button>
             </div>
           )}
         </aside>
@@ -1244,13 +1266,13 @@ export function ExamWorkspace({
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-4">
           <section role="dialog" aria-modal="true" aria-labelledby="submit-exam-title" className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-700"><AlertTriangle className="h-5 w-5" /></span>
-            <h2 id="submit-exam-title" className="mt-3 text-lg font-bold text-slate-900">Nộp bài thi?</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">Bạn đã trả lời {answeredCount}/{questions.length} câu. Sau khi nộp, bạn không thể chỉnh sửa bài làm.</p>
-            {isSubmitting && <p role="status" className="mt-2 text-sm text-blue-700">Đang lưu bài lên hệ thống...</p>}
-            {!settings.allowEarlySubmit && secondsLeft > 0 && <p className="mt-2 text-sm text-amber-800">Giáo viên cài đặt chỉ nộp khi hết thời gian.</p>}
+            <h2 id="submit-exam-title" className="mt-3 text-lg font-bold text-slate-900">{t(language, 'examWorkspace.confirmSubmit')}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{t(language, 'examWorkspace.submitConfirmation', { answered: answeredCount, total: questions.length })}</p>
+            {isSubmitting && <p role="status" className="mt-2 text-sm text-blue-700">{t(language, 'examWorkspace.saving')}</p>}
+            {!settings.allowEarlySubmit && secondsLeft > 0 && <p className="mt-2 text-sm text-amber-800">{t(language, 'examWorkspace.submitAtEndTeacher')}</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setConfirmSubmit(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">Tiếp tục làm</button>
-              <button type="button" disabled={isSubmitting || (!settings.allowEarlySubmit && secondsLeft > 0)} onClick={() => void submitExam()} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">{isSubmitting ? 'Đang lưu...' : 'Nộp bài'}</button>
+              <button type="button" onClick={() => setConfirmSubmit(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">{t(language, 'examWorkspace.continue')}</button>
+              <button type="button" disabled={isSubmitting || (!settings.allowEarlySubmit && secondsLeft > 0)} onClick={() => void submitExam()} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">{isSubmitting ? t(language, 'examWorkspace.savingShort') : t(language, 'examWorkspace.submit')}</button>
             </div>
           </section>
         </div>

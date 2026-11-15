@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Maximize, Mic, ShieldAlert, Video, X } from 'lucide-react';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { t } from '@/i18n/i18n';
 
 interface PreExamCheckModalProps {
   examTitle: string;
@@ -33,6 +35,7 @@ export function PreExamCheckModal({
   onClose,
   onStart,
 }: PreExamCheckModalProps) {
+  const language = useAppLanguage();
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
@@ -56,7 +59,7 @@ export function PreExamCheckModal({
     setError('');
     try {
       if (!needsCamera && !needsMicrophone) return;
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Trình duyệt hiện tại không hỗ trợ kiểm tra thiết bị.');
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error(t(language, 'preExam.error.unsupported'));
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: needsCamera,
         audio: needsMicrophone,
@@ -67,12 +70,12 @@ export function PreExamCheckModal({
       setMicrophoneReady(!needsMicrophone || mediaStream.getAudioTracks().some((track) => track.readyState === 'live'));
     } catch (deviceError) {
       const reason = deviceError instanceof Error && deviceError.name === 'NotAllowedError'
-        ? 'Bạn cần cấp quyền thiết bị mà giáo viên yêu cầu trong trình duyệt để tiếp tục.'
+        ? t(language, 'preExam.error.permission')
         : deviceError instanceof Error && deviceError.name === 'NotFoundError'
-          ? 'Không tìm thấy thiết bị được yêu cầu. Hãy kết nối thiết bị rồi thử lại.'
+          ? t(language, 'preExam.error.notFound')
           : deviceError instanceof Error
             ? deviceError.message
-            : 'Không thể kiểm tra thiết bị.';
+            : t(language, 'preExam.error.generic');
       setError(reason);
       setCameraReady(false);
       setMicrophoneReady(false);
@@ -81,12 +84,12 @@ export function PreExamCheckModal({
 
   const startExam = async () => {
     if (!permissionGranted) {
-      setError('Hãy kiểm tra và cấp quyền cho thiết bị giáo viên yêu cầu trước khi bắt đầu.');
+      setError(t(language, 'preExam.error.checkBeforeStart'));
       return;
     }
     setStarting(true);
     if (!document.fullscreenEnabled) {
-      setError('Trình duyệt hiện tại không hỗ trợ chế độ toàn màn hình nên chưa thể bắt đầu bài thi.');
+      setError(t(language, 'preExam.error.fullscreenUnsupported'));
       setStarting(false);
       return;
     }
@@ -94,7 +97,7 @@ export function PreExamCheckModal({
       try {
         await document.documentElement.requestFullscreen();
       } catch {
-        setError('Chưa bật được toàn màn hình. Hãy thử lại và cho phép trình duyệt mở chế độ toàn màn hình trước khi bắt đầu.');
+        setError(t(language, 'preExam.error.fullscreen'));
         setStarting(false);
         return;
       }
@@ -103,7 +106,7 @@ export function PreExamCheckModal({
       await onStart(stream ?? new MediaStream());
       streamTransferred.current = true;
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : 'Không thể bắt đầu phiên thi.');
+      setError(startError instanceof Error ? startError.message : t(language, 'preExam.error.start'));
       setStarting(false);
     }
   };
@@ -113,48 +116,48 @@ export function PreExamCheckModal({
       <section role="dialog" aria-modal="true" aria-labelledby="pre-exam-title" className="my-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">EduFlow - Phòng thi an toàn</p>
-            <h2 id="pre-exam-title" className="mt-1 text-lg font-bold text-slate-900 sm:text-xl">Quy định làm bài &amp; kiểm tra thiết bị</h2>
-            <p className="mt-1 text-sm text-slate-500">{examTitle} - Mã phòng: <strong>{roomCode}</strong></p>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-600">{t(language, 'preExam.title')}</p>
+            <h2 id="pre-exam-title" className="mt-1 text-lg font-bold text-slate-900 sm:text-xl">{t(language, 'preExam.heading')}</h2>
+            <p className="mt-1 text-sm text-slate-500">{examTitle} - {t(language, 'preExam.roomCode')} <strong>{roomCode}</strong></p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Đóng" className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} aria-label={t(language, 'preExam.close')} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </header>
 
         <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <section aria-label="Quy định thi">
-            <h3 className="font-semibold text-slate-900">Trước khi bắt đầu, bạn hãy lưu ý</h3>
+          <section aria-label={t(language, 'preExam.rules.label')}>
+            <h3 className="font-semibold text-slate-900">{t(language, 'preExam.rules.heading')}</h3>
             <div className="mt-3 space-y-2">
               {[
                 {
-                  title: 'Làm bài trong thời gian quy định',
-                  detail: `${durationMinutes} phút kể từ lúc bắt đầu. ${monitorTabSwitch ? 'Chuyển tab hoặc rời màn hình được ghi nhận để giáo viên xem xét, không tự động nộp bài.' : 'Không bật ghi nhận chuyển tab.'}`,
+                  title: t(language, 'preExam.duration.title'),
+                  detail: t(language, 'preExam.duration.detail', { minutes: durationMinutes, monitoring: monitorTabSwitch ? t(language, 'preExam.tabMonitoring') : t(language, 'preExam.noTabMonitoring') }),
                   icon: Maximize,
                 },
                 {
-                  title: 'Không sử dụng tài liệu ngoài',
-                  detail: instructions || 'Chỉ sử dụng nội dung và công cụ được phép trong bài thi.',
+                  title: t(language, 'preExam.noOutsideMaterials.title'),
+                  detail: instructions || t(language, 'preExam.noOutsideMaterials.detail'),
                   icon: ShieldAlert,
                 },
                 ...(requireMicrophone ? [{
-                  title: 'Cho phép kiểm tra micro',
-                  detail: 'Micro chỉ được kiểm tra trên thiết bị; EduFlow không ghi âm hay tải âm thanh lên.',
+                  title: t(language, 'preExam.microphone.title'),
+                  detail: t(language, 'preExam.microphone.detail'),
                   icon: Mic,
                 }] : []),
                 ...(monitorSpeech ? [{
-                  title: 'Phát hiện hoạt động giọng nói',
-                  detail: 'Âm thanh được phân tích trực tiếp trên thiết bị; chỉ gửi thời điểm và thời lượng phát hiện, không ghi âm hay tải âm thanh lên.',
+                  title: t(language, 'preExam.speech.title'),
+                  detail: t(language, 'preExam.speech.detail'),
                   icon: Mic,
                 }] : []),
                 ...(needsCamera ? [{
-                  title: 'Cho phép kiểm tra webcam',
+                  title: t(language, 'preExam.webcam.title'),
                   detail: monitorFace
-                    ? 'Hình ảnh webcam chỉ được phân tích trực tiếp trên thiết bị để phát hiện số khuôn mặt; không chụp ảnh, lưu video hoặc truyền hình ảnh.'
-                    : 'Webcam chỉ hiện bản xem trước trên thiết bị; không ghi hình hoặc truyền video.',
+                    ? t(language, 'preExam.webcam.faceDetail')
+                    : t(language, 'preExam.webcam.previewDetail'),
                   icon: Video,
                 }] : []),
                 {
-                  title: allowBackNavigation ? 'Có thể quay lại câu trước' : 'Không thể quay lại câu trước',
-                  detail: allowEarlySubmit ? 'Có thể nộp bài sớm sau khi hoàn tất.' : 'Chỉ nộp bài khi hết thời gian.',
+                  title: t(language, allowBackNavigation ? 'preExam.backAllowed.title' : 'preExam.backDenied.title'),
+                  detail: t(language, allowEarlySubmit ? 'preExam.earlySubmit' : 'preExam.submitAtEnd'),
                   icon: ShieldAlert,
                 },
               ].map(({ title, detail, icon: Icon }, index) => (
@@ -169,13 +172,20 @@ export function PreExamCheckModal({
             </div>
           </section>
 
-          <section aria-label="Kiểm tra thiết bị" className="space-y-3">
+          <section aria-label={t(language, 'preExam.devices.label')} className="space-y-3">
             <div>
-              <h3 className="font-semibold text-slate-900">Kiểm tra thiết bị</h3>
+              <h3 className="font-semibold text-slate-900">{t(language, 'preExam.devices.label')}</h3>
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 {needsCamera || needsMicrophone
-                  ? `Phòng thi cần quyền truy cập ${[needsCamera && 'webcam', needsMicrophone && 'micro'].filter(Boolean).join(' và ')} để ${[monitorFace && 'phát hiện khuôn mặt trên thiết bị', monitorSpeech && 'phát hiện hoạt động giọng nói trên thiết bị', (requireCamera || requireMicrophone) && 'kiểm tra thiết bị'].filter(Boolean).join(' và ')}.`
-                  : 'Phòng thi không yêu cầu webcam hoặc micro.'}
+                  ? t(language, 'preExam.devices.required', {
+                    devices: [needsCamera && t(language, 'preExam.camera.label'), needsMicrophone && t(language, 'preExam.microphone.label')].filter(Boolean).join(language === 'en' ? ' and ' : ' và '),
+                    purposes: [
+                      monitorFace && t(language, 'preExam.devices.purpose.face'),
+                      monitorSpeech && t(language, 'preExam.devices.purpose.speech'),
+                      (requireCamera || requireMicrophone) && t(language, 'preExam.devices.purpose.check'),
+                    ].filter(Boolean).join(language === 'en' ? ' and ' : ' và '),
+                  })
+                  : t(language, 'preExam.devices.notRequired')}
               </p>
             </div>
             <div className="relative overflow-hidden rounded-xl bg-slate-950">
@@ -184,26 +194,26 @@ export function PreExamCheckModal({
               ) : (
                 <div className="flex aspect-video flex-col items-center justify-center gap-2 text-slate-400">
                   <Video className="h-8 w-8" />
-                  <span className="text-xs">{needsCamera ? 'Webcam chưa được kiểm tra' : 'Không yêu cầu webcam'}</span>
+                  <span className="text-xs">{needsCamera ? t(language, 'preExam.camera.notChecked') : t(language, 'preExam.camera.notRequired')}</span>
                 </div>
               )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs font-medium ${!needsCamera || cameraReady ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
-                <Video className="h-4 w-4" /> Webcam {needsCamera ? cameraReady ? 'sẵn sàng' : 'chưa kiểm tra' : 'không yêu cầu'}
+                <Video className="h-4 w-4" /> {t(language, 'preExam.camera.label')} {needsCamera ? cameraReady ? t(language, 'preExam.camera.ready') : t(language, 'preExam.camera.notChecked') : t(language, 'preExam.camera.required')}
                 {cameraReady && needsCamera && <Check className="ml-auto h-4 w-4" />}
               </div>
               <div className={`flex items-center gap-2 rounded-lg border p-2.5 text-xs font-medium ${!needsMicrophone || microphoneReady ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
-                <Mic className="h-4 w-4" /> Micro {needsMicrophone ? microphoneReady ? 'sẵn sàng' : 'chưa kiểm tra' : 'không yêu cầu'}
+                <Mic className="h-4 w-4" /> {t(language, 'preExam.microphone.label')} {needsMicrophone ? microphoneReady ? t(language, 'preExam.camera.ready') : t(language, 'preExam.camera.notChecked') : t(language, 'preExam.camera.required')}
                 {microphoneReady && needsMicrophone && <Check className="ml-auto h-4 w-4" />}
               </div>
             </div>
             <p className="rounded-lg bg-blue-50 px-3 py-2 text-[0.6875rem] leading-4 text-blue-800">
-              Webcam và micro chỉ được xử lý trực tiếp trên thiết bị. Không chụp ảnh, ghi âm hoặc truyền dữ liệu hình ảnh/âm thanh; máy chủ chỉ nhận loại sự kiện, thời điểm và thời lượng.
+              {t(language, 'preExam.mediaPrivacy')}
             </p>
             {!permissionGranted && (needsCamera || needsMicrophone) && (
               <button type="button" onClick={() => void requestDevices()} className="w-full rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50">
-                Kiểm tra {needsCamera && needsMicrophone ? 'webcam & micro' : needsCamera ? 'webcam' : 'micro'}
+                {t(language, 'preExam.checkDevices', { devices: needsCamera && needsMicrophone ? `${t(language, 'preExam.camera.label')} & ${t(language, 'preExam.microphone.label')}` : t(language, needsCamera ? 'preExam.camera.label' : 'preExam.microphone.label') })}
               </button>
             )}
             {error && <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{error}</p>}
@@ -211,9 +221,9 @@ export function PreExamCheckModal({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs text-slate-500">Khi tiếp tục, bạn xác nhận đã đọc các quy định của phòng thi.</p>
+          <p className="text-xs text-slate-500">{t(language, 'preExam.confirmRead')}</p>
           <button type="button" onClick={() => void startExam()} disabled={!permissionGranted || starting} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-            <Check className="h-4 w-4" /> Xác nhận &amp; Bắt đầu làm bài thi
+            <Check className="h-4 w-4" /> {t(language, 'preExam.start')}
           </button>
         </footer>
       </section>

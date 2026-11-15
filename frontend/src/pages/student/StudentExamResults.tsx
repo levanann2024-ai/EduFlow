@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, CircleHelp, CircleX, Clock3, Send, Sparkles, Star, X } from 'lucide-react';
 import { MathText } from '@/components/MathText';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
 import {
   downloadStudentExamResultFile,
   listStudentExamAppeals,
@@ -34,9 +36,9 @@ function formatPoints(value: number) {
   return Number(value.toFixed(2)).toString();
 }
 
-function formatDate(value: string | null) {
-  if (!value) return 'Chưa có thông tin';
-  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+function formatDate(value: string | null, language: 'vi' | 'en') {
+  if (!value) return t(language, 'studentExam.noInfo');
+  return new Intl.DateTimeFormat(studentLocale(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
 function scoreColor(score: number, maxScore: number) {
@@ -149,6 +151,7 @@ export function StudentExamResults({
   bookmarkPendingIds,
   onToggleSaved,
 }: StudentExamResultsProps) {
+  const language = useAppLanguage();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [revealStage, setRevealStage] = useState<RevealStage>('details');
   const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
@@ -319,7 +322,7 @@ export function StudentExamResults({
   };
 
   if (loading && results.length === 0) {
-    return <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">Đang tải kết quả kiểm tra...</p>;
+    return <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">{t(language, 'studentExam.loading')}</p>;
   }
   if (error && results.length === 0) {
     return (
@@ -332,8 +335,8 @@ export function StudentExamResults({
     return (
       <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-center">
         <CircleHelp className="h-10 w-10 text-slate-300" />
-        <p className="mt-3 font-semibold text-slate-700">Chưa có bài kiểm tra được công bố điểm</p>
-        <p className="mt-1 text-sm text-slate-500">Khi giáo viên chấm và công bố điểm, bài làm sẽ xuất hiện tại đây.</p>
+        <p className="mt-3 font-semibold text-slate-700">{t(language, 'studentExam.empty.title')}</p>
+        <p className="mt-1 text-sm text-slate-500">{t(language, 'studentExam.empty.description')}</p>
       </div>
     );
   }
@@ -343,7 +346,7 @@ export function StudentExamResults({
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-          <h2 className="text-xl font-bold text-slate-900">Bài kiểm tra đã có điểm</h2>
+          <h2 className="text-xl font-bold text-slate-900">{t(language, 'studentExam.list.title')}</h2>
           </div>
         </div>
         {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
@@ -362,11 +365,11 @@ export function StudentExamResults({
                     <div className="min-w-0">
                       <span className="flex items-center gap-2">
                         <span className="truncate text-base font-bold text-slate-900">{result.title}</span>
-                        {unread && <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">Điểm mới</span>}
+                        {unread && <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">{t(language, 'studentExam.newGrade')}</span>}
                       </span>
-                      <p className="mt-1 text-sm text-slate-500">{result.subject} - {result.className}</p>
+                      <p className="mt-1 text-sm text-slate-500">{localizeStudentSubject(result.subject, language)} - {result.className}</p>
                       <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-                        <Clock3 className="h-3.5 w-3.5" /> Ngày công bố: {formatDate(result.grade.gradedAt)}
+                        <Clock3 className="h-3.5 w-3.5" /> {t(language, 'studentExam.publishedAt')} {formatDate(result.grade.gradedAt, language)}
                       </p>
                     </div>
                     <strong className="shrink-0 text-2xl font-extrabold" style={{ color: scoreColor(result.grade.totalScore, result.questions.reduce((sum, question) => sum + question.points, 0)) }}>
@@ -378,8 +381,8 @@ export function StudentExamResults({
                   type="button"
                   disabled={bookmarkPendingIds.has(result.sessionId)}
                   aria-pressed={savedResultIds.has(result.sessionId)}
-                  aria-label={savedResultIds.has(result.sessionId) ? `Bỏ lưu ${result.title}` : `Lưu ${result.title}`}
-                  title={savedResultIds.has(result.sessionId) ? 'Bỏ lưu' : 'Lưu bài kiểm tra'}
+                  aria-label={savedResultIds.has(result.sessionId) ? `${t(language, 'studentExam.unsave')} ${result.title}` : `${t(language, 'studentExam.save')} ${result.title}`}
+                  title={savedResultIds.has(result.sessionId) ? t(language, 'studentExam.unsave') : t(language, 'studentExam.save')}
                   onClick={() => onToggleSaved(result)}
                   className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-amber-50 hover:text-amber-600 disabled:opacity-50"
                 >
@@ -407,7 +410,7 @@ export function StudentExamResults({
               }}
               className="exam-score-intro text-3xl font-extrabold leading-tight text-blue-700 sm:text-5xl"
             >
-              Điểm kiểm tra {selectedResult.title} của bạn là...
+              {t(language, 'studentExam.scoreReveal', { title: selectedResult.title })}
             </p>
           ) : (
             <>
@@ -425,7 +428,7 @@ export function StudentExamResults({
                   {formatPoints(selectedResult.grade.totalScore)}
                 </span>
                 <span className="text-xl font-bold text-slate-500 sm:text-5xl">
-                  / {formatPoints(maxScore)} điểm
+                  / {formatPoints(maxScore)} {t(language, 'studentExam.points')}
                 </span>
               </div>
               {revealStage === 'actions' && (
@@ -435,14 +438,14 @@ export function StudentExamResults({
                     onClick={() => setRevealStage('details')}
                     className="min-h-12 rounded-xl bg-blue-600 px-6 py-3 text-base font-bold text-white shadow-lg transition hover:bg-blue-700"
                   >
-                    Xem chi tiết bài làm
+                    {t(language, 'studentExam.details')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedSessionId(null)}
                     className="min-h-12 rounded-xl border border-slate-300 bg-white px-6 py-3 text-base font-bold text-slate-700 transition hover:bg-slate-50"
                   >
-                    Thoát ra
+                    {t(language, 'studentExam.exit')}
                   </button>
                 </div>
               )}
@@ -460,21 +463,21 @@ export function StudentExamResults({
         onClick={() => setSelectedSessionId(null)}
         className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-blue-700"
       >
-        <ArrowLeft className="h-4 w-4" /> Danh sách bài kiểm tra
+        <ArrowLeft className="h-4 w-4" /> {t(language, 'studentExam.backToList')}
       </button>
       <header className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-        <p className="text-sm font-semibold text-blue-700">{selectedResult.subject} - {selectedResult.className}</p>
+        <p className="text-sm font-semibold text-blue-700">{localizeStudentSubject(selectedResult.subject, language)} - {selectedResult.className}</p>
         <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-950">{selectedResult.title}</h2>
-        <p className="mt-2 text-sm text-slate-500">Nộp bài {formatDate(selectedResult.submittedAt)} - Công bố điểm {formatDate(selectedResult.grade.gradedAt)}</p>
+        <p className="mt-2 text-sm text-slate-500">{t(language, 'studentExam.submittedAt')} {formatDate(selectedResult.submittedAt, language)} - {t(language, 'studentExam.gradedAt')} {formatDate(selectedResult.grade.gradedAt, language)}</p>
         <div className="mt-5 flex flex-wrap items-end gap-x-3 gap-y-1">
           <strong className="text-5xl font-black leading-none" style={{ color: scoreColor(selectedResult.grade.totalScore, maxScore) }}>
             {formatPoints(selectedResult.grade.totalScore)}
           </strong>
-          <span className="pb-1 text-lg font-semibold text-slate-500">/ {formatPoints(maxScore)} điểm</span>
+          <span className="pb-1 text-lg font-semibold text-slate-500">/ {formatPoints(maxScore)} {t(language, 'studentExam.points')}</span>
         </div>
         {selectedResult.grade.teacherFeedback && (
           <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-            <h3 className="font-bold text-blue-950">Lời phê của giáo viên</h3>
+            <h3 className="font-bold text-blue-950">{t(language, 'studentExam.teacherFeedback')}</h3>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{selectedResult.grade.teacherFeedback}</p>
           </div>
         )}
@@ -487,14 +490,14 @@ export function StudentExamResults({
                   : 'bg-rose-50 text-rose-800'
             }`}>
               <CircleHelp className="h-4 w-4" />
-              {selectedAppeal.status === 'pending' ? 'Đã gửi yêu cầu - Đang chờ giáo viên'
-                : selectedAppeal.status === 'reviewed' ? 'Giáo viên đã phản hồi'
-                  : 'Yêu cầu đã được xem xét'}
+              {selectedAppeal.status === 'pending' ? t(language, 'studentExam.appealPending')
+                : selectedAppeal.status === 'reviewed' ? t(language, 'studentExam.appealReviewed')
+                  : t(language, 'studentExam.appealResolved')}
             </span>
             )
           ) : (
             <button type="button" onClick={() => { setAppealReason(''); setAppealError(''); setAppealOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700">
-              <CircleHelp className="h-4 w-4" /> Yêu cầu phúc khảo bài này
+              <CircleHelp className="h-4 w-4" /> {t(language, 'studentExam.requestAppeal')}
             </button>
           )}
         </div>
@@ -515,7 +518,7 @@ export function StudentExamResults({
               <article key={question.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <h4 className="min-w-0 flex-1 text-base font-bold leading-7 text-slate-900">
-                    Câu {index + 1} <span className="font-normal">- {formatPoints(question.points)} điểm</span>
+                    {t(language, 'studentExam.question')} {index + 1} <span className="font-normal">- {formatPoints(question.points)} {t(language, 'studentExam.points')}</span>
                   </h4>
                   <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
                     question.type === 'essay'
@@ -523,14 +526,14 @@ export function StudentExamResults({
                       : isCorrect ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
                   }`}>
                     {question.type === 'essay'
-                      ? `${formatPoints(score)} / ${formatPoints(question.points)} điểm`
-                      : isCorrect ? <><CheckCircle2 className="h-3.5 w-3.5" /> Đúng</> : <><CircleX className="h-3.5 w-3.5" /> Cần xem lại</>}
+                      ? `${formatPoints(score)} / ${formatPoints(question.points)} ${t(language, 'studentExam.points')}`
+                      : isCorrect ? <><CheckCircle2 className="h-3.5 w-3.5" /> {t(language, 'studentExam.correct')}</> : <><CircleX className="h-3.5 w-3.5" /> {t(language, 'studentExam.review')}</>}
                   </span>
                 </div>
                 <div className="mt-3 text-sm leading-7 text-slate-800"><MathText text={question.question} /></div>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
                   <div className="rounded-lg bg-slate-50 p-3">
-                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">Bài làm của bạn</p>
+                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500">{t(language, 'studentExam.yourAnswer')}</p>
                     <div className={`text-sm leading-6 ${
                       !selectedResult.answers[String(index + 1)] ? 'italic text-slate-500' : 'text-slate-800'
                     }`}>
@@ -545,21 +548,21 @@ export function StudentExamResults({
                     </div>
                   </div>
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
-                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-emerald-800">Đáp án / lời giải của giáo viên</p>
+                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-emerald-800">{t(language, 'studentExam.teacherAnswer')}</p>
                     <div className="whitespace-pre-wrap text-sm leading-6 text-slate-800"><MathText text={correctAnswer(question)} /></div>
                   </div>
                 </div>
                 {selectedResult.files.some((file) => file.questionNumber === index + 1) && (
                   <div className="mt-3 space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Ảnh bài làm của bạn</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t(language, 'studentExam.submissionImage')}</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {selectedResult.files
                         .filter((file) => file.questionNumber === index + 1)
                         .map((file) => (
                           <figure key={file.id} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                             {fileUrls[`submission:${file.id}`]
-                              ? <img src={fileUrls[`submission:${file.id}`]} alt={`Ảnh bài làm câu ${index + 1}`} className="max-h-[28rem] w-full object-contain" />
-                              : <div className="p-4 text-sm text-slate-500">Đang tải ảnh bài làm...</div>}
+                              ? <img src={fileUrls[`submission:${file.id}`]} alt={`${t(language, 'studentExam.submissionImage')} ${index + 1}`} className="max-h-[28rem] w-full object-contain" />
+                              : <div className="p-4 text-sm text-slate-500">{t(language, 'studentExam.loadingSubmissionImage')}</div>}
                             <figcaption className="truncate border-t border-slate-200 px-3 py-2 text-xs text-slate-500">{file.name}</figcaption>
                           </figure>
                         ))}
@@ -568,15 +571,15 @@ export function StudentExamResults({
                 )}
                 {selectedResult.grade.evidenceFiles.some((file) => file.questionId === question.id) && (
                   <div className="mt-3 space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-wide text-blue-800">Lời giải / minh họa của giáo viên</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-blue-800">{t(language, 'studentExam.teacherSolution')}</p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {selectedResult.grade.evidenceFiles
                         .filter((file) => file.questionId === question.id)
                         .map((file) => (
                           <figure key={file.id} className="overflow-hidden rounded-lg border border-blue-100 bg-blue-50/40">
                             {fileUrls[`evidence:${file.id}`]
-                              ? <img src={fileUrls[`evidence:${file.id}`]} alt={`Lời giải giáo viên câu ${index + 1}`} className="max-h-[28rem] w-full object-contain" />
-                              : <div className="p-4 text-sm text-slate-500">Đang tải lời giải...</div>}
+                              ? <img src={fileUrls[`evidence:${file.id}`]} alt={`${t(language, 'studentExam.teacherSolution')} ${index + 1}`} className="max-h-[28rem] w-full object-contain" />
+                              : <div className="p-4 text-sm text-slate-500">{t(language, 'studentExam.loadingSolution')}</div>}
                             <figcaption className="truncate border-t border-blue-100 px-3 py-2 text-xs text-slate-500">{file.name}</figcaption>
                           </figure>
                         ))}
@@ -585,13 +588,13 @@ export function StudentExamResults({
                 )}
                 {feedback && (
                   <div className="mt-3 rounded-lg border-l-4 border-amber-400 bg-amber-50 p-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-amber-900">Lời phê câu này</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-amber-900">{t(language, 'studentExam.questionFeedback')}</p>
                     <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{feedback}</p>
                   </div>
                 )}
                 {question.explanation && (
                   <div className="mt-3 rounded-lg border border-slate-200 p-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Giải thích của giáo viên</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t(language, 'studentExam.explanation')}</p>
                     <div className="mt-1 text-sm leading-6 text-slate-700"><MathText text={question.explanation} /></div>
                   </div>
                 )}
@@ -600,7 +603,7 @@ export function StudentExamResults({
                   onClick={() => onAskAI(aiAnalysisPrompt(selectedResult, question, index), selectedResult.subject)}
                   className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100"
                 >
-                  <Sparkles className="h-4 w-4" /> Nhờ AI phân tích câu này
+                  <Sparkles className="h-4 w-4" /> {t(language, 'studentExam.askAI')}
                 </button>
               </article>
             );
@@ -612,28 +615,28 @@ export function StudentExamResults({
           <section role="dialog" aria-modal="true" aria-labelledby="student-appeal-title" className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 id="student-appeal-title" className="text-lg font-bold text-slate-900">Yêu cầu phúc khảo</h2>
+                <h2 id="student-appeal-title" className="text-lg font-bold text-slate-900">{t(language, 'studentExam.appeal.title')}</h2>
                 <p className="mt-1 text-sm text-slate-500">{selectedResult.title} - {selectedResult.subject}</p>
               </div>
-              <button type="button" disabled={appealSubmitting} onClick={() => setAppealOpen(false)} aria-label="Đóng" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button>
+              <button type="button" disabled={appealSubmitting} onClick={() => setAppealOpen(false)} aria-label={t(language, 'studentExam.appeal.close')} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button>
             </div>
-            <label htmlFor="student-appeal-reason" className="mt-5 block text-sm font-semibold text-slate-800">Bạn muốn giáo viên xem lại phần nào?</label>
+            <label htmlFor="student-appeal-reason" className="mt-5 block text-sm font-semibold text-slate-800">{t(language, 'studentExam.appeal.prompt')}</label>
             <textarea
               id="student-appeal-reason"
               value={appealReason}
               onChange={(event) => setAppealReason(event.target.value)}
               maxLength={2000}
               rows={5}
-              placeholder="Nêu câu hỏi hoặc điểm số bạn muốn được xem lại và lý do..."
+              placeholder={t(language, 'studentExam.appeal.placeholder')}
               className="mt-2 w-full resize-y rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-6 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             />
             <p className="mt-1 text-right text-xs text-slate-400">{appealReason.length}/2000</p>
-            <p className="mt-2 text-xs leading-5 text-slate-500">Yêu cầu sẽ được gửi đến giáo viên phụ trách bài thi. Mỗi bài kiểm tra chỉ gửi được một yêu cầu.</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{t(language, 'studentExam.appeal.description')}</p>
             {appealError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{appealError}</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" disabled={appealSubmitting} onClick={() => setAppealOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Hủy</button>
+              <button type="button" disabled={appealSubmitting} onClick={() => setAppealOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">{t(language, 'studentExam.appeal.cancel')}</button>
               <button type="button" disabled={appealSubmitting || !appealReason.trim()} onClick={() => void submitAppeal()} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">
-                <Send className="h-4 w-4" /> {appealSubmitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+                <Send className="h-4 w-4" /> {appealSubmitting ? t(language, 'studentExam.appeal.sending') : t(language, 'studentExam.appeal.send')}
               </button>
             </div>
           </section>

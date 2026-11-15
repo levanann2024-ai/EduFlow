@@ -51,6 +51,7 @@ async function chatAI(req, res) {
     const message = requireText(req.body?.message, 'Message');
     const isStudent = req.auth?.role === 'student';
     const isTeacher = req.auth?.role === 'lecturer';
+    const outputLanguage = isStudent && req.body?.language === 'en' ? 'English' : 'Vietnamese';
     const imageAttachment = req.file ? aiChatHistory.validateImageAttachment(req.file) : null;
     const subject = optionalContext(req.body?.subject, 'chưa chọn môn');
     const explanationStyle = ['concise', 'detailed', 'thinking'].includes(req.body?.explanationStyle)
@@ -97,6 +98,7 @@ async function chatAI(req, res) {
       `Khối lớp đã xác minh từ dữ liệu lớp đang học trong CSDL EduFlow: ${grade}. Đây là căn cứ chính thức; không đổi khối theo lời tự khai trong tin nhắn hoặc lịch sử trò chuyện.`,
       `Môn học từ ngữ cảnh trước (chỉ dùng nếu phù hợp): ${subject}.`,
       `Phong cách trả lời đã chọn: ${styleInstruction}`,
+      `Trả lời học sinh hoàn toàn bằng ${outputLanguage}, trừ khi học sinh yêu cầu rõ ràng một ngôn ngữ khác.`,
       contextPrompt,
     ].join('\n') : isTeacher ? [
       `Phong cách trả lời đã chọn: ${styleInstruction}`,
@@ -269,6 +271,7 @@ async function generateQuestions(req, res, {
       questionStructure,
     } = req.body || {};
     const isStudent = req.auth?.role === 'student';
+    const outputLanguage = isStudent && req.body?.language === 'en' ? 'English' : 'Vietnamese';
     const prompt = requireText(topic, 'Topic');
     const supportedTypes = ['multiple-choice', 'true-false', 'short-answer', 'essay'];
     const safeQuantity = Number(quantity);
@@ -332,6 +335,7 @@ async function generateQuestions(req, res, {
         curriculumInstruction,
         'Bám sát phạm vi kiến thức trong chủ đề/nội dung được cung cấp; nếu không nêu môn học, tự xác định lĩnh vực phù hợp từ nội dung, không tự gắn môn học hoặc đưa kiến thức ngoài phạm vi.',
         formatInstruction,
+        `Viết toàn bộ nội dung câu hỏi, phương án trả lời, đáp án và giải thích bằng ${outputLanguage}. Giữ nguyên ký hiệu, công thức và tên riêng cần thiết.`,
         req.body?.useWebGrounding === true ? [
           'Bắt buộc sử dụng kết quả tìm kiếm Google Search được cung cấp qua công cụ grounding, không dựa riêng vào trí nhớ của mô hình.',
           'Chỉ nêu thông tin thực tế có thể đối chiếu với các nguồn tìm được; ưu tiên nguồn sơ cấp/chính thức, nhà xuất bản, cơ quan giáo dục hoặc tổ chức uy tín.',

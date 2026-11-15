@@ -30,6 +30,12 @@ const compactMarkdownComponents = {
   hr: () => <hr className="my-2 border-violet-200" />,
 };
 
+const singleLineMarkdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="my-0 truncate whitespace-nowrap leading-5">{children}</p>
+  ),
+};
+
 const lessonMarkdownComponents = {
   p: ({ children }: { children?: React.ReactNode }) => (
     <p className="my-3 pl-4 whitespace-pre-wrap text-slate-700 leading-7">{children}</p>
@@ -79,11 +85,13 @@ export function MathText({
   text,
   className = '',
   compact = false,
+  singleLine = false,
   variant = 'default',
 }: {
   text: string;
   className?: string;
   compact?: boolean;
+  singleLine?: boolean;
   variant?: 'default' | 'lesson';
 }) {
   return (
@@ -91,7 +99,9 @@ export function MathText({
       <ReactMarkdown
         remarkPlugins={variant === 'lesson' ? [remarkGfm, remarkMath] : [remarkMath]}
         rehypePlugins={[rehypeKatex]}
-        components={variant === 'lesson'
+        components={singleLine
+          ? singleLineMarkdownComponents
+          : variant === 'lesson'
           ? lessonMarkdownComponents
           : compact
             ? compactMarkdownComponents

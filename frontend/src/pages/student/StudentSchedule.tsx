@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Pencil, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,6 +18,9 @@ import {
   type StudentTimetableResponse,
 } from '@/api/schoolApi';
 import { WeeklySchedule, type ScheduleGridEntry } from './WeeklySchedule';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { studentLocale, t } from '@/i18n/i18n';
+import { getNextTimetableCutoff, getTimetableWeekStart, hasPassedTimetableCutoff } from '@/utils/timetableWeek';
 
 interface StudentScheduleProps {
   studentId: string;
@@ -25,6 +28,8 @@ interface StudentScheduleProps {
 
 const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 const planDayLabels = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+const englishDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const englishPlanDayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const studentPlanKinds = new Set(['study', 'homework', 'review', 'class', 'break', 'busy', 'personal', 'exam']);
 const priorityCards = [
   {
@@ -161,12 +166,6 @@ function parseStudentSchedulePlan(raw: string): StudentSchedulePlan | null {
   }
 }
 
-function getWeekStart(date: Date) {
-  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  return monday;
-}
-
 function addDays(date: Date, amount: number) {
   const result = new Date(date);
   result.setDate(result.getDate() + amount);
@@ -205,9 +204,10 @@ function getPlanDateTime() {
   };
 }
 
-function planDateLabel(value: string) {
+function planDateLabel(value: string, language: 'vi' | 'en') {
   const date = new Date(`${value}T00:00:00.000Z`);
-  return `${planDayLabels[date.getUTCDay()]} · ${date.toLocaleDateString('vi-VN', {
+  const dayLabels = language === 'en' ? englishPlanDayLabels : planDayLabels;
+  return `${dayLabels[date.getUTCDay()]} · ${date.toLocaleDateString(studentLocale(language), {
     timeZone: 'UTC',
     day: '2-digit',
     month: '2-digit',
@@ -394,7 +394,9 @@ function loadSavedPlan(key: string) {
 }
 
 export function StudentSchedule({ studentId }: StudentScheduleProps) {
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
+  const language = useAppLanguage();
+  const manualWeekSelection = useRef(false);
+  const [weekStart, setWeekStart] = useState(() => getTimetableWeekStart(new Date()));
   const [semester, setSemester] = useState<ProgressSemester>('Kỳ 1');
   const [scheduleData, setScheduleData] = useState<StudentTimetableResponse | null>(null);
   const [freeTime, setFreeTime] = useState('');
@@ -443,14 +445,28 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     freeTime.trim() ? `Thời gian rảnh:\n${freeTime.trim()}` : '',
     busyTime.trim() ? `Thời gian bận:\n${busyTime.trim()}` : '',
   ].filter(Boolean).join('\n\n');
-  const weekDays = useMemo(() => days.map((label, index) => ({
+  const weekDays = useMemo(() => (language === 'en' ? englishDays : days).map((label, index) => ({
     label,
     date: addDays(weekStart, index),
-  })), [weekStart]);
+  })), [language, weekStart]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setPlanClock(getPlanDateTime()), 30_000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let timer: number;
+    const scheduleNextSwitch = () => {
+      const now = new Date();
+      const nextCutoff = getNextTimetableCutoff(now);
+      timer = window.setTimeout(() => {
+        if (!manualWeekSelection.current) setWeekStart(getTimetableWeekStart(new Date()));
+        scheduleNextSwitch();
+      }, nextCutoff.getTime() - now.getTime());
+    };
+    scheduleNextSwitch();
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -709,13 +725,19 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     savePlan(freeTime, busyTime, '', [], checked);
   };
   const moveWeek = (direction: -1 | 1) => {
+    manualWeekSelection.current = true;
     setWeekStart((current) => addDays(current, direction * 7));
   };
-  const goToCurrentWeek = () => setWeekStart(getWeekStart(new Date()));
-  const isCurrentWeek = weekStartKey === dateKey(getWeekStart(new Date()));
+  const focusWeekStart = getTimetableWeekStart(new Date());
+  const isFocusWeek = weekStartKey === dateKey(focusWeekStart);
+  const focusWeekLabel = t(language, hasPassedTimetableCutoff(new Date()) ? 'Tuần sau' : 'Tuần này');
+  const goToFocusWeek = () => {
+    manualWeekSelection.current = false;
+    setWeekStart(getTimetableWeekStart(new Date()));
+  };
   const weekButtonLabel = scheduleData?.weekNumber
-    ? `Tuần học ${scheduleData.weekNumber}${isCurrentWeek ? ' - Tuần này' : ''}`
-    : isCurrentWeek ? 'Tuần này' : 'Về tuần này';
+    ? `${t(language, "Tuần học")} ${scheduleData.weekNumber}${isFocusWeek ? ` - ${focusWeekLabel}` : ''}`
+    : isFocusWeek ? focusWeekLabel : t(language, hasPassedTimetableCutoff(new Date()) ? 'schedule.goToNextWeek' : 'Về tuần này');
 
   const createPlan = async () => {
     if (studyPreferences.preferredStudyTime === 'custom' && !studyPreferences.customStudyTime.trim()) {
@@ -860,14 +882,14 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
     <div className="space-y-5 pb-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-          <span>Học kỳ: </span>
+          <span>{t(language, "Học kỳ:")} </span>
           <select
             value={semester}
             onChange={(event) => setSemester(event.target.value as ProgressSemester)}
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           >
-            <option value="Kỳ 1">Kỳ 1</option>
-            <option value="Kỳ 2">Kỳ 2</option>
+            <option value="Kỳ 1">{t(language, "Kỳ 1")}</option>
+            <option value="Kỳ 2">{t(language, "Kỳ 2")}</option>
           </select>
         </label>
         <div className="flex flex-col items-start gap-1 sm:items-end">
@@ -880,7 +902,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
             {exportingCalendar
               ? <LoaderCircle className="h-4 w-4 animate-spin" />
               : <CalendarDays className="h-4 w-4" />}
-            {exportingCalendar ? 'Đang chuẩn bị...' : 'Xuất .ics'}
+            {exportingCalendar ? t(language, "Đang chuẩn bị...") : t(language, "Xuất .ics")}
           </button>
           {calendarExportError && (
             <p className="max-w-xs text-right text-xs text-rose-700" role="alert">{calendarExportError}</p>
@@ -890,13 +912,13 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <button type="button" onClick={() => moveWeek(-1)} aria-label="Tuần trước" className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => moveWeek(-1)} aria-label={t(language, "Tuần trước")} className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button type="button" onClick={goToCurrentWeek} className="h-10 border-x border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={goToFocusWeek} className="h-10 border-x border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             {weekButtonLabel}
           </button>
-          <button type="button" onClick={() => moveWeek(1)} aria-label="Tuần sau" className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => moveWeek(1)} aria-label={t(language, "Tuần sau")} className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
@@ -905,29 +927,32 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
       {loading ? (
         <div className="flex min-h-40 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-600" role="status">
           <LoaderCircle className="mr-2 h-4 w-4 animate-spin text-blue-600" />
-          Đang tải thời khóa biểu...
+          {t(language, "Đang tải thời khóa biểu...")}
         </div>
       ) : error && !scheduleData ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" role="alert">
           <p>{error}</p>
           <button type="button" onClick={() => setRetryToken((value) => value + 1)} className="mt-3 rounded-lg bg-white px-3 py-2 font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100">
-            Thử tải lại
+            {t(language, "Thử tải lại")}
           </button>
         </div>
       ) : !classroom ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-          Tài khoản hiện chưa có lớp học đang hoạt động.
+          {t(language, "Tài khoản hiện chưa có lớp học đang hoạt động.")}
         </div>
       ) : timetable ? (
         <WeeklySchedule
           entries={entries}
           weekDays={weekDays}
           periodCount={timetable.periodCount}
-          sessionLabel={timetable.session === 'morning' ? 'Buổi sáng' : 'Buổi chiều'}
+          sessionLabel={timetable.session === 'morning' ? t(language, "Buổi sáng") : t(language, "Buổi chiều")}
         />
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-          Chưa có thời khóa biểu {semester.toLocaleLowerCase('vi')} cho lớp {classroom.code}.
+          {t(language, 'myClasses.timetable.empty', {
+            semester: language === 'en' ? (semester === 'Kỳ 1' ? 'semester 1' : 'semester 2') : semester.toLocaleLowerCase('vi'),
+            classCode: classroom.code,
+          })}
         </div>
       )}
 
@@ -941,9 +966,9 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                 <Sparkles className="h-6 w-6" />
               </span>
               <div>
-                <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900">Kế hoạch tuần này</h2>
+                <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900">{t(language, "Kế hoạch tuần này")}</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-                  Chia sẻ lúc bạn rảnh và bận trong tuần. Tôi sẽ cùng bạn sắp xếp việc học, bài tập và thời gian nghỉ.
+                  {t(language, "Chia sẻ lúc bạn rảnh và bận trong tuần. Tôi sẽ cùng bạn sắp xếp việc học, bài tập và thời gian nghỉ.")}
                 </p>
               </div>
             </div>
@@ -954,14 +979,14 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-4 text-sm font-bold text-white shadow-md shadow-indigo-200 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-indigo-200 disabled:cursor-not-allowed disabled:from-slate-300 disabled:via-slate-300 disabled:to-slate-400 disabled:shadow-none"
             >
               {planning ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {planning ? 'Đang xếp kế hoạch...' : 'Lên kế hoạch cùng AI'}
+              {planning ? t(language, "Đang xếp kế hoạch...") : t(language, "Lên kế hoạch cùng AI")}
             </button>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <label className="block rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/90 to-white p-3.5">
               <span className="flex items-center gap-2 text-sm font-bold text-emerald-900">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Thời gian rảnh
+                {t(language, "Thời gian rảnh")}
               </span>
               <textarea
                 value={freeTime}
@@ -975,7 +1000,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
             <label className="block rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50/90 to-white p-3.5">
               <span className="flex items-center gap-2 text-sm font-bold text-rose-900">
                 <span className="h-2 w-2 rounded-full bg-rose-500" />
-                Thời gian bận
+                {t(language, "Thời gian bận")}
               </span>
               <textarea
                 value={busyTime}
@@ -995,20 +1020,20 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
               className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600"
             />
             <span>
-              <span className="block text-sm font-semibold text-slate-800">Thời gian chưa ghi là rảnh</span>
+              <span className="block text-sm font-semibold text-slate-800">{t(language, "Thời gian chưa ghi là rảnh")}</span>
               <span className="mt-0.5 block text-xs leading-5 text-slate-500">
-                Khi bật, AI sẽ xét cả tuần, trừ khung bận và giờ học đã biết.
+                {t(language, "Khi bật, AI sẽ xét cả tuần, trừ khung bận và giờ học đã biết.")}
               </span>
             </span>
           </label>
           <details className="mt-3 rounded-2xl border border-slate-200 bg-white/75 p-4">
             <summary className="cursor-pointer text-sm font-bold text-slate-800">
-              Cá nhân hóa kế hoạch <span className="font-normal text-slate-500">(không bắt buộc)</span>
+              {t(language, "Cá nhân hóa kế hoạch")} <span className="font-normal text-slate-500">({t(language, "không bắt buộc")})</span>
             </summary>
             <div className="mt-4 space-y-5">
               <section>
                 <label className="block text-xs font-semibold text-slate-600">
-                  Tổ hợp môn muốn tập trung
+                  {t(language, "Tổ hợp môn muốn tập trung")}
                   <input
                     value={studyPreferences.subjectCombination}
                     onChange={(event) => updateStudyPreferences({ ...studyPreferences, subjectCombination: event.target.value })}
@@ -1342,7 +1367,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                                   >
                                     {Array.from({ length: 8 }, (_, dayIndex) => {
                                       const date = addDateKeyDays(plan.startDate, dayIndex);
-                                      return <option key={date} value={date}>{planDateLabel(date)}</option>;
+                                      return <option key={date} value={date}>{planDateLabel(date, language)}</option>;
                                     })}
                                   </select>
                                 </label>
@@ -1416,7 +1441,7 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                                   className={`rounded-2xl border p-3.5 shadow-sm ${timelineDayStyles[new Date(`${date}T00:00:00.000Z`).getUTCDay() || 7]}`}
                                 >
                                   <div className="flex items-center justify-between gap-2 border-b border-white/80 pb-2">
-                                    <h5 className="font-bold text-slate-800">{planDateLabel(date)}</h5>
+                                    <h5 className="font-bold text-slate-800">{planDateLabel(date, language)}</h5>
                                     {date === getPlanDateTime().date && (
                                       <span className="rounded-full bg-white/80 px-2 py-0.5 text-[0.6875rem] font-semibold text-slate-600">Hôm nay</span>
                                     )}

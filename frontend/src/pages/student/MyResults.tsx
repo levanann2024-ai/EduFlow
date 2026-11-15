@@ -19,6 +19,8 @@ import {
   type StudentProgressData,
 } from '@/api/schoolApi';
 import { useChartViewport } from '@/hooks/useChartViewport';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
 
 interface MyResultsProps {
   studentUserId: string;
@@ -317,6 +319,7 @@ function subjectForEvidence(ids: string[], progress: StudentProgressData | null)
 }
 
 export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: MyResultsProps) {
+  const language = useAppLanguage();
   const [progress, setProgress] = useState<StudentProgressData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -743,7 +746,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
     ? allSubjectsChartSeries
     : overallAverageChartSeries;
   const lastAnalysisClickLabel = lastAnalysisClickAt
-    ? lastAnalysisClickAt.toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric' })
+    ? lastAnalysisClickAt.toLocaleDateString(studentLocale(language), { day: 'numeric', month: 'numeric', year: 'numeric' })
     : null;
 
   return (
@@ -753,28 +756,28 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
         </div>
         <div className="flex flex-wrap gap-2">
           <label>
-            <span className="sr-only">Lọc theo học kỳ</span>
+            <span className="sr-only">{t(language, "Lọc theo học kỳ")}</span>
             <select
               value={semester}
               onChange={(event) => setSemester(event.target.value as SemesterFilter)}
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500"
             >
-              <option value="Kỳ 1">Kỳ 1</option>
-              <option value="Kỳ 2">Kỳ 2</option>
-              <option value="Cả năm">Cả năm</option>
+              <option value="Kỳ 1">{t(language, "Kỳ 1")}</option>
+              <option value="Kỳ 2">{t(language, "Kỳ 2")}</option>
+              <option value="Cả năm">{t(language, "Cả năm")}</option>
             </select>
           </label>
           <label>
-            <span className="sr-only">Lọc theo môn học</span>
+            <span className="sr-only">{t(language, "Lọc theo môn học")}</span>
             <select
               value={selectedSubject}
               onChange={(event) => setSelectedSubject(event.target.value)}
               disabled={!subjects.length}
               className="min-w-36 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500"
             >
-              <option value="">Tất cả môn học</option>
-              {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
-              {!subjects.length && <option value="" disabled>Chưa có môn học</option>}
+              <option value="">{t(language, "Tất cả môn học")}</option>
+              {subjects.map((subject) => <option key={subject} value={subject}>{localizeStudentSubject(subject, language)}</option>)}
+              {!subjects.length && <option value="" disabled>{t(language, "Chưa có môn học")}</option>}
             </select>
           </label>
         </div>
@@ -784,15 +787,15 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
         <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="flex-1">{loadError}</span>
-          <button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)} className="font-semibold underline">Thử lại</button>
+          <button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)} className="font-semibold underline">{t(language, "Thử lại")}</button>
         </div>
       )}
 
       <div className="space-y-4">
         {loading ? (
-          <p className="rounded-lg bg-slate-50 p-5 text-center text-sm text-slate-500">Đang tải dữ liệu học tập…</p>
+          <p className="rounded-lg bg-slate-50 p-5 text-center text-sm text-slate-500">{t(language, "Đang tải dữ liệu học tập…")}</p>
         ) : !selectedClass ? (
-          <EmptyState text="Chưa có lớp học đang hoạt động trong dữ liệu tài khoản." />
+          <EmptyState text={t(language, "Chưa có lớp học đang hoạt động trong dữ liệu tài khoản.")} />
         ) : (
           <>
             {(analysis || analysisError || analysisMessage) && (
@@ -823,7 +826,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                   onClick={() => setDetailsOpen((open) => !open)}
                   className="mx-auto mt-3 flex items-center gap-1 py-2 text-xs font-bold text-violet-700 hover:text-violet-900"
                 >
-                  {detailsOpen ? 'Ẩn phân tích chi tiết' : 'Xem phân tích chi tiết'}
+                  {detailsOpen ? t(language, "Ẩn phân tích chi tiết") : t(language, "Xem phân tích chi tiết")}
                   {detailsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
 
@@ -831,14 +834,14 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                   <div className="space-y-3 px-4 pb-4 sm:px-5">
                     <div className="grid gap-3 md:grid-cols-2">
                       <InsightPanel
-                        title="Điểm mạnh"
+                        title={t(language, "Điểm mạnh")}
                         tone="green"
                         items={analysis.strengths.map((item) => ({ title: item.text, text: '', ids: item.evidenceIds }))}
                         progress={progress}
-                        empty="Chưa có bằng chứng đủ rõ để nhận định điểm mạnh."
+                        empty={t(language, "Chưa có bằng chứng đủ rõ để nhận định điểm mạnh.")}
                       />
                       <InsightPanel
-                        title="Cần cải thiện"
+                        title={t(language, "Cần cải thiện")}
                         tone="red"
                         items={analysis.focusAreas.map((item) => ({ title: item.topic, text: item.text, ids: item.evidenceIds }))}
                         progress={progress}
@@ -846,12 +849,12 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                           selectedSubject || subjectForEvidence(evidenceIds, progress) || subjects[0] || '',
                           topic,
                         )}
-                        empty="Chưa có bằng chứng đủ rõ để xác định nội dung cần cải thiện."
+                        empty={t(language, "Chưa có bằng chứng đủ rõ để xác định nội dung cần cải thiện.")}
                       />
                     </div>
 
                     <section className="rounded-lg border border-violet-200 bg-white p-3 sm:p-4">
-                      <h3 className="text-sm font-bold text-violet-800">Kế hoạch học tập dài hạn</h3>
+                      <h3 className="text-sm font-bold text-violet-800">{t(language, "Kế hoạch học tập dài hạn")}</h3>
                       <LongTermPlan
                         stages={planStages}
                         recommendations={orderedRecommendations}
@@ -918,8 +921,8 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
               ? <LoaderCircle className="h-4 w-4 animate-spin" />
               : <ArrowRight className="h-4 w-4" />}
             {analysisLoading
-              ? 'Đang phân tích...'
-              : analysis ? 'Phân tích lại tiến độ học tập cùng với AI' : 'Phân tích tiến độ học tập cùng với AI'}
+              ? t(language, "Đang phân tích...")
+              : analysis ? t(language, "Phân tích lại tiến độ học tập cùng với AI") : t(language, "Phân tích tiến độ học tập cùng với AI")}
           </button>
           {lastAnalysisClickLabel && (
             <p className="mt-2 text-right text-xs text-slate-500">{lastAnalysisClickLabel}</p>
@@ -931,12 +934,12 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
         {!chartExpanded && <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-extrabold text-slate-900">Thành tích theo môn</h2>
+              <h2 className="text-lg font-extrabold text-slate-900">{t(language, "Thành tích theo môn")}</h2>
             </div>
           </div>
           {!selectedSubject && (
             <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="text-sm font-semibold text-slate-700">Điểm trung bình các môn:</span>
+              <span className="text-sm font-semibold text-slate-700">{t(language, "Điểm trung bình các môn:")}</span>
               <strong className={`text-xl font-extrabold tabular-nums ${scoreStanding(allSubjectAverage).color}`}>
                 {allSubjectAverage === null ? '—' : `${allSubjectAverage.toFixed(1)}/10`}
               </strong>
@@ -945,7 +948,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
           {selectedSubject ? (
             <div className="mt-4">
               <div className="mb-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="text-sm font-semibold text-slate-700">Điểm trung bình môn {selectedSubject}:</span>
+                <span className="text-sm font-semibold text-slate-700">{t(language, 'results.subject.average', { subject: localizeStudentSubject(selectedSubject, language) })}</span>
                 <strong className={`text-xl font-extrabold tabular-nums ${scoreStanding(subjectAchievements[0]?.average ?? null).color}`}>
                   {subjectAchievements[0]?.average === null || subjectAchievements[0]?.average === undefined
                     ? '—'
@@ -954,9 +957,9 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
               </div>
               <div className="space-y-4">
                 {[
-                  { label: 'Điểm TB bài tập', average: assessmentAverages.assignments },
-                  { label: 'Điểm TB bài kiểm tra', average: assessmentAverages.exams },
-                  { label: 'Điểm TB chuyên cần (CC)', average: attendanceAverage },
+                  { label: t(language, "Điểm TB bài tập"), average: assessmentAverages.assignments },
+                  { label: t(language, "Điểm TB bài kiểm tra"), average: assessmentAverages.exams },
+                  { label: t(language, "Điểm TB chuyên cần (CC)"), average: attendanceAverage },
                 ].map(({ label, average }) => {
                   const standing = scoreStanding(average);
                   return (
@@ -964,7 +967,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
                         <span className="font-medium text-slate-700">{label}</span>
                         <strong className="tabular-nums text-slate-700">
-                          {average === null ? 'Chưa có dữ liệu' : `${average.toFixed(1)}/10`}
+                          {average === null ? t(language, "Chưa có dữ liệu") : `${average.toFixed(1)}/10`}
                         </strong>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -979,7 +982,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
               </div>
               <div className="mt-6 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
                 <section className="rounded-lg border border-blue-100 bg-blue-50/70 p-3">
-                  <h3 className="text-sm font-bold text-blue-900">3 bài tập gần nhất</h3>
+                  <h3 className="text-sm font-bold text-blue-900">{t(language, "3 bài tập gần nhất")}</h3>
                   {recentSubjectAssignments.length ? (
                     <ul className="mt-2 space-y-2">
                       {recentSubjectAssignments.map((item) => (
@@ -987,7 +990,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                           <div className="min-w-0">
                             <p className="truncate text-xs font-medium text-slate-800" title={item.title}>{item.title}</p>
                             <p className="mt-0.5 text-[0.625rem] text-blue-800/70">
-                              {new Date(item.gradedAt ?? item.dueAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                              {new Date(item.gradedAt ?? item.dueAt).toLocaleDateString(studentLocale(language), { day: '2-digit', month: '2-digit' })}
                             </p>
                           </div>
                           <strong className={`shrink-0 text-sm font-bold tabular-nums ${scoreStanding(item.score).color}`}>
@@ -997,12 +1000,12 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-2 text-xs text-blue-900/70">Chưa có bài tập được chấm.</p>
+                    <p className="mt-2 text-xs text-blue-900/70">{t(language, "Chưa có bài tập được chấm.")}</p>
                   )}
                 </section>
 
                 <section className="rounded-lg border border-blue-100 bg-blue-50/70 p-3">
-                  <h3 className="text-sm font-bold text-blue-900">3 bài kiểm tra gần nhất</h3>
+                  <h3 className="text-sm font-bold text-blue-900">{t(language, "3 bài kiểm tra gần nhất")}</h3>
                   {recentSubjectExams.length ? (
                     <ul className="mt-2 space-y-2">
                       {recentSubjectExams.map(({ exam, score }) => (
@@ -1010,7 +1013,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                           <div className="min-w-0">
                             <p className="truncate text-xs font-medium text-slate-800" title={exam.title}>{exam.title}</p>
                             <p className="mt-0.5 text-[0.625rem] text-blue-800/70">
-                              {new Date(exam.grade.gradedAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                              {new Date(exam.grade.gradedAt).toLocaleDateString(studentLocale(language), { day: '2-digit', month: '2-digit' })}
                             </p>
                           </div>
                           <strong className={`shrink-0 text-sm font-bold tabular-nums ${scoreStanding(score).color}`}>
@@ -1020,7 +1023,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-2 text-xs text-blue-900/70">Chưa có bài kiểm tra được công bố điểm.</p>
+                    <p className="mt-2 text-xs text-blue-900/70">{t(language, "Chưa có bài kiểm tra được công bố điểm.")}</p>
                   )}
                 </section>
               </div>
@@ -1032,9 +1035,9 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                 return (
                   <div key={item.subject}>
                     <div className="mb-1 grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem_4.25rem] items-center gap-2 text-xs">
-                      <span className="truncate font-semibold text-slate-700">{item.subject}</span>
+                      <span className="truncate font-semibold text-slate-700">{localizeStudentSubject(item.subject, language)}</span>
                       <span className={`justify-self-center whitespace-nowrap rounded-full px-2 py-1 text-center text-[0.625rem] font-semibold ${standing.badge}`}>{standing.label}</span>
-                      <span className="text-center text-[0.625rem] text-slate-500">{item.count} bài</span>
+                      <span className="text-center text-[0.625rem] text-slate-500">{item.count} {t(language, "bài")}</span>
                       <strong className="text-right tabular-nums text-slate-800">{item.average === null ? '—' : `${item.average.toFixed(1)}/10`}</strong>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
@@ -1048,19 +1051,19 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
               })}
             </div>
           ) : (
-            <EmptyState text="Chưa có dữ liệu môn học trong phạm vi đang chọn." />
+            <EmptyState text={t(language, "Chưa có dữ liệu môn học trong phạm vi đang chọn.")} />
           )}
         </article>}
 
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="min-w-0 text-lg font-extrabold text-slate-900">Lịch sử bài làm &amp; điểm TBM</h2>
+              <h2 className="min-w-0 text-lg font-extrabold text-slate-900">{t(language, "Lịch sử bài làm &amp; điểm TBM")}</h2>
               <button
                 type="button"
                 onClick={() => setChartExpanded((expanded) => !expanded)}
-                aria-label={chartExpanded ? 'Thoát phóng to biểu đồ' : 'Phóng to biểu đồ'}
-                title={chartExpanded ? 'Thoát phóng to' : 'Phóng to biểu đồ'}
+                aria-label={chartExpanded ? t(language, "Thoát phóng to biểu đồ") : t(language, "Phóng to biểu đồ")}
+                title={chartExpanded ? t(language, "Thoát phóng to") : t(language, "Phóng to biểu đồ")}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
               >
                 {chartExpanded ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
@@ -1068,7 +1071,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               {!selectedSubject ? (
-                <div role="group" aria-label="Chọn cách hiển thị điểm các môn" className="flex rounded-lg bg-slate-100 p-0.5">
+                <div role="group" aria-label={t(language, "Chọn cách hiển thị điểm các môn")} className="flex rounded-lg bg-slate-100 p-0.5">
                   <button
                     type="button"
                     aria-pressed={allSubjectsChartMode === 'subjects'}
@@ -1078,7 +1081,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                     }}
                     className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${allSubjectsChartMode === 'subjects' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
-                    Từng môn
+                    {t(language, "Từng môn")}
                   </button>
                   <button
                     type="button"
@@ -1089,11 +1092,11 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                     }}
                     className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${allSubjectsChartMode === 'overall' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
-                    TBM chung
+                    {t(language, "TBM chung")}
                   </button>
                 </div>
               ) : (
-                <div role="group" aria-label="Lọc lịch sử kết quả" className="flex rounded-lg bg-slate-100 p-0.5">
+                <div role="group" aria-label={t(language, "Lọc lịch sử kết quả")} className="flex rounded-lg bg-slate-100 p-0.5">
                   <button
                     type="button"
                     aria-pressed={historyFilter === 'completed'}
@@ -1103,7 +1106,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                     }}
                     className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${historyFilter === 'completed' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
-                    Bài đã làm
+                    {t(language, "Bài đã làm")}
                   </button>
                   <button
                     type="button"
@@ -1114,7 +1117,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                     }}
                     className={`rounded-md px-2 py-1.5 text-[0.625rem] font-semibold transition ${historyFilter === 'average' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                   >
-                    Điểm TBM
+                    {t(language, "Điểm TBM")}
                   </button>
                 </div>
               )}
@@ -1122,7 +1125,7 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                 ? (historyFilter === 'completed' ? chartAssessments : chartAverageHistory).length > 8
                 : displayedChartSeries.some((series) => series.points.length > 8)) && (
                 <button type="button" onClick={() => setHistoryOpen((open) => !open)} className="text-xs font-semibold text-violet-700">
-                  {historyOpen ? 'Thu gọn' : 'Xem đầy đủ'}
+                  {historyOpen ? t(language, "Thu gọn") : t(language, "Xem đầy đủ")}
                 </button>
               )}
             </div>
@@ -1134,22 +1137,22 @@ export function MyResults({ studentUserId, onOpenResources, onCreatePractice }: 
                 ...series,
                 points: historyOpen ? series.points : series.points.slice(-8),
               }))}
-              legend={allSubjectsChartMode === 'subjects' ? 'Điểm TBM theo môn' : 'Điểm trung bình các môn'}
-              empty="Chưa có lịch sử điểm TBM trong phạm vi đang chọn."
+              legend={allSubjectsChartMode === 'subjects' ? t(language, "Điểm TBM theo môn") : t(language, "Điểm trung bình các môn")}
+              empty={t(language, "Chưa có lịch sử điểm TBM trong phạm vi đang chọn.")}
             />
           ) : displayedHistoryFilter === 'completed' ? (
             <>
               <AssessmentTrendChart
                 items={historyOpen ? chartAssessments : chartAssessments.slice(-8)}
-                legend="Bài tập / Bài thi"
-                empty="Chưa có bài tập hoặc bài thi đã chấm trong phạm vi đang chọn."
+                legend={t(language, "Bài tập / Bài thi")}
+                empty={t(language, "Chưa có bài tập hoặc bài thi đã chấm trong phạm vi đang chọn.")}
               />
             </>
           ) : (
             <AssessmentTrendChart
               items={historyOpen ? chartAverageHistory : chartAverageHistory.slice(-8)}
-              legend="Điểm trung bình môn đã lưu"
-              empty="Chưa có lịch sử điểm trung bình môn được lưu cho môn và học kỳ này."
+              legend={t(language, "Điểm trung bình môn đã lưu")}
+              empty={t(language, "Chưa có lịch sử điểm trung bình môn được lưu cho môn và học kỳ này.")}
             />
           )}
         </article>

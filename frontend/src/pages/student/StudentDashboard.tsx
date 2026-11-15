@@ -32,6 +32,8 @@ import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg
 import { studentResults } from './studentResults';
 import { StudentSubjectCard } from './StudentSubjectCard';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
 
 interface StudentDashboardProps {
   userName: string;
@@ -92,12 +94,12 @@ function getDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function getCountdownLabel(date: Date, today: Date) {
+function getCountdownLabel(date: Date, today: Date, language: 'vi' | 'en') {
   const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-  if (days < 0) return `Quá hạn ${Math.abs(days)} ngày`;
-  if (days === 0) return 'Hôm nay';
-  if (days === 1) return 'Ngày mai';
-  return `Còn ${days} ngày`;
+  if (days < 0) return language === 'en' ? `Overdue by ${Math.abs(days)} days` : `Quá hạn ${Math.abs(days)} ngày`;
+  if (days === 0) return language === 'en' ? 'Today' : 'Hôm nay';
+  if (days === 1) return language === 'en' ? 'Tomorrow' : 'Ngày mai';
+  return language === 'en' ? `${days} days left` : `Còn ${days} ngày`;
 }
 
 function isWithinRecentDays(value: string | null, now: number, days: number) {
@@ -121,6 +123,7 @@ function SubjectCarousel({
   onOpenResources: (subjectCode: string) => void;
   onOpenAssignments: (subjectCode: string, topic?: string) => void;
 }) {
+  const language = useAppLanguage();
   const repeatedSubjects = [...subjects, ...subjects];
   const [slideIndex, setSlideIndex] = useState(0);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
@@ -157,20 +160,20 @@ function SubjectCarousel({
   };
 
   return (
-    <section aria-label="Môn học của bạn" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+    <section aria-label={t(language, "Môn học của bạn")} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800">
           <BookOpen className="h-4 w-4 text-blue-600" />
-          Môn học của bạn
+          {t(language, "Môn học của bạn")}
         </h2> 
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => onNavigate('my-classes')} className="mr-2 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
-            Xem tất cả <ArrowRight className="ml-0.5 inline h-3 w-3" />
+            {t(language, "Xem tất cả")} <ArrowRight className="ml-0.5 inline h-3 w-3" />
           </button>
-          <button type="button" aria-label="Môn học trước" onClick={showPreviousSubject} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
+          <button type="button" aria-label={t(language, "Môn học trước")} onClick={showPreviousSubject} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button type="button" aria-label="Môn học tiếp theo" onClick={() => setSlideIndex((index) => index + 1)} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
+          <button type="button" aria-label={t(language, "Môn học tiếp theo")} onClick={() => setSlideIndex((index) => index + 1)} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
@@ -222,6 +225,8 @@ export function StudentDashboard({
   onOpenAssignments,
   onAskAI,
 }: StudentDashboardProps) {
+  const language = useAppLanguage();
+  const locale = studentLocale(language);
   const [chatPrompt, setChatPrompt] = useState('');
   const [chatImage, setChatImage] = useState<File | null>(null);
   const [activityFilter, setActivityFilter] = useState<'upcoming' | 'submitted' | 'graded'>('upcoming');
@@ -241,7 +246,9 @@ export function StudentDashboard({
   const tomorrow = new Date(startOfToday);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowWeekday = ((tomorrow.getDay() + 6) % 7) + 1;
-  const weekdayLabels = ['', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+  const weekdayLabels = language === 'en'
+    ? ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
   const upcomingExams = (liveProgress?.upcomingExams ?? [])
     .filter((exam) => new Date(exam.startsAt).getTime() >= Date.now())
     .sort((first, second) => new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime());
@@ -408,8 +415,8 @@ export function StudentDashboard({
           scheduleExamKeys.add(`${entry.subject.trim().toLocaleLowerCase('vi')}:${title.trim().toLocaleLowerCase('vi')}:${getDateKey(examDate)}`);
           items.push({
             id: `scheduled-exam-${getDateKey(examDate)}-${entry.period}-${entry.subject}`,
-            title: `Kiểm tra sắp tới: ${title}`,
-            detail: `${entry.subject} · ${examDate.toLocaleDateString('vi-VN')}`,
+            title: `${t(language, "Kiểm tra sắp tới")}: ${title}`,
+            detail: `${localizeStudentSubject(entry.subject, language)} · ${examDate.toLocaleDateString(locale)}`,
             onClick: () => onNavigate('schedule'),
             cardClass: 'border-rose-100 bg-rose-50/70 hover:bg-rose-50',
             iconClass: 'text-rose-600',
@@ -424,8 +431,8 @@ export function StudentDashboard({
         if (returnDate && returnDate >= startOfToday && returnIsUpcoming) {
           items.push({
             id: `scheduled-return-${getDateKey(returnDate)}-${entry.period}-${entry.subject}`,
-            title: `Lịch trả bài: ${entry.examReturnNote || entry.subject}`,
-            detail: `${entry.subject} · ${returnDate.toLocaleDateString('vi-VN')}`,
+            title: `${t(language, "Lịch trả bài")}: ${entry.examReturnNote || localizeStudentSubject(entry.subject, language)}`,
+            detail: `${localizeStudentSubject(entry.subject, language)} · ${returnDate.toLocaleDateString(locale)}`,
             onClick: () => onNavigate('schedule'),
             cardClass: 'border-violet-100 bg-violet-50/70 hover:bg-violet-50',
             iconClass: 'text-violet-700',
@@ -466,8 +473,8 @@ export function StudentDashboard({
       );
     }).map((exam) => ({
       id: `exam-${exam.id}`,
-      title: `Kiểm tra: ${exam.title}`,
-      detail: `${exam.subject} - ${new Date(exam.startsAt).toLocaleString('vi-VN')}`,
+      title: `${t(language, "phrase:Kiểm tra::Exam")}: ${exam.title}`,
+      detail: `${localizeStudentSubject(exam.subject, language)} - ${new Date(exam.startsAt).toLocaleString(locale)}`,
       onClick: () => onNavigate('online-exams'),
       cardClass: 'border-rose-100 bg-rose-50/70 hover:bg-rose-50',
       iconClass: 'text-rose-600',
@@ -475,8 +482,8 @@ export function StudentDashboard({
     })),
     ...pendingExamGrades.map((room) => ({
       id: `exam-pending-grade-${room.id}`,
-      title: `Bài kiểm tra đang chờ chấm: ${room.title}`,
-      detail: `${room.subject} · Đã nộp, đang chờ giáo viên`,
+      title: `${t(language, "Bài kiểm tra đang chờ chấm")}: ${room.title}`,
+      detail: `${localizeStudentSubject(room.subject, language)} · ${t(language, "Đã nộp, đang chờ giáo viên")}`,
       onClick: () => onNavigate('online-exams'),
       cardClass: 'border-amber-100 bg-amber-50/70 hover:bg-amber-50',
       iconClass: 'text-amber-700',
@@ -484,8 +491,8 @@ export function StudentDashboard({
     })),
     ...pendingAssignmentGrades.map((assignment) => ({
       id: `assignment-pending-grade-${assignment.id}`,
-      title: `Bài tập đang chờ chấm: ${assignment.title}`,
-      detail: `${assignment.subject} · Đã nộp ${assignment.submittedAt ? new Date(assignment.submittedAt).toLocaleDateString('vi-VN') : ''}`,
+      title: `${t(language, "Bài tập đang chờ chấm")}: ${assignment.title}`,
+      detail: `${localizeStudentSubject(assignment.subject, language)} · ${t(language, "Đã nộp")} ${assignment.submittedAt ? new Date(assignment.submittedAt).toLocaleDateString(locale) : ''}`,
       onClick: () => onNavigate('assignments'),
       cardClass: 'border-amber-100 bg-amber-50/70 hover:bg-amber-50',
       iconClass: 'text-amber-700',
@@ -493,8 +500,8 @@ export function StudentDashboard({
     })),
     ...pendingAppeals.map((appeal) => ({
       id: `appeal-pending-${appeal.id}`,
-      title: `Phúc khảo đang chờ phản hồi: ${appeal.examTitle}`,
-      detail: `${appeal.subject} · Đã gửi ${new Date(appeal.createdAt).toLocaleDateString('vi-VN')}`,
+      title: `${t(language, "Phúc khảo đang chờ phản hồi")}: ${appeal.examTitle}`,
+      detail: `${localizeStudentSubject(appeal.subject, language)} · ${t(language, "Đã gửi")} ${new Date(appeal.createdAt).toLocaleDateString(locale)}`,
       onClick: () => onNavigate('online-exams'),
       cardClass: 'border-amber-100 bg-amber-50/70 hover:bg-amber-50',
       iconClass: 'text-amber-700',
@@ -502,8 +509,8 @@ export function StudentDashboard({
     })),
     ...recentExamGrades.map((result) => ({
       id: `exam-result-${result.sessionId}`,
-      title: `Đã trả điểm kiểm tra: ${result.title}`,
-      detail: `${result.subject} · ${result.grade.totalScore} điểm`,
+      title: `${t(language, "Đã trả điểm kiểm tra")}: ${result.title}`,
+      detail: `${localizeStudentSubject(result.subject, language)} · ${result.grade.totalScore} ${t(language, "điểm")}`,
       onClick: () => onNavigate('online-exams'),
       cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
       iconClass: 'text-emerald-700',
@@ -511,8 +518,8 @@ export function StudentDashboard({
     })),
     ...recentAssignmentGrades.map((assignment) => ({
       id: `assignment-grade-${assignment.id}`,
-      title: `Đã trả bài tập: ${assignment.title}`,
-      detail: `${assignment.subject} · ${assignment.score === null ? 'Đã chấm' : `${assignment.score}/10`}`,
+      title: `${t(language, "Đã trả bài tập")}: ${assignment.title}`,
+      detail: `${localizeStudentSubject(assignment.subject, language)} · ${assignment.score === null ? t(language, "Đã chấm") : `${assignment.score}/10`}`,
       onClick: () => onNavigate('my-results'),
       cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
       iconClass: 'text-emerald-700',
@@ -520,8 +527,8 @@ export function StudentDashboard({
     })),
     ...recentlyReviewedAppeals.map((appeal) => ({
       id: `appeal-reviewed-${appeal.id}`,
-      title: `${appeal.status === 'rejected' ? 'Phúc khảo không được chấp nhận' : 'Phúc khảo đã có phản hồi'}: ${appeal.examTitle}`,
-      detail: `${appeal.subject}${appeal.teacherResponse ? ` · ${appeal.teacherResponse}` : ''}`,
+      title: `${appeal.status === 'rejected' ? t(language, "Phúc khảo không được chấp nhận") : t(language, "Phúc khảo đã có phản hồi")}: ${appeal.examTitle}`,
+      detail: `${localizeStudentSubject(appeal.subject, language)}${appeal.teacherResponse ? ` · ${appeal.teacherResponse}` : ''}`,
       onClick: () => onNavigate('online-exams'),
       cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
       iconClass: 'text-emerald-700',
@@ -529,7 +536,7 @@ export function StudentDashboard({
     })),
     ...decreasingSubjects.map(({ subject, latest, previous }) => ({
       id: `decrease-${subject}`,
-      title: `Điểm ${subject} có dấu hiệu giảm`,
+      title: `${t(language, "phrase:Điểm::Your")} ${localizeStudentSubject(subject, language)} ${t(language, "có dấu hiệu giảm")}`,
       detail: `${latest.score}/10 - bài trước ${previous.score}/10`,
       onClick: () => onNavigate('my-results'),
       cardClass: 'border-blue-100 bg-blue-50/70 hover:bg-blue-50',
@@ -538,8 +545,8 @@ export function StudentDashboard({
     })),
     ...(focusAssignment ? [{
       id: `assignment-${focusAssignment.id}`,
-      title: `Bài tập: ${focusAssignment.title}`,
-      detail: `Hạn nộp ${new Date(focusAssignment.dueAt).toLocaleDateString('vi-VN')}`,
+      title: `${t(language, "phrase:Bài tập::Assignment")}: ${focusAssignment.title}`,
+      detail: `${t(language, "Hạn nộp")} ${new Date(focusAssignment.dueAt).toLocaleDateString(locale)}`,
       onClick: () => onNavigate('assignments'),
       cardClass: 'border-amber-200 bg-amber-50/80 hover:bg-amber-50',
       iconClass: 'text-amber-700',
@@ -625,26 +632,26 @@ export function StudentDashboard({
             />
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-blue-950/40 via-blue-900/15 to-transparent" />
             <div className="relative z-10 flex min-h-[270px] flex-col justify-center sm:min-h-[286px] sm:max-w-[76%]">
-              <p className="text-lg font-bold tracking-wide text-white sm:text-xl">Chào {greetingName}!</p>
+              <p className="text-lg font-bold tracking-wide text-white sm:text-xl">{t(language, "Chào")} {greetingName}!</p>
               <h1 className="mt-2 text-2xl font-black leading-tight tracking-tight sm:text-3xl">
-                Học đúng trọng tâm.<br className="hidden sm:block" /> Tiến bộ <span className="text-amber-300">từng ngày.</span>
+                {t(language, "Học đúng trọng tâm.")}<br className="hidden sm:block" /> {t(language, "Tiến bộ")} <span className="text-amber-300">{t(language, "từng ngày.")}</span>
               </h1>
-              <p className="mt-2 max-w-2xl text-xs leading-5 text-blue-50 sm:text-sm">Hỏi bài, lên kế hoạch học phù hợp với bạn.</p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-blue-50 sm:text-sm">{t(language, "Hỏi bài, lên kế hoạch học phù hợp với bạn.")}</p>
 
               <form onSubmit={submitChatPrompt} className="mt-4 w-full">
                 <div className="flex items-center gap-2 rounded-full border border-white/70 bg-white p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.2)] ring-4 ring-white/15 focus-within:ring-cyan-200/50">
                   <Sparkles aria-hidden="true" className="ml-2 h-5 w-5 shrink-0 text-blue-500" />
-                  <label htmlFor="dashboard-ai-prompt" className="sr-only">Hỏi trợ lý AI EduFlow</label>
+                  <label htmlFor="dashboard-ai-prompt" className="sr-only">{t(language, "Hỏi trợ lý AI EduFlow")}</label>
                   <input
                     id="dashboard-ai-prompt"
                     value={chatPrompt}
                     onChange={(event) => setChatPrompt(event.target.value)}
-                    placeholder="Hỏi EduFlow AI bất cứ điều gì..."
+                    placeholder={t(language, "Hỏi EduFlow AI bất cứ điều gì...")}
                     className="min-w-0 flex-1 bg-transparent px-1 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                   />
                   <button
                     type="submit"
-                    aria-label="Gửi câu hỏi cho AI"
+                    aria-label={t(language, "Gửi câu hỏi cho AI")}
                     disabled={!chatPrompt.trim() && !chatImage}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -656,9 +663,9 @@ export function StudentDashboard({
 
               <nav aria-label="Lối tắt công cụ AI" className="mt-3 flex flex-wrap gap-2">
                 {([
-                  { page: 'schedule', label: 'AI hỗ trợ thời khóa biểu', Icon: CalendarDays },
-                  { page: 'my-results', label: 'AI phân tích tiến độ', Icon: BarChart3 },
-                  { page: 'ai-practice', label: 'AI luyện tập', Icon: BookOpen },
+                  { page: 'schedule', label: t(language, "AI hỗ trợ thời khóa biểu"), Icon: CalendarDays },
+                  { page: 'my-results', label: t(language, "AI phân tích tiến độ"), Icon: BarChart3 },
+                  { page: 'ai-practice', label: t(language, "AI luyện tập"), Icon: BookOpen },
                 ] as const).map(({ page, label, Icon }) => (
                   <button
                     key={page}
@@ -678,12 +685,12 @@ export function StudentDashboard({
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.85fr)]">
             <section className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-blue-600" />Bài tập &amp; kiểm tra sắp tới</h2>
-                <div role="group" aria-label="Lọc hoạt động học tập" className="flex rounded-lg bg-slate-100 p-0.5">
+                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><FileText className="h-4 w-4 text-blue-600" />{t(language, "Bài tập & kiểm tra sắp tới")}</h2>
+                <div role="group" aria-label={t(language, "Lọc hoạt động học tập")} className="flex rounded-lg bg-slate-100 p-0.5">
                   {([
-                    { id: 'upcoming', label: 'Cần làm / sắp tới' },
-                    { id: 'submitted', label: 'Đã nộp' },
-                    { id: 'graded', label: 'Đã chấm' },
+                    { id: 'upcoming', label: t(language, "Cần làm / sắp tới") },
+                    { id: 'submitted', label: t(language, "Đã nộp") },
+                    { id: 'graded', label: t(language, "Đã chấm") },
                   ] as const).map(({ id, label }) => (
                     <button
                       key={id}
@@ -702,7 +709,7 @@ export function StudentDashboard({
                   <>
                     {upcomingLearningItems.slice(0, 3).map((item) => {
                       const isExam = item.kind === 'exam';
-                      const countdownLabel = getCountdownLabel(item.date, startOfToday);
+                      const countdownLabel = getCountdownLabel(item.date, startOfToday, language);
                       return (
                         <button
                           key={item.id}
@@ -716,13 +723,13 @@ export function StudentDashboard({
                             {isExam ? <CalendarClock className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{isExam ? `Kiểm tra ${item.subject}: ${item.title}` : `BTVN ${item.subject}: ${item.title}`}</span>
+                            <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{isExam ? `${t(language, "phrase:Kiểm tra::Exam")} ${localizeStudentSubject(item.subject, language)}: ${item.title}` : `${t(language, "BTVN")} ${localizeStudentSubject(item.subject, language)}: ${item.title}`}</span>
                             <span className="mt-1 flex items-center gap-1 truncate text-[0.5625rem] text-slate-500">
                               <Clock3 className="h-2.5 w-2.5 shrink-0" />
-                              {isExam ? 'Ngày kiểm tra' : 'Hạn nộp'}: {item.date.toLocaleDateString('vi-VN')}
+                              {isExam ? t(language, "Ngày kiểm tra") : t(language, "Hạn nộp")}: {item.date.toLocaleDateString(locale)}
                             </span>
                           </span>
-                          <span className={`shrink-0 rounded-full px-2 py-1 text-[0.5625rem] font-semibold ${countdownLabel.startsWith('Quá hạn') ? 'bg-rose-50 text-rose-700' : isExam ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[0.5625rem] font-semibold ${countdownLabel.startsWith(language === 'en' ? 'Overdue' : 'Quá hạn') ? 'bg-rose-50 text-rose-700' : isExam ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
                             {countdownLabel}
                           </span>
                           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -730,20 +737,20 @@ export function StudentDashboard({
                       );
                     })}
                     {loadingLiveData && upcomingLearningItems.length === 0 && (
-                      <p className="py-5 text-center text-xs text-slate-500">Đang tải bài tập và lịch kiểm tra…</p>
+                      <p className="py-5 text-center text-xs text-slate-500">{t(language, "Đang tải bài tập và lịch kiểm tra…")}</p>
                     )}
                     {!loadingLiveData && upcomingLearningItems.length === 0 && (
                       <p className="py-5 text-center text-xs text-slate-500">
-                        {liveDataError || 'Chưa có bài tập hoặc lịch kiểm tra sắp tới.'}
+                        {liveDataError || t(language, "Chưa có bài tập hoặc lịch kiểm tra sắp tới.")}
                       </p>
                     )}
                     <button type="button" onClick={() => onNavigate('assignments')} className="w-full py-2 text-left text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
-                      Xem tất cả bài tập <ArrowRight className="ml-1 inline h-3 w-3" />
+                      {t(language, "Xem tất cả bài tập")} <ArrowRight className="ml-1 inline h-3 w-3" />
                     </button>
                   </>
                 )}
                 {activityFilter === 'submitted' && (
-                  <p className="py-6 text-center text-xs leading-5 text-slate-500">Chưa có dữ liệu bài đã nộp để hiển thị tại đây.</p>
+                  <p className="py-6 text-center text-xs leading-5 text-slate-500">{t(language, "Chưa có dữ liệu bài đã nộp để hiển thị tại đây.")}</p>
                 )}
                 {activityFilter === 'graded' && (
                   <>
@@ -758,7 +765,7 @@ export function StudentDashboard({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{assignment.title}</span>
                           <span className="mt-1 block truncate text-[0.5625rem] text-slate-500">
-                            {assignment.subject} · {assignment.gradedAt ? new Date(assignment.gradedAt).toLocaleDateString('vi-VN') : 'Đã chấm'}
+                            {localizeStudentSubject(assignment.subject, language)} · {assignment.gradedAt ? new Date(assignment.gradedAt).toLocaleDateString(locale) : t(language, "Đã chấm")}
                           </span>
                         </span>
                         <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[0.5625rem] font-semibold text-emerald-700">{assignment.score ?? '—'}/10</span>
@@ -766,11 +773,11 @@ export function StudentDashboard({
                       </button>
                     ))}
                     {loadingLiveData && gradedAssignments.length === 0 && (
-                      <p role="status" className="py-5 text-center text-xs text-slate-500">Đang tải bài tập đã chấm…</p>
+                      <p role="status" className="py-5 text-center text-xs text-slate-500">{t(language, "Đang tải bài tập đã chấm…")}</p>
                     )}
                     {!loadingLiveData && gradedAssignments.length === 0 && (
                       <p role={progressError ? 'alert' : undefined} className="py-5 text-center text-xs text-slate-500">
-                        {progressError || 'Chưa có bài tập về nhà nào được chấm.'}
+                        {progressError || t(language, "Chưa có bài tập về nhà nào được chấm.")}
                       </p>
                     )}
                   </>
@@ -780,12 +787,12 @@ export function StudentDashboard({
 
             <section className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Trophy className="h-4 w-4 text-blue-600" />Tiến độ học tập</h2>
+                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Trophy className="h-4 w-4 text-blue-600" />{t(language, "Tiến độ học tập")}</h2>
                 <button type="button" onClick={() => onNavigate('my-results')} className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900">
-                  Chi tiết <ArrowRight className="ml-1 inline h-3.5 w-3.5" />
+                  {t(language, "Chi tiết")} <ArrowRight className="ml-1 inline h-3.5 w-3.5" />
                 </button>
               </div>
-              <b className="mt-3 text-[1rem] text-slate-500">Điểm trung bình:</b>
+              <b className="mt-3 text-[1rem] text-slate-500">{t(language, "Điểm trung bình:")}</b>
               <div className="flex items-end gap-2 border-b border-slate-100 pb-2">
                 <strong className="text-3xl font-extrabold leading-none text-slate-900">{allAverage === null ? '—' : allAverage.toFixed(1)}</strong>
               </div>
@@ -811,7 +818,7 @@ export function StudentDashboard({
                         {subjectScores.slice(page * 4, page * 4 + 4).map(({ subject, average }) => (
                           <div key={subject}>
                             <div className="mb-1 flex justify-between gap-2 text-[0.625rem]">
-                              <span className="truncate font-medium text-slate-700">{subject}</span>
+                              <span className="truncate font-medium text-slate-700">{localizeStudentSubject(subject, language)}</span>
                               <strong className="text-slate-800">{average === null ? '—' : average.toFixed(1)}</strong>
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
@@ -829,7 +836,7 @@ export function StudentDashboard({
                       <button
                         key={index}
                         type="button"
-                        aria-label={`Xem nhóm môn học ${index + 1}`}
+                        aria-label={t(language, 'dashboard.subjectGroup.open', { index: index + 1 })}
                         aria-pressed={index === progressCycle.page}
                         onClick={() => progressCycle.setPage(index)}
                         className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -847,7 +854,7 @@ export function StudentDashboard({
         <aside className="flex min-w-0 flex-col gap-3">
           <section className="flex h-[15rem] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="flex items-center gap-2 border-b border-slate-100 pb-3 text-sm font-bold text-slate-900">
-              <Clock3 className="h-4 w-4 text-blue-600" /> Cần chú ý
+              <Clock3 className="h-4 w-4 text-blue-600" /> {t(language, "Cần chú ý")}
             </h2>
             <div className="mt-3 flex min-h-0 flex-1 flex-col">
               {attentionItems.length > 0 ? (
@@ -881,7 +888,7 @@ export function StudentDashboard({
                         <button
                           key={index}
                           type="button"
-                          aria-label={`Xem nhóm cần chú ý ${index + 1}`}
+                          aria-label={t(language, 'dashboard.attentionGroup.open', { index: index + 1 })}
                           aria-pressed={index === attentionCycle.page}
                           onClick={() => attentionCycle.setPage(index)}
                           className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -893,20 +900,20 @@ export function StudentDashboard({
                   )}
                 </div>
               ) : (
-                <p className="flex min-h-28 flex-1 items-center text-xs text-slate-500">{loadingLiveData ? 'Đang tải dữ liệu cần chú ý…' : liveDataError || 'Chưa có mục nào cần chú ý.'}</p>
+                <p className="flex min-h-28 flex-1 items-center text-xs text-slate-500">{loadingLiveData ? t(language, "Đang tải dữ liệu cần chú ý…") : liveDataError || t(language, "Chưa có mục nào cần chú ý.")}</p>
               )}
             </div>
           </section>
 
           <section className="flex h-[17rem] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" />Lịch ngày mai - {tomorrow.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</h2>
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900"><CalendarClock className="h-4 w-4 text-blue-600" />{t(language, "Lịch ngày mai")} - {tomorrow.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })}</h2>
               <button type="button" onClick={() => onNavigate('schedule')} className="shrink-0 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
-                Thời khóa biểu <ArrowRight className="ml-0.5 inline h-3 w-3" />
+                {t(language, "Thời khóa biểu")} <ArrowRight className="ml-0.5 inline h-3 w-3" />
               </button>
             </div>
             <div className="mt-2 flex min-h-0 flex-1 flex-col">
-              {loadingLiveData ? <p className="py-4 text-xs leading-5 text-slate-500">Đang tải thời khóa biểu…</p>
+              {loadingLiveData ? <p className="py-4 text-xs leading-5 text-slate-500">{t(language, "Đang tải thời khóa biểu…")}</p>
                 : tomorrowEntries.length > 0 ? (
                   <div
                     className="flex min-h-0 flex-1 flex-col"
@@ -936,12 +943,12 @@ export function StudentDashboard({
                               <button key={`${entry.weekday}-${entry.period}-${entry.subject}-${index}`} type="button" tabIndex={page === tomorrowCycle.page ? 0 : -1} onClick={() => onNavigate('schedule')} className="flex h-20 w-full min-w-0 items-center gap-3 overflow-hidden py-2 text-left transition hover:bg-blue-50">
                                 <span className="flex h-12 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-slate-50 text-blue-800">
                                   <span className="text-[0.5625rem] font-medium text-slate-500">{weekdayLabels[entry.weekday]}</span>
-                                  <span className="whitespace-nowrap text-lg font-extrabold leading-5">Tiết {entry.period}</span>
+                                  <span className="whitespace-nowrap text-lg font-extrabold leading-5">{t(language, "Tiết")} {entry.period}</span>
                                 </span>
                                 <span className="w-0 min-w-0 flex-1 overflow-hidden">
                                   <span title={entry.subject} className="block max-w-full truncate text-xs font-bold leading-4 text-slate-800">{entry.subject}</span>
-                                  <span title={entry.title || entry.topic || 'Buổi học theo thời khóa biểu'} className="mt-0.5 block max-w-full truncate text-[0.625rem] leading-3 text-slate-500">{entry.title || entry.topic || 'Buổi học theo thời khóa biểu'}</span>
-                                  {entry.hasExam && <span title={`Có kiểm tra: ${entry.examTitle}`} className="mt-0.5 block max-w-full truncate text-[0.625rem] font-semibold leading-3 text-rose-700">Có kiểm tra: {entry.examTitle}</span>}
+                                  <span title={entry.title || entry.topic || t(language, "Buổi học theo thời khóa biểu")} className="mt-0.5 block max-w-full truncate text-[0.625rem] leading-3 text-slate-500">{entry.title || entry.topic || t(language, "Buổi học theo thời khóa biểu")}</span>
+                                  {entry.hasExam && <span title={`${t(language, "Có kiểm tra")}: ${entry.examTitle}`} className="mt-0.5 block max-w-full truncate text-[0.625rem] font-semibold leading-3 text-rose-700">{t(language, "Có kiểm tra")}: {entry.examTitle}</span>}
                                 </span>
                                 <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                               </button>
@@ -956,7 +963,7 @@ export function StudentDashboard({
                           <button
                             key={index}
                             type="button"
-                            aria-label={`Xem lịch ngày mai trang ${index + 1}`}
+                            aria-label={t(language, 'dashboard.tomorrowSchedule.open', { index: index + 1 })}
                             aria-pressed={index === tomorrowCycle.page}
                             onClick={() => tomorrowCycle.setPage(index)}
                             className="rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -967,7 +974,7 @@ export function StudentDashboard({
                       </div>
                     )}
                   </div>
-                ) : <p className="py-4 text-xs leading-5 text-slate-500">{liveDataError || 'Chưa có thời khóa biểu ngày mai được ghi nhận.'}</p>}
+                ) : <p className="py-4 text-xs leading-5 text-slate-500">{liveDataError || t(language, "Chưa có thời khóa biểu ngày mai được ghi nhận.")}</p>}
             </div>
           </section>
 

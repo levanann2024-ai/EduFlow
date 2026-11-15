@@ -1,5 +1,7 @@
 import { ArrowRight, BookOpenCheck, MessageCircle, Sparkles, Target } from 'lucide-react';
 import type { Page } from '@/types';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { t } from '@/i18n/i18n';
 
 interface AILearningProps {
   onNavigate: (page: Page) => void;
@@ -29,6 +31,7 @@ const learningTools = [
 ];
 
 export function AILearning({ onNavigate }: AILearningProps) {
+  const language = useAppLanguage();
   return (
     <main className="space-y-8 pb-8">
       <header className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 px-6 py-8 shadow-sm sm:px-9 sm:py-10">
@@ -36,14 +39,14 @@ export function AILearning({ onNavigate }: AILearningProps) {
           <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-200">
             <Sparkles className="h-7 w-7" />
           </span>
-          <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-blue-800 sm:text-4xl lg:text-5xl">AI học tập</h1>
+          <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-blue-800 sm:text-4xl lg:text-5xl">{t(language, "AI học tập")}</h1>
           <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
-            Chọn cách học phù hợp: hỏi trợ giảng khi cần giải đáp, hoặc luyện tập để nhớ bài lâu hơn.
+            {t(language, "Chọn cách học phù hợp: hỏi trợ giảng khi cần giải đáp, hoặc luyện tập để nhớ bài lâu hơn.")}
           </p>
         </div>
       </header>
 
-      <section aria-label="Chọn công cụ AI" className="grid gap-6 lg:grid-cols-2">
+      <section aria-label={t(language, "Chọn công cụ AI")} className="grid gap-6 lg:grid-cols-2">
         {learningTools.map((tool) => {
           const Icon = tool.icon;
           return (
@@ -57,10 +60,12 @@ export function AILearning({ onNavigate }: AILearningProps) {
               <span className={`relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${tool.wash} text-white shadow-md`}>
                 <Icon className="h-8 w-8" />
               </span>
-              <span className="relative mt-7 text-2xl font-bold text-slate-900 sm:text-3xl">{tool.title}</span>
-              <span className="relative mt-3 max-w-lg text-base leading-7 text-slate-600">{tool.description}</span>
+              <span className="relative mt-7 text-2xl font-bold text-slate-900 sm:text-3xl">{language === 'en' ? (tool.page === 'ai-chat' ? 'AI tutor' : 'AI practice') : tool.title}</span>
+              <span className="relative mt-3 max-w-lg text-base leading-7 text-slate-600">{language === 'en'
+                ? (tool.page === 'ai-chat' ? 'Ask questions, find solutions, and understand new ideas with step-by-step guidance.' : 'Practise by topic or create a quiz to test your knowledge and review your results.')
+                : tool.description}</span>
               <span className={`relative mt-auto inline-flex items-center gap-2 pt-8 text-sm font-bold ${tool.accent}`}>
-                {tool.action}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                {language === 'en' ? (tool.page === 'ai-chat' ? 'Start a conversation' : 'Choose a subject') : tool.action}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </span>
               {tool.page === 'ai-practice' && <Target aria-hidden="true" className="absolute bottom-7 right-8 h-14 w-14 text-blue-100 transition-transform group-hover:scale-110" />}
             </button>

@@ -57,6 +57,8 @@ import {
   type StudentSubjectAverage,
 } from '@/api/schoolApi';
 import { StudentExamResults } from './StudentExamResults';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, t } from '@/i18n/i18n';
 
 interface MyClassesProps {
   studentUserId: string;
@@ -258,6 +260,7 @@ function scoreColor(score: number) {
 }
 
 export function MyClasses(props: MyClassesProps) {
+  const language = useAppLanguage();
   const {
     studentUserId,
     isDemo = false,
@@ -1055,11 +1058,11 @@ export function MyClasses(props: MyClassesProps) {
               setSelectedGroupKey(null);
               onExitGroup();
             }} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-blue-700">
-              <ChevronLeft className="h-5 w-5" /> Lớp học
+              <ChevronLeft className="h-5 w-5" /> {t(language, "Lớp học")}
             </button>
             <span className="h-6 border-l border-slate-200" />
             <div className="min-w-0">
-              <p className="truncate text-base font-bold text-slate-900">{selectedGroup.subject}</p>
+              <p className="truncate text-base font-bold text-slate-900">{localizeStudentSubject(selectedGroup.subject, language)}</p>
             </div>
           </div>
           <button
@@ -1070,13 +1073,13 @@ export function MyClasses(props: MyClassesProps) {
             className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
           >
             {contentSidebarHidden
-              ? <><PanelLeftOpen className="h-4 w-4" /><span className="hidden sm:inline">Hiện danh mục</span></>
-              : <><PanelLeftClose className="h-4 w-4" /><span className="hidden sm:inline">Ẩn danh mục</span></>}
+              ? <><PanelLeftOpen className="h-4 w-4" /><span className="hidden sm:inline">{t(language, "Hiện danh mục")}</span></>
+              : <><PanelLeftClose className="h-4 w-4" /><span className="hidden sm:inline">{t(language, "Ẩn danh mục")}</span></>}
           </button>
         </header>
         <div className={`grid min-h-[min(72vh,760px)] ${contentSidebarHidden ? 'grid-cols-1' : 'lg:grid-cols-[360px_minmax(0,1fr)]'}`}>
           {!contentSidebarHidden && <aside id="student-class-content-sidebar" className="min-w-0 overflow-x-hidden border-b border-slate-200 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r sm:p-5">
-            <div className="mb-4 grid grid-cols-3 gap-2" role="tablist" aria-label="Nội dung lớp học">
+            <div className="mb-4 grid grid-cols-3 gap-2" role="tablist" aria-label={t(language, "Nội dung lớp học")}>
               <button
                 id="student-lessons-tab"
                 type="button"
@@ -1088,7 +1091,7 @@ export function MyClasses(props: MyClassesProps) {
                   activeTab === 'lesson' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                <BookOpen className="h-4 w-4" /> Bài giảng
+                <BookOpen className="h-4 w-4" /> {t(language, "Bài giảng")}
               </button>
               <button
                 id="student-assignments-tab"
@@ -1101,7 +1104,7 @@ export function MyClasses(props: MyClassesProps) {
                   activeTab === 'assignment' ? 'bg-rose-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                <ClipboardList className="h-4 w-4" /> Bài tập
+                <ClipboardList className="h-4 w-4" /> {t(language, 'phrase:Bài tập::Assignments')}
                 <span className={`rounded-full px-1.5 py-0.5 text-[0.6875rem] ${activeTab === 'assignment' ? 'bg-white/20' : 'bg-rose-50 text-rose-700'}`}>
                   {visibleAssignments.length}
                 </span>
@@ -1117,13 +1120,13 @@ export function MyClasses(props: MyClassesProps) {
                   activeTab === 'exam' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                <ClipboardCheck className="h-4 w-4" /> Kiểm tra
+                <ClipboardCheck className="h-4 w-4" /> {t(language, 'phrase:Kiểm tra::Exams')}
                 {selectedGroupExamResults.some((result) => (
                   readExamGrades[result.sessionId] !== examGradeRevision(result)
                 )) && (
                   <span
                     className={`h-2 w-2 rounded-full ${activeTab === 'exam' ? 'bg-white' : 'bg-rose-500'}`}
-                    aria-label="Có điểm kiểm tra mới"
+                    aria-label={t(language, "Có điểm kiểm tra mới")}
                   />
                 )}
               </button>
@@ -1208,7 +1211,7 @@ export function MyClasses(props: MyClassesProps) {
                   );
                 })}
               </nav>
-            ) : <p className="py-3 text-sm text-slate-500">Chưa có bài giảng trong học kỳ này.</p>}
+            ) : <p className="py-3 text-sm text-slate-500">{t(language, "Chưa có bài giảng trong học kỳ này.")}</p>}
               </div>
             )}
             {activeTab === 'assignment' && (
@@ -1316,7 +1319,7 @@ export function MyClasses(props: MyClassesProps) {
                     );
                   })}
                 </nav>
-              ) : <p className="py-3 text-sm text-slate-500">Chưa có bài tập trong học kỳ này.</p>}
+              ) : <p className="py-3 text-sm text-slate-500">{t(language, "Chưa có bài tập trong học kỳ này.")}</p>}
               </div>
             )}
             {activeTab === 'exam' && (
@@ -1768,8 +1771,8 @@ export function MyClasses(props: MyClassesProps) {
             ) : (
               <div className="flex min-h-64 flex-col items-center justify-center text-center">
                 {activeTab === 'lesson' ? <BookOpen className="h-10 w-10 text-slate-300" /> : <ClipboardList className="h-10 w-10 text-slate-300" />}
-                <p className="mt-3 font-semibold text-slate-700">{activeTab === 'lesson' ? 'Chưa có bài giảng trong học kỳ này' : 'Chưa có bài tập trong học kỳ này'}</p>
-                <p className="mt-1 text-sm text-slate-500">{activeTab === 'lesson' ? 'Giáo viên chưa đăng bài giảng.' : 'Giáo viên chưa giao bài tập.'}</p>
+                <p className="mt-3 font-semibold text-slate-700">{activeTab === 'lesson' ? t(language, "Chưa có bài giảng trong học kỳ này") : t(language, "Chưa có bài tập trong học kỳ này")}</p>
+                <p className="mt-1 text-sm text-slate-500">{activeTab === 'lesson' ? t(language, "Giáo viên chưa đăng bài giảng.") : t(language, "Giáo viên chưa giao bài tập.")}</p>
               </div>
             )}
           </main>
@@ -1782,11 +1785,11 @@ export function MyClasses(props: MyClassesProps) {
     <div className="animate-fadeIn space-y-6 text-base" style={{ zoom: 0.9 }}>
       <section className="grid gap-3 sm:grid-cols-2">
         <article className="flex items-center justify-between rounded-xl bg-amber-50 px-5 py-4">
-          <p className="flex items-center gap-2 text-sm font-medium text-slate-600"><Clock3 className="h-5 w-5 text-amber-600" />Bài tập chưa nộp</p>
+          <p className="flex items-center gap-2 text-sm font-medium text-slate-600"><Clock3 className="h-5 w-5 text-amber-600" />{t(language, "Bài tập chưa nộp")}</p>
           <strong className="text-2xl text-amber-700">{allPendingAssignments.length}</strong>
         </article>
         <article className="flex items-center justify-between rounded-xl bg-emerald-50 px-5 py-4">
-          <p className="flex items-center gap-2 text-sm font-medium text-slate-600"><CheckCircle2 className="h-5 w-5 text-emerald-600" />Bài tập đã nộp</p>
+          <p className="flex items-center gap-2 text-sm font-medium text-slate-600"><CheckCircle2 className="h-5 w-5 text-emerald-600" />{t(language, "Bài tập đã nộp")}</p>
           <strong className="text-2xl text-emerald-700">{submittedAssignments.length}</strong>
         </article>
       </section>
@@ -1795,28 +1798,28 @@ export function MyClasses(props: MyClassesProps) {
           <div className="flex gap-2">
             <label className="relative">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm lớp, môn, giáo viên" className="input-field w-96 h-10 pl-9 pr-3 text-sm" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t(language, "Tìm lớp, môn, giáo viên")} className="input-field w-96 h-10 pl-9 pr-3 text-sm" />
             </label>
             <select className="input-field h-10 px-3 text-sm" value={semester} onChange={(event) => setSemester(event.target.value as Semester)}>
-              <option value="Kỳ 1">Học kỳ 1</option>
-              <option value="Kỳ 2">Học kỳ 2</option>
+              <option value="Kỳ 1">{t(language, "Học kỳ 1")}</option>
+              <option value="Kỳ 2">{t(language, "Học kỳ 2")}</option>
             </select>
           </div>
         </div>
-        {loading ? <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">Đang tải lớp học...</p> : null}
-        {loadError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}<button type="button" onClick={() => void refresh()} className="ml-3 font-semibold underline">Thử lại</button></div>}
-        {!loading && !loadError && initialResourceId && !groups.some((group) => group.resources.some((item) => item.id === initialResourceId)) && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Không tìm thấy tài liệu này hoặc bạn không còn quyền truy cập.</p>}
+        {loading ? <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">{t(language, "Đang tải lớp học...")}</p> : null}
+        {loadError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{loadError}<button type="button" onClick={() => void refresh()} className="ml-3 font-semibold underline">{t(language, "Thử lại")}</button></div>}
+        {!loading && !loadError && initialResourceId && !groups.some((group) => group.resources.some((item) => item.id === initialResourceId)) && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{t(language, "Không tìm thấy tài liệu này hoặc bạn không còn quyền truy cập.")}</p>}
         {averageLoadError && !loadError && (
           <p role="alert" className="text-sm text-rose-700">{averageLoadError}</p>
         )}
         {!loading && !loadError && !groups.length && (
           <div className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
             <BookOpen className="mx-auto h-9 w-9 text-slate-300" />
-            <p className="mt-3 font-semibold text-slate-700">Chưa có tài liệu hoặc bài tập</p>
-            <p className="mt-1 text-sm text-slate-500">Khi giáo viên đăng nội dung, lớp học sẽ hiển thị tại đây.</p>
+            <p className="mt-3 font-semibold text-slate-700">{t(language, "Chưa có tài liệu hoặc bài tập")}</p>
+            <p className="mt-1 text-sm text-slate-500">{t(language, "Khi giáo viên đăng nội dung, lớp học sẽ hiển thị tại đây.")}</p>
           </div>
         )}
-        {!loading && !loadError && groups.length > 0 && !filteredGroups.length && <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">Không tìm thấy lớp học phù hợp.</p>}
+        {!loading && !loadError && groups.length > 0 && !filteredGroups.length && <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">{t(language, "Không tìm thấy lớp học phù hợp.")}</p>}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {filteredGroups.map((group) => {
             const termAssignments = group.assignments.filter((item) => item.semester === semester && item.submittedAt === null);
@@ -1837,8 +1840,8 @@ export function MyClasses(props: MyClassesProps) {
                 <button
                   type="button"
                   aria-label={unreadExamCount > 0
-                    ? `Mở kết quả kiểm tra mới môn ${group.subject}`
-                    : `Mở tài liệu môn ${group.subject}`}
+                    ? t(language, 'myClasses.group.openExamResults', { subject: localizeStudentSubject(group.subject, language) })
+                    : t(language, 'myClasses.group.openResources', { subject: localizeStudentSubject(group.subject, language) })}
                   onClick={() => openGroup(group, unreadExamCount > 0 ? 'exam' : 'lesson')}
                   className="absolute inset-0 z-0 rounded-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-500"
                 />
@@ -1846,13 +1849,13 @@ export function MyClasses(props: MyClassesProps) {
                 <div className="pointer-events-none relative z-10">
                   <div className="flex items-start justify-between gap-2">
                     <h2 className={`min-w-0 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl ${unreadExamCount > 0 ? 'pr-12' : ''}`}>
-                      {group.subject}
+                      {localizeStudentSubject(group.subject, language)}
                       {group.teacherName && <span className="font-medium text-slate-500"> - {teacherLabel(group.teacherName, group.teacherGender)}</span>}
                     </h2>
                     {unreadExamCount > 0 && (
                       <span
-                        aria-label={`${unreadExamCount} kết quả kiểm tra mới`}
-                        title={`${unreadExamCount} kết quả kiểm tra mới`}
+                        aria-label={`${unreadExamCount} ${t(language, "kết quả kiểm tra mới")}`}
+                        title={`${unreadExamCount} ${t(language, "kết quả kiểm tra mới")}`}
                         className="absolute right-0 top-0 inline-flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 text-xl font-black leading-none text-white shadow-md ring-4 ring-rose-100"
                       >
                         !
@@ -1860,7 +1863,7 @@ export function MyClasses(props: MyClassesProps) {
                     )}
                   </div>
                   <div className="mt-4 flex min-h-12 flex-wrap items-baseline gap-x-1 gap-y-1 whitespace-normal sm:gap-x-2">
-                    <span className="shrink-0 text-xs font-semibold text-slate-600 sm:text-base">Điểm trung bình môn:</span>
+                    <span className="shrink-0 text-xs font-semibold text-slate-600 sm:text-base">{t(language, "Điểm trung bình môn:")}</span>
                     <span
                       className="text-3xl font-extrabold leading-none tracking-tight sm:text-5xl"
                       style={{ color: subjectAverage?.average == null ? '#111827' : scoreColor(subjectAverage.average) }}
@@ -1882,13 +1885,13 @@ export function MyClasses(props: MyClassesProps) {
                   <div className="mt-4 min-h-6">
                     {termAssignments.length > 0 && (
                       <p className="text-base font-semibold text-rose-700">
-                        {termAssignments.length} bài chưa làm
+                        {termAssignments.length} {t(language, "bài chưa làm")}
                       </p>
                     )}
                   </div>
                   <div className="pointer-events-auto relative mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
-                    <button type="button" onClick={() => openGroup(group, 'lesson')} className="min-h-11 rounded-lg bg-blue-600 px-2 text-sm font-semibold text-white transition hover:bg-blue-700">Tài liệu</button>
-                    <button type="button" onClick={() => openGroup(group, 'assignment')} className="min-h-11 rounded-lg border border-slate-200 px-2 text-sm font-semibold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700">Bài tập</button>
+                    <button type="button" onClick={() => openGroup(group, 'lesson')} className="min-h-11 rounded-lg bg-blue-600 px-2 text-sm font-semibold text-white transition hover:bg-blue-700">{t(language, "Tài liệu")}</button>
+                    <button type="button" onClick={() => openGroup(group, 'assignment')} className="min-h-11 rounded-lg border border-slate-200 px-2 text-sm font-semibold text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700">{t(language, 'phrase:Bài tập::Assignments')}</button>
                   </div>
                 </div>
               </article>

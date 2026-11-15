@@ -24,27 +24,23 @@ import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { PreExamCheckModal } from './exams/PreExamCheckModal';
 import { ExamWorkspace, type ExamSubmissionSummary } from './exams/ExamWorkspace';
 import type { ExamQuestion } from './exams/examQuestions';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
 
 type RoomStatus = 'open' | 'upcoming' | 'ended';
 type StatusFilter = RoomStatus | 'all';
 
 type ExamRoom = Omit<StudentExamRoom, 'status'> & { status: RoomStatus };
 
-const statusLabels: Record<RoomStatus, string> = {
-  open: 'Đang diễn ra',
-  upcoming: 'Sắp diễn ra',
-  ended: 'Đã kết thúc',
-};
-
-function getExamDate(dateTime: string) {
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(dateTime));
+function getExamDate(dateTime: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(dateTime));
 }
 
-function getExamTime(start: string, durationMinutes: number) {
+function getExamTime(start: string, durationMinutes: number, locale: string) {
   const startDate = new Date(start);
   if (!Number.isFinite(startDate.getTime())) return '';
   const endDate = new Date(startDate.getTime() + durationMinutes * 60_000);
-  const formatTime = (date: Date) => new Intl.DateTimeFormat('vi-VN', {
+  const formatTime = (date: Date) => new Intl.DateTimeFormat(locale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -65,13 +61,6 @@ const statusTextStyles: Record<RoomStatus, string> = {
   upcoming: 'text-amber-700',
   ended: 'text-slate-600',
 };
-
-const statusTabs: { id: StatusFilter; label: string }[] = [
-  { id: 'open', label: 'Đang mở' },
-  { id: 'upcoming', label: 'Sắp diễn ra' },
-  { id: 'ended', label: 'Đã kết thúc' },
-  { id: 'all', label: 'Tất cả' },
-];
 
 interface OnlineExamRoomsProps {
   onViewResult: (result: StudentExamResult) => void;
@@ -120,6 +109,8 @@ function workspaceQuestions(questions: StudentExamQuestion[]): ExamQuestion[] {
 }
 
 export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoomsProps) {
+  const language = useAppLanguage();
+  const locale = studentLocale(language);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,19 +209,30 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
   }), [rooms]);
 
   const filteredRooms = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('vi');
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase(language === 'en' ? 'en' : 'vi');
     return rooms.filter((room) => {
       const matchesStatus = statusFilter === 'all' || room.status === statusFilter;
       const matchesSubject = subjectFilter === 'all' || room.subject === subjectFilter;
       const matchesSearch = !normalizedQuery
-        || room.title.toLocaleLowerCase('vi').includes(normalizedQuery)
-        || room.code.toLocaleLowerCase('vi').includes(normalizedQuery);
+        || room.title.toLocaleLowerCase(language === 'en' ? 'en' : 'vi').includes(normalizedQuery)
+        || room.code.toLocaleLowerCase(language === 'en' ? 'en' : 'vi').includes(normalizedQuery);
       return matchesStatus && matchesSubject && matchesSearch;
     }).sort((first, second) => {
       const statusPriority: Record<RoomStatus, number> = { open: 0, upcoming: 1, ended: 2 };
       return statusPriority[first.status] - statusPriority[second.status];
     });
-  }, [rooms, searchQuery, statusFilter, subjectFilter]);
+  }, [language, rooms, searchQuery, statusFilter, subjectFilter]);
+  const statusLabels: Record<RoomStatus, string> = {
+    open: t(language, "Đang diễn ra"),
+    upcoming: t(language, "Sắp diễn ra"),
+    ended: t(language, "Đã kết thúc"),
+  };
+  const statusTabs: { id: StatusFilter; label: string }[] = [
+    { id: 'open', label: t(language, "Đang mở") },
+    { id: 'upcoming', label: t(language, "Sắp diễn ra") },
+    { id: 'ended', label: t(language, "Đã kết thúc") },
+    { id: 'all', label: t(language, "Tất cả") },
+  ];
 
   const renderRoomCard = (room: ExamRoom) => {
     const startsAt = new Date(room.startsAt).getTime();
@@ -242,22 +244,22 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
     return (
       <article key={room.id} className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md sm:p-5">
       <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 text-xl font-black leading-7 text-slate-950 sm:text-2xl">{room.subject}</span>
+        <span className="min-w-0 text-xl font-black leading-7 text-slate-950 sm:text-2xl">{localizeStudentSubject(room.subject, language)}</span>
       </div>
 
       <div className="mt-2 flex-1">
         <h3 className="line-clamp-2 text-sm font-extrabold leading-5 text-slate-900 sm:text-base">{room.title}</h3>
-        <p className="mt-1 text-xs text-slate-600">Mã phòng: <strong className="font-extrabold tracking-wide text-slate-900">{room.code}</strong></p>
+        <p className="mt-1 text-xs text-slate-600">{t(language, "Mã phòng")}: <strong className="font-extrabold tracking-wide text-slate-900">{room.code}</strong></p>
         <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className={`inline-flex items-center gap-1.5 text-sm font-bold ${statusTextStyles[room.status]}`}>
               <CalendarClock className="h-4 w-4" />
-              {room.status === 'ended' ? 'Đã kết thúc' : statusLabels[room.status]}
+              {statusLabels[room.status]}
             </p>
-            <p className="shrink-0 text-sm font-extrabold text-slate-800">{getExamDate(room.startsAt)}</p>
+            <p className="shrink-0 text-sm font-extrabold text-slate-800">{getExamDate(room.startsAt, locale)}</p>
           </div>
           <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Clock3 className="h-3.5 w-3.5" /> {room.durationMinutes} phút ({getExamTime(room.startsAt, room.durationMinutes)})
+            <Clock3 className="h-3.5 w-3.5" /> {room.durationMinutes} {t(language, "phút")} ({getExamTime(room.startsAt, room.durationMinutes, locale)})
           </p>
           {room.status !== 'ended' && (() => {
             const startsAt = new Date(room.startsAt).getTime();
@@ -268,16 +270,16 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
             return Number.isFinite(countdownTarget) ? (
               <div className="mt-3 rounded-lg border border-blue-100 bg-white px-3 py-2 text-center">
                 <p className={`text-xs font-semibold ${hasStarted ? 'text-emerald-700' : 'text-blue-700'}`}>
-                  {hasStarted ? 'Thời gian làm bài còn' : 'Mở phòng sau'}
+                  {hasStarted ? t(language, "Thời gian làm bài còn") : t(language, "Mở phòng sau")}
                 </p>
-                <p aria-label={`${hasStarted ? 'Thời gian làm bài còn' : 'Mở phòng sau'} ${countdownLabel(countdownTarget, now)}`} className={`mt-0.5 font-mono text-2xl font-black leading-tight tabular-nums sm:text-3xl ${hasStarted ? 'text-emerald-600' : 'text-blue-700'}`}>
+                <p aria-label={`${hasStarted ? t(language, "Thời gian làm bài còn") : t(language, "Mở phòng sau")} ${countdownLabel(countdownTarget, now)}`} className={`mt-0.5 font-mono text-2xl font-black leading-tight tabular-nums sm:text-3xl ${hasStarted ? 'text-emerald-600' : 'text-blue-700'}`}>
                   {countdownLabel(countdownTarget, now)}
                 </p>
               </div>
             ) : null;
           })()}
           <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-600">
-            <Users className="h-3.5 w-3.5" /> {room.inProgressCount} đang làm
+            <Users className="h-3.5 w-3.5" /> {room.inProgressCount} {t(language, "đang làm")}
           </p>
         </div>
       </div>
@@ -289,7 +291,7 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700 hover:shadow-md"
             onClick={() => onViewResult(publishedResult)}
           >
-            <CheckCircle2 className="h-4 w-4" /> Xem kết quả
+            <CheckCircle2 className="h-4 w-4" /> {t(language, "Xem kết quả")}
           </button>
         ) : (
           <button
@@ -311,8 +313,8 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
             }}
           >
             {room.hasSubmitted
-              ? <><CheckCircle2 className="h-4 w-4" /> Đã nộp bài</>
-              : <>{canEnter ? 'Vào phòng thi' : room.status === 'ended' ? 'Đã kết thúc' : 'Chưa mở'}{room.status !== 'ended' && <ArrowRight className="h-4 w-4" />}</>}
+              ? <><CheckCircle2 className="h-4 w-4" /> {t(language, "Đã nộp bài")}</>
+              : <>{canEnter ? t(language, "Vào phòng thi") : room.status === 'ended' ? t(language, "Đã kết thúc") : t(language, "Chưa mở")}{room.status !== 'ended' && <ArrowRight className="h-4 w-4" />}</>}
           </button>
         )}
       </footer>
@@ -324,14 +326,14 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
     examStage === 'result' && selectedRoom && examSummary && submission ? (
       <main className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm sm:p-8">
         <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
-        <h1 className="mt-4 text-2xl font-bold text-slate-950">Đã nộp bài thành công</h1>
+        <h1 className="mt-4 text-2xl font-bold text-slate-950">{t(language, "Đã nộp bài thành công")}</h1>
         <p className="mt-2 text-sm text-slate-600">{selectedRoom.title}</p>
-        <p className="mt-1 text-sm text-slate-600">Mã phòng: <strong>{selectedRoom.code}</strong></p>
+        <p className="mt-1 text-sm text-slate-600">{t(language, "Mã phòng")}: <strong>{selectedRoom.code}</strong></p>
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-slate-50 p-4"><strong className="block text-xl text-slate-900">{submission.answered}/{submission.total}</strong><span className="text-xs text-slate-500">Câu đã trả lời</span></div>
-          <div className="rounded-xl bg-slate-50 p-4"><strong className="block text-base text-slate-900">{new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(submission.submittedAt))}</strong><span className="text-xs text-slate-500">Thời điểm nộp</span></div>
+          <div className="rounded-xl bg-slate-50 p-4"><strong className="block text-xl text-slate-900">{submission.answered}/{submission.total}</strong><span className="text-xs text-slate-500">{t(language, "Câu đã trả lời")}</span></div>
+          <div className="rounded-xl bg-slate-50 p-4"><strong className="block text-base text-slate-900">{new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(submission.submittedAt))}</strong><span className="text-xs text-slate-500">{t(language, "Thời điểm nộp")}</span></div>
         </div>
-        <p className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-left text-sm leading-6 text-blue-900">Bài làm đã được lưu vào hệ thống. Kết quả sẽ được cập nhật sau khi được chấm.</p>
+        <p className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-left text-sm leading-6 text-blue-900">{t(language, "Bài làm đã được lưu vào hệ thống. Kết quả sẽ được cập nhật sau khi được chấm.")}</p>
         <button type="button" onClick={() => {
           setSelectedRoom(null);
           setExamSummary(null);
@@ -339,11 +341,11 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
           setSessionId('');
           setExamStage(null);
           if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
-        }} className="mt-5 w-full rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">Về danh sách phòng thi</button>
+        }} className="mt-5 w-full rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">{t(language, "Về danh sách phòng thi")}</button>
       </main>
     ) : (
     <main className="animate-fadeIn space-y-5 pb-8">
-      <section className="space-y-3" aria-label="Lọc phòng thi">
+      <section className="space-y-3" aria-label={t(language, "Lọc phòng thi")}>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {statusTabs.map((tab) => {
             const count = statusCounts[tab.id];
@@ -358,15 +360,15 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
         </div>
         <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto]">
           <label className="relative">
-            <span className="sr-only">Tìm theo tên hoặc mã phòng</span>
+            <span className="sr-only">{t(language, "Tìm theo tên hoặc mã phòng")}</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Tìm theo tên/mã phòng..." className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t(language, "Tìm theo tên/mã phòng...")} className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
           </label>
           <label className="relative">
-            <span className="sr-only">Lọc theo môn học</span>
+            <span className="sr-only">{t(language, "Lọc theo môn học")}</span>
             <select value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)} className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:min-w-40">
-              <option value="all">Tất cả môn học</option>
-              {[...new Set(rooms.map((room) => room.subject))].map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+              <option value="all">{t(language, "Tất cả môn học")}</option>
+              {[...new Set(rooms.map((room) => room.subject))].map((subject) => <option key={subject} value={subject}>{localizeStudentSubject(subject, language)}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           </label>
@@ -376,27 +378,27 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
       <div>
         {roomsError && rooms.length > 0 && (
           <p role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            Không thể đồng bộ danh sách phòng thi mới nhất: {roomsError}
+            {t(language, "Không thể đồng bộ danh sách phòng thi mới nhất:")} {roomsError}
           </p>
         )}
         {examResultsError && (
           <p role="alert" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Không thể đồng bộ kết quả đã công bố: {examResultsError}
+            {t(language, "Không thể đồng bộ kết quả đã công bố:")} {examResultsError}
           </p>
         )}
         {filteredRooms.length > 0 ? (
-          <section aria-label="Danh sách phòng thi" className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          <section aria-label={t(language, "Danh sách phòng thi")} className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
             {filteredRooms.map(renderRoomCard)}
           </section>
         ) : loadingRooms ? (
-          <p role="status" className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">Đang tải phòng thi được giao...</p>
+          <p role="status" className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">{t(language, "Đang tải phòng thi được giao...")}</p>
         ) : roomsError ? (
           <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">{roomsError}</div>
         ) : (
           <div className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500"><DoorOpen className="h-7 w-7" /></span>
-            <h2 className="mt-4 font-semibold text-slate-800">Hiện chưa có phòng thi nào ở mục này</h2>
-            <p className="mt-1 text-sm text-slate-500">Thử chọn trạng thái hoặc bộ lọc khác nhé.</p>
+            <h2 className="mt-4 font-semibold text-slate-800">{t(language, "Hiện chưa có phòng thi nào ở mục này")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t(language, "Thử chọn trạng thái hoặc bộ lọc khác nhé.")}</p>
           </div>
         )}
       </div>
@@ -427,6 +429,7 @@ export function OnlineExamRooms({ onViewResult, isDemo = false }: OnlineExamRoom
       )}
       {selectedRoom && examStage === 'workspace' && stream && (
         <ExamWorkspace
+          language={language}
           examTitle={selectedRoom.title}
           subject={selectedRoom.subject}
           roomCode={selectedRoom.code}

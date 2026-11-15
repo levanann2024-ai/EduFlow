@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, CheckCircle2, Upload } from 'lucide-react';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { t } from '@/i18n/i18n';
 
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 export function MobileExamUploadPage() {
+  const language = useAppLanguage();
   const [sessionToken] = useState(() => new URLSearchParams(window.location.search).get('session') ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -40,14 +43,14 @@ export function MobileExamUploadPage() {
       try {
         body = await response.json() as { success?: boolean; message?: string };
       } catch {
-        throw new Error('Máy chủ trả về dữ liệu không hợp lệ.');
+        throw new Error(t(language, 'mobileUpload.invalidResponse'));
       }
       if (!response.ok || body.success !== true) {
-        throw new Error(body.message || 'Không thể đồng bộ ảnh lên máy tính.');
+        throw new Error(body.message || t(language, 'mobileUpload.syncError'));
       }
       setSent(true);
     } catch (uploadError: unknown) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Không thể đồng bộ ảnh lên máy tính.');
+      setError(uploadError instanceof Error ? uploadError.message : t(language, 'mobileUpload.syncError'));
     } finally {
       setSending(false);
     }
@@ -59,18 +62,18 @@ export function MobileExamUploadPage() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
           {sent ? <CheckCircle2 className="h-6 w-6" /> : <Camera className="h-6 w-6" />}
         </div>
-        <h1 className="mt-4 text-center text-xl font-bold">Đính kèm ảnh bài làm</h1>
+        <h1 className="mt-4 text-center text-xl font-bold">{t(language, 'mobileUpload.title')}</h1>
         <p className="mt-2 text-center text-sm leading-6 text-slate-600">
-          Chụp ảnh bài làm của bạn để đồng bộ lên máy tính
+          {t(language, 'mobileUpload.description')}
         </p>
 
         {!sessionToken ? (
           <p role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-            Mã phiên tải ảnh không hợp lệ. Hãy quét lại mã QR trên màn hình máy tính.
+            {t(language, 'mobileUpload.invalidSession')}
           </p>
         ) : sent ? (
           <p role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm font-medium leading-6 text-emerald-800">
-            Đồng bộ thành công! Bạn có thể cất điện thoại và xem lại ảnh trên màn hình máy tính.
+            {t(language, 'mobileUpload.success')}
           </p>
         ) : (
           <>
@@ -87,7 +90,7 @@ export function MobileExamUploadPage() {
                 if (!nextFile) return;
                 if (!imageTypes.has(nextFile.type) || nextFile.size === 0 || nextFile.size > 10 * 1024 * 1024) {
                   setFile(null);
-                  setError('Chỉ hỗ trợ ảnh JPG, PNG, GIF hoặc WebP, dung lượng tối đa 10 MB.');
+                  setError(t(language, 'mobileUpload.invalidFile'));
                   return;
                 }
                 setFile(nextFile);
@@ -99,15 +102,15 @@ export function MobileExamUploadPage() {
               className="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-base font-bold text-white transition hover:bg-blue-800"
             >
               <Camera className="h-5 w-5" />
-              Bấm vào đây để chụp ảnh
+              {t(language, 'mobileUpload.capture')}
             </button>
 
             {previewUrl && file && (
               <div className="mt-5 space-y-3">
-                <p className="text-sm font-semibold text-slate-700">Kiểm tra ảnh trước khi gửi</p>
+                <p className="text-sm font-semibold text-slate-700">{t(language, 'mobileUpload.preview')}</p>
                 <img
                   src={previewUrl}
-                  alt="Ảnh bài làm vừa chụp"
+                  alt={t(language, 'mobileUpload.previewAlt')}
                   className="max-h-[55vh] w-full rounded-xl border border-slate-200 bg-slate-100 object-contain"
                 />
                 <p className="truncate text-xs text-slate-500">{file.name}</p>
@@ -118,7 +121,7 @@ export function MobileExamUploadPage() {
                   className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60"
                 >
                   <Upload className="h-4 w-4" />
-                  {sending ? 'Đang gửi ảnh...' : 'Gửi ảnh lên máy tính'}
+                  {sending ? t(language, 'mobileUpload.sending') : t(language, 'mobileUpload.send')}
                 </button>
               </div>
             )}

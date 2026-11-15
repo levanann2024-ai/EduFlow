@@ -121,3 +121,30 @@ test('student question generation stops when no enrolled grade exists', async ()
   assert.equal(response.body.success, false);
   assert.equal(generated, false);
 });
+
+test('student question generation follows the selected English language', async () => {
+  let prompt = '';
+  const response = await requestQuestions({
+    quantity: 1,
+    language: 'en',
+  }, {
+    auth: { role: 'student', isDemo: true },
+    dependencies: {
+      generateJsonRequest: async (request) => {
+        prompt = request.prompt;
+        return [{
+          id: 'q1',
+          type: 'multiple-choice',
+          question: 'Sample question',
+          options: ['A', 'B', 'C', 'D'],
+          correctIndex: 0,
+          explanation: 'Sample explanation',
+          difficulty: 'medium',
+        }];
+      },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.match(prompt, /nội dung câu hỏi.*bằng English/i);
+});

@@ -41,6 +41,7 @@ import type { SavedExam } from '@/pages/teacher/assessmentStorage';
 import { Users } from '@/pages/staff/Users';
 import { AdminDashboard } from '@/pages/staff/AdminDashboard';
 import { Settings } from '@/pages/Settings';
+import { AppLanguageProvider } from '@/i18n/AppLanguageProvider';
 import {
   DEFAULT_USER_SETTINGS,
   backgroundStyle,
@@ -646,10 +647,11 @@ function App() {
         : 'lg:p-8 lg:pb-8',
     ].filter(Boolean).join(' ');
   return (
-    <div
-      className={`flex min-h-screen bg-slate-50 ${activePage === 'ai-chat' ? 'h-dvh min-h-0 overflow-hidden md:h-auto md:min-h-screen md:overflow-visible' : ''} ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface md:h-dvh md:overflow-hidden' : ''}`}
-      style={backgroundStyle(userSettings)}
-    >
+    <AppLanguageProvider language={userSettings.language}>
+      <div
+        className={`flex min-h-screen bg-slate-50 ${activePage === 'ai-chat' ? 'h-dvh min-h-0 overflow-hidden md:h-auto md:min-h-screen md:overflow-visible' : ''} ${!userSettings.animationsEnabled ? 'reduce-motion' : ''} ${role === 'student' ? 'student-interface' : role === 'lecturer' && activePage === 'dashboard' ? 'teacher-dashboard-interface' : role === 'lecturer' && activePage === 'lessons' ? 'teacher-library-interface md:h-dvh md:overflow-hidden' : ''}`}
+        style={backgroundStyle(userSettings)}
+      >
       <ToastViewport />
       <div className={activePage === 'ai-chat' ? 'hidden md:block' : ''}>
         <Sidebar
@@ -670,6 +672,7 @@ function App() {
             userName={authUser.fullName}
             avatarUrl={userSettings.avatar}
             language={userSettings.language}
+            onLanguageChange={(language) => updateUserSettings({ ...userSettings, language })}
             unreadNotificationCount={notifications.filter((item) => !item.read).length}
             onNotifications={() => setNotificationsOpen(true)}
             onNavigate={navigateToPage}
@@ -910,7 +913,8 @@ function App() {
           language={userSettings.language}
         />
       )}
-    </div>
+      </div>
+    </AppLanguageProvider>
   );
 }
 

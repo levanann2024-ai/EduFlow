@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Star } from 'lucide-react';
 import type { TimetableEntryType } from '@/api/schoolApi';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
 
 export interface ScheduleGridEntry {
   weekday: number;
@@ -55,6 +57,7 @@ export function WeeklySchedule({
   editable = false,
   onSelectCell,
 }: WeeklyScheduleProps) {
+  const language = useAppLanguage();
   const entryMap = new Map(entries.map((entry) => [`${entry.weekday}:${entry.period}`, entry]));
   const [selectedDayIndex, setSelectedDayIndex] = useState(() => {
     const todayIndex = new Date().getDay() - 1;
@@ -67,10 +70,10 @@ export function WeeklySchedule({
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <h2 className="font-semibold text-slate-900">{sessionLabel}</h2>
-        <span className="text-xs font-medium text-slate-500">{periodCount} tiết</span>
+        <span className="text-xs font-medium text-slate-500">{t(language, 'weeklySchedule.period.count', { count: periodCount })}</span>
       </div>
       <div className="md:hidden">
-        <div role="tablist" aria-label="Chọn ngày trong thời khóa biểu" className="flex gap-2 overflow-x-auto border-b border-slate-100 px-3 py-3">
+        <div role="tablist" aria-label={t(language, 'weeklySchedule.days.select')} className="flex gap-2 overflow-x-auto border-b border-slate-100 px-3 py-3">
           {weekDays.map((day, index) => (
             <button
               key={day.label}
@@ -85,7 +88,7 @@ export function WeeklySchedule({
               }`}
             >
               <span className="block text-xs font-semibold">{day.label}</span>
-              <span className="mt-0.5 block text-[0.6875rem]">{day.date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</span>
+              <span className="mt-0.5 block text-[0.6875rem]">{day.date.toLocaleDateString(studentLocale(language), { day: '2-digit', month: '2-digit' })}</span>
             </button>
           ))}
         </div>
@@ -104,35 +107,35 @@ export function WeeklySchedule({
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     {entry.classCode && <div className="truncate text-[0.6875rem] font-bold uppercase tracking-wide opacity-75">{entry.classCode}</div>}
-                    <div className="mt-0.5 break-words text-sm font-semibold">{entry.subject}</div>
+                    <div className="mt-0.5 break-words text-sm font-semibold">{localizeStudentSubject(entry.subject, language)}</div>
                   </div>
-                  {entry.isHomeroom && <Star aria-label="Lớp chủ nhiệm" className="mt-0.5 h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />}
+                  {entry.isHomeroom && <Star aria-label={t(language, 'weeklySchedule.homeroom')} className="mt-0.5 h-4 w-4 shrink-0 fill-amber-400 text-amber-500" />}
                 </div>
-                {entry.type === 'cancelled' && <p className="mt-1 text-xs font-semibold">Tiết đã hủy</p>}
-                {entry.topic && entry.type !== 'cancelled' && <p className="mt-1 break-words text-xs"><span className="font-semibold">Tài liệu:</span> {entry.topic}</p>}
+                {entry.type === 'cancelled' && <p className="mt-1 text-xs font-semibold">{t(language, 'weeklySchedule.cancelled')}</p>}
+                {entry.topic && entry.type !== 'cancelled' && <p className="mt-1 break-words text-xs"><span className="font-semibold">{t(language, 'weeklySchedule.resource')}</span> {entry.topic}</p>}
                 {entry.title && entry.type !== 'cancelled'
                   && entry.title !== entry.homeworkTitle && entry.title !== entry.examTitle
-                  && <p className="mt-1 break-words text-xs"><span className="font-semibold">Khác:</span> {entry.title}</p>}
-                {entry.hasHomework && <p className="mt-1 break-words text-xs font-medium">BTVN cần nộp{entry.homeworkTitle ? `: ${entry.homeworkTitle}` : ''}</p>}
-                {entry.hasExam && <p className="mt-1 break-words text-xs font-medium">Bài kiểm tra{entry.examTitle ? `: ${entry.examTitle}` : ''}</p>}
-                {entry.roomExamTitle && <p className="mt-1 break-words text-xs font-medium">Phòng thi: {entry.roomExamTitle}</p>}
+                  && <p className="mt-1 break-words text-xs"><span className="font-semibold">{t(language, 'weeklySchedule.other')}</span> {entry.title}</p>}
+                {entry.hasHomework && <p className="mt-1 break-words text-xs font-medium">{t(language, 'weeklySchedule.homework')}{entry.homeworkTitle ? `: ${entry.homeworkTitle}` : ''}</p>}
+                {entry.hasExam && <p className="mt-1 break-words text-xs font-medium">{t(language, 'weeklySchedule.exam')}{entry.examTitle ? `: ${entry.examTitle}` : ''}</p>}
+                {entry.roomExamTitle && <p className="mt-1 break-words text-xs font-medium">{t(language, 'weeklySchedule.examRoom')} {entry.roomExamTitle}</p>}
                 {entry.hasExamReturn && (
                   <p className="mt-1 break-words text-xs font-medium">
-                    Trả bài{entry.examReturnNote ? `: ${entry.examReturnNote}` : ''}
-                    {entry.examReturnAt && ` · ${new Date(entry.examReturnAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}`}
+                    {t(language, 'weeklySchedule.return')}{entry.examReturnNote ? `: ${entry.examReturnNote}` : ''}
+                    {entry.examReturnAt && ` · ${new Date(entry.examReturnAt).toLocaleDateString(studentLocale(language), { day: '2-digit', month: '2-digit' })}`}
                   </p>
                 )}
               </>
-            ) : <span className="text-xs">{editable ? '+ Thêm tiết' : 'Trống'}</span>;
+            ) : <span className="text-xs">{editable ? t(language, 'weeklySchedule.addPeriod') : t(language, 'weeklySchedule.empty')}</span>;
             return (
               <div key={period} className="flex gap-3 py-2.5">
-                <div className="w-12 shrink-0 pt-3 text-center text-xs font-semibold text-slate-500">Tiết {period}</div>
+                <div className="w-12 shrink-0 pt-3 text-center text-xs font-semibold text-slate-500">{t(language, 'weeklySchedule.period')} {period}</div>
                 {editable ? (
                   <button
                     type="button"
                     className={cellClass}
                     onClick={() => onSelectCell?.(weekday, period, entry)}
-                    aria-label={`${entry ? 'Sửa' : 'Thêm'} tiết ${period}, ${selectedDay?.label ?? ''}`}
+                    aria-label={t(language, entry ? 'weeklySchedule.cell.edit' : 'weeklySchedule.cell.add', { period, day: selectedDay?.label ?? '' })}
                   >
                     {content}
                   </button>
@@ -147,12 +150,12 @@ export function WeeklySchedule({
       <div className="hidden overflow-x-auto md:block">
         <div className="min-w-[760px]">
           <div className="grid grid-cols-[64px_repeat(6,minmax(110px,1fr))] border-b border-slate-200 bg-slate-50">
-            <div className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Tiết</div>
+            <div className="px-2 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">{t(language, 'weeklySchedule.period')}</div>
             {weekDays.map((day) => (
               <div key={day.label} className="border-l border-slate-200 px-2 py-2 text-center">
                 <div className="text-xs font-semibold text-slate-700">{day.label}</div>
                 <div className="mt-0.5 text-xs text-slate-500">
-                  {day.date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                  {day.date.toLocaleDateString(studentLocale(language), { day: '2-digit', month: '2-digit' })}
                 </div>
               </div>
             ))}
@@ -170,50 +173,50 @@ export function WeeklySchedule({
                       <div className="flex items-start justify-between gap-1">
                         <div className="min-w-0">
                           {entry.classCode && <div className="truncate text-[0.6875rem] font-bold uppercase tracking-wide opacity-75">{entry.classCode}</div>}
-                          <div className="mt-0.5 line-clamp-2 text-sm font-semibold">{entry.subject}</div>
+                          <div className="mt-0.5 line-clamp-2 text-sm font-semibold">{localizeStudentSubject(entry.subject, language)}</div>
                         </div>
-                        {entry.isHomeroom && <Star aria-label="Lớp chủ nhiệm" className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />}
+                        {entry.isHomeroom && <Star aria-label={t(language, 'weeklySchedule.homeroom')} className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />}
                       </div>
-                      {entry.type === 'cancelled' && <div className="mt-1 text-xs font-semibold">Tiết đã hủy</div>}
+                      {entry.type === 'cancelled' && <div className="mt-1 text-xs font-semibold">{t(language, 'weeklySchedule.cancelled')}</div>}
                       {entry.topic && entry.type !== 'cancelled' && (
                         <div className="mt-1 rounded border-l-2 border-blue-500 bg-blue-50 px-1.5 py-1 text-xs leading-4 text-blue-950">
-                          <span className="font-semibold">Tài liệu:</span> {entry.topic}
+                          <span className="font-semibold">{t(language, 'weeklySchedule.resource')}</span> {entry.topic}
                         </div>
                       )}
                       {entry.title && entry.type !== 'cancelled'
                         && entry.title !== entry.homeworkTitle && entry.title !== entry.examTitle && (
                           <div className="mt-1 rounded border-l-2 border-slate-400 bg-slate-50 px-1.5 py-1 text-xs leading-4 text-slate-800">
-                            <span className="font-semibold">Khác:</span> {entry.title}
+                            <span className="font-semibold">{t(language, 'weeklySchedule.other')}</span> {entry.title}
                           </div>
                       )}
                       {entry.hasHomework && (
                         <div className="mt-1 rounded border-l-2 border-red-500 bg-red-50 px-1.5 py-1 text-xs leading-4 text-red-950">
-                          <span className="font-semibold">BTVN cần nộp:</span>{entry.homeworkTitle ? ` ${entry.homeworkTitle}` : ''}
+                          <span className="font-semibold">{t(language, 'weeklySchedule.homework')}:</span>{entry.homeworkTitle ? ` ${entry.homeworkTitle}` : ''}
                         </div>
                       )}
                       {entry.hasExam && (
                         <div className="mt-1 rounded border-l-2 border-green-500 bg-green-50 px-1.5 py-1 text-xs leading-4 text-green-950">
-                          <span className="font-semibold">Bài kiểm tra:</span>{entry.examTitle ? ` ${entry.examTitle}` : ''}
+                          <span className="font-semibold">{t(language, 'weeklySchedule.exam')}:</span>{entry.examTitle ? ` ${entry.examTitle}` : ''}
                         </div>
                       )}
                       {entry.roomExamTitle && (
                         <div className="mt-1 rounded border-l-2 border-green-500 bg-green-50 px-1.5 py-1 text-xs leading-4 text-green-950">
-                          <span className="font-semibold">Phòng thi:</span> {entry.roomExamTitle}
+                          <span className="font-semibold">{t(language, 'weeklySchedule.examRoom')}</span> {entry.roomExamTitle}
                         </div>
                       )}
                       {entry.hasExamReturn && (
                         <div className="mt-1 rounded border-l-2 border-emerald-500 bg-emerald-50 px-1.5 py-1 text-xs leading-4 text-emerald-950">
-                          <span className="font-semibold">Trả bài:</span>{entry.examReturnNote ? ` ${entry.examReturnNote}` : ''}
+                          <span className="font-semibold">{t(language, 'weeklySchedule.return')}:</span>{entry.examReturnNote ? ` ${entry.examReturnNote}` : ''}
                           {entry.examReturnAt && (
                             <span className="block text-[0.6875rem] opacity-80">
-                              {new Date(entry.examReturnAt).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                              {new Date(entry.examReturnAt).toLocaleDateString(studentLocale(language), { day: '2-digit', month: '2-digit' })}
                             </span>
                           )}
                         </div>
                       )}
                     </>
                   ) : (
-                    <span className="text-xs text-slate-300">{editable ? '+ Thêm' : ''}</span>
+                    <span className="text-xs text-slate-300">{editable ? t(language, 'weeklySchedule.add') : ''}</span>
                   );
                   const cellClass = `h-full min-h-[92px] w-full rounded-lg border p-2 text-left transition ${
                     entry ? entryStyle(entry) : editable
@@ -228,7 +231,7 @@ export function WeeklySchedule({
                           type="button"
                           className={cellClass}
                           onClick={() => onSelectCell?.(weekday, period, entry)}
-                          aria-label={`${entry ? 'Sửa' : 'Thêm'} tiết ${period}, ${weekDays[dayIndex].label}`}
+                          aria-label={t(language, entry ? 'weeklySchedule.cell.edit' : 'weeklySchedule.cell.add', { period, day: weekDays[dayIndex].label })}
                         >
                           {content}
                         </button>

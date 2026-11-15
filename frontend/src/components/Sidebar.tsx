@@ -349,6 +349,34 @@ function NewItemBadge({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function LanguageFlag({ country }: { country: 'vn' | 'gb' }) {
+  if (country === 'vn') {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0 rounded-full ring-1 ring-black/10">
+        <circle cx="12" cy="12" r="12" fill="#da251d" />
+        <path d="m12 5.2 1.7 4.6 4.9.2-3.8 3 1.4 4.7-4.2-2.7-4.2 2.7 1.4-4.7-3.8-3 4.9-.2z" fill="#ff0" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0 rounded-full ring-1 ring-black/10">
+      <defs>
+        <clipPath id="uk-language-flag-circle">
+          <circle cx="12" cy="12" r="12" />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#uk-language-flag-circle)">
+        <path fill="#012169" d="M0 0h24v24H0z" />
+        <path d="m0 0 24 24M24 0 0 24" stroke="#fff" strokeWidth="5" />
+        <path d="m0 0 24 24M24 0 0 24" stroke="#c8102e" strokeWidth="2" />
+        <path fill="#fff" d="M0 9h24v6H0zM9 0h6v24H9z" />
+        <path fill="#c8102e" d="M0 10.5h24v3H0zM10.5 0h3v24h-3z" />
+      </g>
+    </svg>
+  );
+}
+
 export function Sidebar({ current, onNavigate, role, userId, collapsed, onToggleCollapsed, language = 'vi' }: SidebarProps & { language?: AppLanguage }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const newMenuBadges = useNewMenuBadges(role, userId, current);
@@ -463,9 +491,9 @@ export function Sidebar({ current, onNavigate, role, userId, collapsed, onToggle
 
       {/* 3. Phần Cài đặt cố định ở đáy sidebar */}
       <div className={`shrink-0 border-t border-slate-800 bg-slate-900 py-3 ${iconOnly ? 'px-2' : tightSpacingViewport ? 'px-1.5' : 'px-3'}`}>
-        <button onClick={() => { newMenuBadges.markSeen('settings'); onNavigate('settings'); }} title={iconOnly ? 'Cài đặt' : undefined} aria-label={iconOnly ? 'Cài đặt' : undefined} className={`nav-item relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
+        <button onClick={() => { newMenuBadges.markSeen('settings'); onNavigate('settings'); }} title={iconOnly ? (language === 'en' ? 'Settings' : 'Cài đặt') : undefined} aria-label={iconOnly ? (language === 'en' ? 'Settings' : 'Cài đặt') : undefined} className={`nav-item relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800/50 hover:text-slate-200 ${iconOnly ? 'justify-center px-2' : tightSpacingViewport ? 'gap-1.5 px-1.5' : 'gap-3 px-3'}`}>
           <Settings className="w-[18px] h-[18px]" />
-          {!iconOnly && <span className="min-w-0 flex-1 truncate">Cài đặt</span>}
+          {!iconOnly && <span className="min-w-0 flex-1 truncate">{language === 'en' ? 'Settings' : 'Cài đặt'}</span>}
           {newMenuBadges.isNew('settings') && !iconOnly && <NewItemBadge />}
           {newMenuBadges.isNew('settings') && iconOnly && <span className="absolute -right-1 -top-1"><NewItemBadge compact /></span>}
         </button>
@@ -574,12 +602,14 @@ export function TopBar({
   onShowGuide,
   unreadNotificationCount = 0,
   language = 'vi',
+  onLanguageChange,
 }: {
   role: Role;
   userId?: string;
   userName?: string;
   avatarUrl?: string;
   language?: AppLanguage;
+  onLanguageChange?: (language: AppLanguage) => void;
   onNotifications: () => void;
   onNavigate: (page: Page) => void;
   onLogout: () => void;
@@ -628,23 +658,23 @@ export function TopBar({
   };
   const studentSearchItems: { label: string; detail: string; page?: Page; subjectCode?: string; action?: 'resources' | 'assignments' }[] = [
     ...[
-      ['Toán học', 'TOAN10'],
-      ['Ngữ văn', 'VAN10'],
-      ['Hóa học', 'HOA10'],
-      ['Vật lý', 'LY10'],
-      ['Tiếng Anh', 'ANH10'],
-      ['Tin học', 'TIN10'],
-      ['Sinh học', 'SINH10'],
-      ['Lịch sử', 'SU10'],
-      ['Địa lý', 'DIA10'],
-      ['Giáo dục thể chất', 'GDTC10'],
-    ].map(([name, code]) => ({ label: name, detail: 'Tài liệu môn học', subjectCode: code, action: 'resources' as const })),
-    { label: 'Bài tập', detail: 'Xem bài cần làm', page: 'assignments' as const },
-    { label: 'Thời khóa biểu', detail: 'Lịch học và lịch thi', page: 'schedule' as const },
-    { label: 'Phòng thi trực tuyến', detail: 'Vào phòng thi', page: 'online-exams' as const },
-    { label: 'Kết quả học tập', detail: 'Điểm và tiến độ', page: 'my-results' as const },
-    { label: 'AI Trợ giảng', detail: 'Hỏi bài với EduBot', page: 'ai-chat' as const },
-    { label: 'AI Ôn luyện', detail: 'Tạo bài luyện', page: 'ai-practice' as const },
+      [language === 'en' ? 'Mathematics' : 'Toán học', 'TOAN10'],
+      [language === 'en' ? 'Literature' : 'Ngữ văn', 'VAN10'],
+      [language === 'en' ? 'Chemistry' : 'Hóa học', 'HOA10'],
+      [language === 'en' ? 'Physics' : 'Vật lý', 'LY10'],
+      [language === 'en' ? 'English' : 'Tiếng Anh', 'ANH10'],
+      [language === 'en' ? 'Computer Science' : 'Tin học', 'TIN10'],
+      [language === 'en' ? 'Biology' : 'Sinh học', 'SINH10'],
+      [language === 'en' ? 'History' : 'Lịch sử', 'SU10'],
+      [language === 'en' ? 'Geography' : 'Địa lý', 'DIA10'],
+      [language === 'en' ? 'Physical Education' : 'Giáo dục thể chất', 'GDTC10'],
+    ].map(([name, code]) => ({ label: name, detail: language === 'en' ? 'Subject resources' : 'Tài liệu môn học', subjectCode: code, action: 'resources' as const })),
+    { label: language === 'en' ? 'Assignments' : 'Bài tập', detail: language === 'en' ? 'View work to complete' : 'Xem bài cần làm', page: 'assignments' as const },
+    { label: language === 'en' ? 'Timetable' : 'Thời khóa biểu', detail: language === 'en' ? 'Class and exam schedule' : 'Lịch học và lịch thi', page: 'schedule' as const },
+    { label: language === 'en' ? 'Online exam rooms' : 'Phòng thi trực tuyến', detail: language === 'en' ? 'Join an exam room' : 'Vào phòng thi', page: 'online-exams' as const },
+    { label: language === 'en' ? 'Learning results' : 'Kết quả học tập', detail: language === 'en' ? 'Grades and progress' : 'Điểm và tiến độ', page: 'my-results' as const },
+    { label: language === 'en' ? 'AI tutor' : 'AI Trợ giảng', detail: language === 'en' ? 'Ask EduBot a question' : 'Hỏi bài với EduBot', page: 'ai-chat' as const },
+    { label: language === 'en' ? 'AI practice' : 'AI Ôn luyện', detail: language === 'en' ? 'Create a practice set' : 'Tạo bài luyện', page: 'ai-practice' as const },
   ];
   const lecturerSearchItems: { label: string; detail: string; page: Page }[] = [
     { label: 'Lớp học', detail: 'Quản lý lớp và học sinh', page: 'classes' },
@@ -656,7 +686,7 @@ export function TopBar({
     { label: 'Chấm bài', detail: 'Bài nộp cần chấm', page: 'ai-grading' },
     { label: 'Phân tích tiến độ', detail: 'Thống kê học tập', page: 'analytics' },
   ];
-  const normalizedSearch = searchQuery.trim().toLocaleLowerCase('vi');
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase(language === 'en' ? 'en' : 'vi');
   const searchItems = isStudent ? studentSearchItems : lecturerSearchItems;
   const matchingSearchItems = normalizedSearch
     ? searchItems.filter((item) => `${item.label} ${item.detail}`.toLocaleLowerCase('vi').includes(normalizedSearch)).slice(0, 5)
@@ -727,7 +757,7 @@ export function TopBar({
                   className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-blue-50"
                 >
                   <Search className="h-4 w-4 shrink-0 text-blue-600" />
-                  <span className="text-sm text-slate-700">Hỏi EduBot về “{searchQuery.trim()}”</span>
+                  <span className="text-sm text-slate-700">{language === 'en' ? `Ask EduBot about “${searchQuery.trim()}”` : `Hỏi EduBot về “${searchQuery.trim()}”`}</span>
                 </button>
               ) : (
                 <p className="px-3 py-3 text-sm text-slate-500">{language === 'en' ? 'No matching results.' : 'Không tìm thấy mục phù hợp.'}</p>
@@ -737,6 +767,30 @@ export function TopBar({
         </form>
       )}
       <div className="order-2 ml-auto flex shrink-0 items-center gap-2">
+        {isStudent && onLanguageChange && (
+          <div role="group" aria-label={language === 'en' ? 'Choose language' : 'Chọn ngôn ngữ'} className="hidden items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 md:flex">
+            <button
+              type="button"
+              onClick={() => onLanguageChange('vi')}
+              aria-label="Tiếng Việt"
+              aria-pressed={language === 'vi'}
+              title="Tiếng Việt"
+              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition ${language === 'vi' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              <LanguageFlag country="vn" /> VI
+            </button>
+            <button
+              type="button"
+              onClick={() => onLanguageChange('en')}
+              aria-label="English"
+              aria-pressed={language === 'en'}
+              title="English"
+              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold transition ${language === 'en' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              <LanguageFlag country="gb" /> EN
+            </button>
+          </div>
+        )}
         <button onClick={onNotifications} aria-label={language === 'en' ? 'Open notifications' : 'Mở thông báo'} className="relative rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:bg-slate-50">
           <Bell className="h-4 w-4 text-slate-500" />
           {unreadNotificationCount > 0 && (
@@ -792,7 +846,7 @@ export function TopBar({
             {isStudent ? (
               <>
                 <button type="button" role="menuitem" onClick={() => onNavigate('profile')} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50">
-                  <UserRound className="h-4 w-4 text-slate-400" /> Hồ sơ cá nhân
+                  <UserRound className="h-4 w-4 text-slate-400" /> {language === 'en' ? 'Personal profile' : 'Hồ sơ cá nhân'}
                 </button>
               </>
             ) : (

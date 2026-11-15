@@ -9,10 +9,15 @@ import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { readExplanationStyle, readUserSettings, saveUserSettings, type ExplanationStyle } from '@/settings/userSettings';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
+import { useAppLanguage } from '@/i18n/AppLanguageContext';
+import { t } from '@/i18n/i18n';
 import 'katex/dist/katex.min.css';
 
 function SpeechButton({ speech, disabled }: { speech: ReturnType<typeof useSpeechInput>; disabled: boolean }) {
-  const label = speech.listening ? 'Dừng nhập giọng nói' : 'Nhập bằng giọng nói';
+  const language = useAppLanguage();
+  const label = speech.listening
+    ? t(language, "Dừng nhập giọng nói")
+    : t(language, "Nhập bằng giọng nói");
   return (
     <button
       type="button"
@@ -29,12 +34,13 @@ function SpeechButton({ speech, disabled }: { speech: ReturnType<typeof useSpeec
 }
 
 function SpeechStatus({ speech }: { speech: ReturnType<typeof useSpeechInput> }) {
+  const language = useAppLanguage();
   return (
     <>
       {speech.error && <p role="alert" className="mb-2 text-sm text-rose-700">{speech.error}</p>}
       {speech.listening && (
         <div role="status" className="mb-2 text-sm leading-5 text-blue-700">
-          <p>{speech.stopping ? 'Đang kết thúc nhận diện…' : 'Đang nghe… Nhấn micro để dừng trước khi gửi.'}</p>
+          <p>{speech.stopping ? t(language, "Đang kết thúc nhận diện…") : t(language, "Đang nghe… Nhấn micro để dừng trước khi gửi.")}</p>
           {speech.interim && <p className="mt-1 text-slate-600">{speech.interim}</p>}
         </div>
       )}
@@ -42,14 +48,20 @@ function SpeechStatus({ speech }: { speech: ReturnType<typeof useSpeechInput> })
   );
 }
 
-function getInitialMessages(role: Role, gender?: AuthUser['gender']): ChatMessage[] {
+function getInitialMessages(role: Role, gender?: AuthUser['gender'], language: 'vi' | 'en' = 'vi'): ChatMessage[] {
   const honorific = getTeacherHonorific(gender);
   const content = role === 'student'
-    ? 'Chào bạn! Bạn cứ gửi câu hỏi, tôi sẽ cùng bạn tìm hiểu và tự nhận diện môn học phù hợp.'
+    ? language === 'en'
+      ? 'Hi! Ask me anything, and I’ll help you explore it and identify the right subject.'
+      : 'Chào bạn! Bạn cứ gửi câu hỏi, tôi sẽ cùng bạn tìm hiểu và tự nhận diện môn học phù hợp.'
     : role === 'lecturer'
-      ? `Xin chào${honorific ? ` ${honorific}` : ''}! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ chuẩn bị bài giảng, tạo câu hỏi và giải đáp các nội dung học tập.`
-      : 'Xin chào! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ các câu hỏi về học tập và sử dụng nền tảng.';
-  return [{ id: 'm1', role: 'assistant', content, time: 'Bây giờ' }];
+      ? language === 'en'
+        ? `Hello${honorific ? ` ${honorific}` : ''}! I’m EduFlow AI. I can help prepare lessons, create questions, and answer learning-related questions.`
+        : `Xin chào${honorific ? ` ${honorific}` : ''}! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ chuẩn bị bài giảng, tạo câu hỏi và giải đáp các nội dung học tập.`
+      : language === 'en'
+        ? 'Hello! I’m EduFlow AI. I can help with learning and using the platform.'
+        : 'Xin chào! Tôi là trợ lý AI EduFlow. Tôi có thể hỗ trợ các câu hỏi về học tập và sử dụng nền tảng.';
+  return [{ id: 'm1', role: 'assistant', content, time: language === 'en' ? 'Now' : 'Bây giờ' }];
 }
 
 interface LegacyStudentConversation {
@@ -605,8 +617,9 @@ function useIsMobileChat() {
 }
 
 export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gender, initialSubject, initialPrompt, initialImage, onInitialImageConsumed, initialConversationId, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; avatarUrl?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; initialImage?: File | null; onInitialImageConsumed?: () => void; initialConversationId?: string; onExit?: () => void; isDemo?: boolean }) {
+  const language = useAppLanguage();
   const userInitials = userName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase('vi');
-  const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages(role, gender));
+  const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages(role, gender, language));
   const [input, setInput] = useState(initialPrompt ?? '');
   const speech = useSpeechInput((text) => {
     setInput((current) => current && !/\s$/.test(current) ? `${current} ${text}` : `${current}${text}`);
@@ -746,7 +759,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
     speech.cancel();
     setSubject(role === 'student' ? (initialSubject ?? '') : '');
     setActiveConversationId(null);
-    setMessages(getInitialMessages(role, gender));
+    setMessages(getInitialMessages(role, gender, language));
     setInput('');
     setSelectedImage(null);
     if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
@@ -871,6 +884,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
       requestBody.append('explanationStyle', explanationStyle);
       if (role === 'student') {
         requestBody.append('subject', subject);
+        requestBody.append('language', language);
         if (weeklyPlanContext) requestBody.append('weeklyPlanContext', JSON.stringify(weeklyPlanContext));
       }
       if (imageToSend) requestBody.append('image', imageToSend.file);
@@ -989,34 +1003,34 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
       <div
         className="relative flex h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] min-h-0 flex-none overflow-hidden bg-white md:h-[calc(100vh-140px)] md:min-h-[540px] md:flex-1 md:rounded-2xl md:border md:border-slate-200 md:shadow-sm"
       >
-        {historyOpen && <button type="button" aria-label="Đóng lịch sử chat" onClick={() => setHistoryOpen(false)} className="absolute inset-0 z-10 bg-slate-950/40 md:hidden" />}
+        {historyOpen && <button type="button" aria-label={t(language, "Đóng lịch sử chat")} onClick={() => setHistoryOpen(false)} className="absolute inset-0 z-10 bg-slate-950/40 md:hidden" />}
         {historyOpen && (
           <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(50vw,20rem)] flex-col border-r border-slate-200 bg-white shadow-xl md:relative md:w-64 md:shrink-0 md:bg-slate-50 md:shadow-none lg:w-72">
             <div className="p-1 md:p-3">
-              <button type="button" aria-label="Cuộc trò chuyện mới" disabled={thinking} onClick={startNewConversation} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-2 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:px-3">
-                <Plus className="h-4 w-4 shrink-0" /> <span className="md:hidden">Chat mới</span><span className="hidden md:inline">Cuộc trò chuyện mới</span>
+              <button type="button" aria-label={t(language, "Cuộc trò chuyện mới")} disabled={thinking} onClick={startNewConversation} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-2 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:px-3">
+                <Plus className="h-4 w-4 shrink-0" /> <span className="md:hidden">{t(language, "Chat mới")}</span><span className="hidden md:inline">{t(language, "Cuộc trò chuyện mới")}</span>
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-0 pb-3 md:px-2">
-              <h2 className="px-1 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 md:px-3">Lịch sử chat</h2>
+              <h2 className="px-1 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 md:px-3">{t(language, "Lịch sử chat")}</h2>
               {historyError && <p role="alert" className="mx-2 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{historyError}</p>}
-              {historyLoading && <p className="px-3 py-2 text-sm text-slate-400">Đang tải lịch sử...</p>}
+              {historyLoading && <p className="px-3 py-2 text-sm text-slate-400">{t(language, "Đang tải lịch sử...")}</p>}
               {!historyLoading && conversations.length ? (
                 <div className="space-y-1">
                   {conversations.map((conversation) => (
                     <div key={conversation.id} className={`group flex items-center gap-0 rounded-xl ${conversation.id === activeConversationId ? 'bg-blue-100 text-blue-900' : 'text-slate-700 hover:bg-white'}`}>
-                      <button type="button" disabled={thinking || historyLoading} onClick={() => void openConversation(conversation.id)} className="min-w-0 flex-1 px-1 py-2.5 text-left disabled:opacity-50 md:px-3">
-                        <span className="block truncate text-sm font-medium">{conversation.title}</span>
-                        <span className="mt-0.5 block text-xs text-slate-500">{conversation.subject || 'Tổng hợp'}</span>
+                      <button type="button" title={conversation.title} disabled={thinking || historyLoading} onClick={() => void openConversation(conversation.id)} className="min-w-0 flex-1 px-1 py-2.5 text-left disabled:opacity-50 md:px-3">
+                        <MathText text={conversation.title} singleLine className="min-w-0 overflow-hidden text-sm font-medium" />
+                        <span className="mt-0.5 block text-xs text-slate-500">{conversation.subject || t(language, "Tổng hợp")}</span>
                       </button>
-                      <button type="button" disabled={thinking} onClick={() => void deleteChatConversation(conversation.id)} aria-label={`Xóa cuộc trò chuyện ${conversation.title}`} className="mr-0 rounded-lg p-1 text-slate-400 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 md:mr-1 md:p-2">
+                      <button type="button" disabled={thinking} onClick={() => void deleteChatConversation(conversation.id)} aria-label={t(language, 'chat.conversation.delete', { title: conversation.title })} className="mr-0 rounded-lg p-1 text-slate-400 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 md:mr-1 md:p-2">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   ))}
                 </div>
               ) : !historyLoading && (
-                <p className="px-3 py-2 text-sm text-slate-400">Lịch sử cuộc trò chuyện sẽ hiển thị tại đây.</p>
+                <p className="px-3 py-2 text-sm text-slate-400">{t(language, "Lịch sử cuộc trò chuyện sẽ hiển thị tại đây.")}</p>
               )}
             </div>
           </aside>
@@ -1027,29 +1041,29 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
             <div className="flex min-w-0 items-center gap-3">
               {onExit && (
                 <button type="button" onClick={onExit} className="hidden shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 md:inline-flex">
-                  <ArrowLeft className="h-4 w-4" /> Thoát
+                  <ArrowLeft className="h-4 w-4" /> {t(language, "Thoát")}
                 </button>
               )}
-              <button type="button" onClick={() => setHistoryOpen((open) => !open)} aria-label={historyOpen ? 'Thu gọn lịch sử chat' : 'Mở lịch sử chat'} className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50">
+              <button type="button" onClick={() => setHistoryOpen((open) => !open)} aria-label={t(language, historyOpen ? 'chat.history.collapse' : 'chat.history.expand')} className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50">
                 {historyOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
               </button>
               <div className="hidden min-w-0 md:block">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Trợ lý học tập</p>
-                <h2 className="truncate font-semibold text-slate-900">{subject ? `Trò chuyện môn ${subject}` : 'Hỏi EduBot bất kỳ môn nào'}</h2>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">{t(language, "Trợ lý học tập")}</p>
+                <h2 className="truncate font-semibold text-slate-900">{subject ? `${t(language, "Trò chuyện môn")} ${subject}` : t(language, "Hỏi EduBot bất kỳ môn nào")}</h2>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => void toggleFullscreen()}
-                aria-label={isFullscreen ? 'Thoát toàn màn hình' : 'Bật toàn màn hình'}
-                title={isFullscreen ? 'Thoát toàn màn hình' : 'Bật toàn màn hình'}
+                aria-label={t(language, isFullscreen ? 'chat.fullscreen.exit' : 'chat.fullscreen.enter')}
+                title={t(language, isFullscreen ? 'chat.fullscreen.exit' : 'chat.fullscreen.enter')}
                 className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 md:hidden"
               >
                 {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
               </button>
               <button type="button" disabled={thinking} onClick={startNewConversation} className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex">
-                <Plus className="h-4 w-4" /> Cuộc trò chuyện mới
+                <Plus className="h-4 w-4" /> {t(language, "Cuộc trò chuyện mới")}
               </button>
             </div>
           </header>
@@ -1062,9 +1076,9 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
             <SpeechStatus speech={speech} />
             {selectedImage && (
               <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-2">
-                <img src={selectedImage.previewUrl} alt="Ảnh sẽ gửi" className="h-16 w-16 rounded-lg object-cover" />
+                <img src={selectedImage.previewUrl} alt={t(language, "Ảnh sẽ gửi")} className="h-16 w-16 rounded-lg object-cover" />
                 <span className="min-w-0 flex-1 truncate text-sm text-slate-600">{selectedImage.file.name}</span>
-                <button type="button" disabled={thinking} onClick={removeSelectedImage} aria-label="Bỏ ảnh đính kèm" className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-rose-600 disabled:opacity-50">
+                <button type="button" disabled={thinking} onClick={removeSelectedImage} aria-label={t(language, "Bỏ ảnh đính kèm")} className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-rose-600 disabled:opacity-50">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -1074,28 +1088,28 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                 <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
                 <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
                 <div className="relative shrink-0 md:hidden">
-                  <button type="button" disabled={thinking} onClick={() => setMobileToolsOpen((open) => !open)} aria-label="Thêm tùy chọn" aria-expanded={mobileToolsOpen} className="rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">
+                  <button type="button" disabled={thinking} onClick={() => setMobileToolsOpen((open) => !open)} aria-label={t(language, "Thêm tùy chọn")} aria-expanded={mobileToolsOpen} className="rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">
                     <Plus className="h-5 w-5" />
                   </button>
                   {mobileToolsOpen && (
                     <div className="absolute bottom-full left-0 z-50 mb-2 w-56 space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                       <button type="button" disabled={thinking} onClick={() => { setMobileToolsOpen(false); imageInputRef.current?.click(); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                        <Paperclip className="h-4 w-4" /> Chọn ảnh
+                        <Paperclip className="h-4 w-4" /> {t(language, "Chọn ảnh")}
                       </button>
-                      <label className="block px-3 pt-2 text-xs font-medium text-slate-500" htmlFor="student-mobile-chat-style">Phong cách trả lời</label>
-                      <select id="student-mobile-chat-style" aria-label="Chế độ trả lời của EduBot" value={explanationStyle} onChange={(event) => { updateExplanationStyle(event.target.value as ExplanationStyle); setMobileToolsOpen(false); }} disabled={thinking} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50">
-                        <option value="concise">Ngắn gọn — giải luôn</option>
-                        <option value="detailed">Chi tiết — giải đầy đủ</option>
-                        <option value="thinking">Tư duy — hỏi gợi mở</option>
+                      <label className="block px-3 pt-2 text-xs font-medium text-slate-500" htmlFor="student-mobile-chat-style">{t(language, "Phong cách trả lời")}</label>
+                      <select id="student-mobile-chat-style" aria-label={t(language, "Chế độ trả lời của EduBot")} value={explanationStyle} onChange={(event) => { updateExplanationStyle(event.target.value as ExplanationStyle); setMobileToolsOpen(false); }} disabled={thinking} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50">
+                        <option value="concise">{t(language, "Ngắn gọn — giải luôn")}</option>
+                        <option value="detailed">{t(language, "Chi tiết — giải đầy đủ")}</option>
+                        <option value="thinking">{t(language, "Tư duy — hỏi gợi mở")}</option>
                       </select>
                     </div>
                   )}
                 </div>
                 <div className="hidden shrink-0 items-end gap-1 md:flex">
-                  <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label="Đính kèm ảnh" title="Chọn ảnh hoặc dán ảnh" className="shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+                  <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label={t(language, "Đính kèm ảnh")} title={t(language, "Chọn ảnh hoặc dán ảnh")} className="shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                     <Paperclip className="h-5 w-5" />
                   </button>
-                  <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+                  <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label={t(language, "Chụp ảnh")} title={t(language, "Chụp ảnh bằng camera")} className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                     <Camera className="h-5 w-5" />
                   </button>
                 </div>
@@ -1105,38 +1119,38 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                   onChange={(event) => setInput(event.target.value)}
                   onPaste={handlePasteImage}
                   onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleSend(); } }}
-                  placeholder={isMobileChat ? 'Nhập câu hỏi...' : 'Nhập câu hỏi hoặc dán ảnh...'}
+                  placeholder={isMobileChat ? t(language, "Nhập câu hỏi...") : t(language, "Nhập câu hỏi hoặc dán ảnh...")}
                   rows={1}
                   className="min-h-10 max-h-40 min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-5 text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 md:resize-y sm:px-4 sm:py-3"
                 />
                 <div className="flex shrink-0 items-center gap-0.5 md:hidden">
                   <SpeechButton speech={speech} disabled={thinking} />
-                  <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
+                  <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label={t(language, "Chụp ảnh")} title={t(language, "Chụp ảnh bằng camera")} className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                     <Camera className="h-5 w-5" />
                   </button>
                 </div>
-                <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:hidden" aria-label="Gửi tin nhắn">
+                <button type="submit" onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault(); }} disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:hidden" aria-label={t(language, "Gửi tin nhắn")}>
                   <Send className="h-4 w-4" />
                 </button>
               </div>
               <div className="flex shrink-0 items-center justify-end gap-2">
                 <select
-                  aria-label="Chế độ trả lời của EduBot"
-                  title="Chọn phong cách trả lời"
+                  aria-label={t(language, "Chế độ trả lời của EduBot")}
+                  title={t(language, "Chọn phong cách trả lời")}
                   value={explanationStyle}
                   onChange={(event) => updateExplanationStyle(event.target.value as ExplanationStyle)}
                   disabled={thinking}
                   className="hidden h-11 w-[184px] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 md:block md:px-3 md:text-sm"
                 >
-                  <option value="concise">Ngắn gọn — giải luôn</option>
-                  <option value="detailed">Chi tiết — giải đầy đủ</option>
-                  <option value="thinking">Tư duy — hỏi gợi mở</option>
+                  <option value="concise">{t(language, "Ngắn gọn — giải luôn")}</option>
+                  <option value="detailed">{t(language, "Chi tiết — giải đầy đủ")}</option>
+                  <option value="thinking">{t(language, "Tư duy — hỏi gợi mở")}</option>
                 </select>
                 <div className="hidden md:block">
                   <SpeechButton speech={speech} disabled={thinking} />
                 </div>
                 <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="hidden h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex">
-                  Gửi <Send className="h-4 w-4" />
+                  {t(language, "Gửi")} <Send className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -1166,8 +1180,8 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
               <div className="space-y-1">
                 {conversations.map((conversation) => (
                   <div key={conversation.id} className={`group flex items-center gap-0 rounded-xl ${conversation.id === activeConversationId ? 'bg-blue-100 text-blue-900' : 'text-slate-700 hover:bg-white'}`}>
-                    <button type="button" disabled={thinking || historyLoading} onClick={() => void openConversation(conversation.id)} className="min-w-0 flex-1 px-1 py-2.5 text-left disabled:opacity-50 md:px-3">
-                      <span className="block truncate text-sm font-medium">{conversation.title}</span>
+                    <button type="button" title={conversation.title} disabled={thinking || historyLoading} onClick={() => void openConversation(conversation.id)} className="min-w-0 flex-1 px-1 py-2.5 text-left disabled:opacity-50 md:px-3">
+                      <MathText text={conversation.title} singleLine className="min-w-0 overflow-hidden text-sm font-medium" />
                     </button>
                     <button type="button" disabled={thinking} onClick={() => void deleteChatConversation(conversation.id)} aria-label={`Xóa cuộc trò chuyện ${conversation.title}`} className="mr-0 rounded-lg p-1 text-slate-400 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50 md:mr-1 md:p-2">
                       <Trash2 className="h-4 w-4" />
@@ -1318,7 +1332,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
             <div className="hidden md:block">
               <SpeechButton speech={speech} disabled={thinking} />
             </div>
-            <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="btn-primary h-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="submit" onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault(); }} disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="btn-primary h-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-50">
               <Send className="h-3.5 w-3.5" />
             </button>
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { showToast } from '@/components/toast';
 import { BookOpen, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Plus, Sparkles, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -22,6 +22,7 @@ import {
   WeeklySchedule,
   type ScheduleGridEntry,
 } from '@/pages/student/WeeklySchedule';
+import { getNextTimetableCutoff, getTimetableWeekStart, hasPassedTimetableCutoff } from '@/utils/timetableWeek';
 
 const DAYS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 type ScheduleContentType = 'lesson' | 'homework' | 'exam' | 'other';
@@ -214,12 +215,6 @@ interface EntryEditorState {
   examReturnAt: string;
 }
 
-function getWeekStart(date: Date) {
-  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  return monday;
-}
-
 function addDays(date: Date, amount: number) {
   const result = new Date(date);
   result.setDate(result.getDate() + amount);
@@ -266,10 +261,11 @@ function asGridEntry(entry: TeacherTimetableEntry): ScheduleGridEntry {
 }
 
 export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
+  const manualWeekSelection = useRef(false);
   const [classOptions, setClassOptions] = useState<Array<{ id: string; academicYear: string }>>([]);
   const [academicYear, setAcademicYear] = useState('');
   const [semester, setSemester] = useState<ProgressSemester>('Kỳ 1');
-  const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
+  const [weekStart, setWeekStart] = useState(() => getTimetableWeekStart(new Date()));
   const [data, setData] = useState<TeacherTimetableResponse | null>(null);
   const [entries, setEntries] = useState<TeacherTimetableEntry[]>([]);
   const [freeTime, setFreeTime] = useState('');
@@ -286,6 +282,20 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [retryToken, setRetryToken] = useState(0);
+
+  useEffect(() => {
+    let timer: number;
+    const scheduleNextSwitch = () => {
+      const now = new Date();
+      const nextCutoff = getNextTimetableCutoff(now);
+      timer = window.setTimeout(() => {
+        if (!manualWeekSelection.current) setWeekStart(getTimetableWeekStart(new Date()));
+        scheduleNextSwitch();
+      }, nextCutoff.getTime() - now.getTime());
+    };
+    scheduleNextSwitch();
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const weekStartKey = dateKey(weekStart);
   const weekDays = useMemo(() => DAYS.map((label, index) => ({
@@ -541,11 +551,20 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
     }
   };
 
-  const changeWeek = (direction: -1 | 1) => setWeekStart((current) => addDays(current, direction * 7));
-  const isCurrentWeek = weekStartKey === dateKey(getWeekStart(new Date()));
+  const changeWeek = (direction: -1 | 1) => {
+    manualWeekSelection.current = true;
+    setWeekStart((current) => addDays(current, direction * 7));
+  };
+  const focusWeekStart = getTimetableWeekStart(new Date());
+  const isFocusWeek = weekStartKey === dateKey(focusWeekStart);
+  const focusWeekLabel = hasPassedTimetableCutoff(new Date()) ? 'Tuần sau' : 'Tuần này';
+  const goToFocusWeek = () => {
+    manualWeekSelection.current = false;
+    setWeekStart(getTimetableWeekStart(new Date()));
+  };
   const weekButtonLabel = data?.weekNumber
-    ? `Tuần học ${data.weekNumber}${isCurrentWeek ? ' - Tuần này' : ''}`
-    : isCurrentWeek ? 'Tuần này' : 'Về tuần này';
+    ? `Tuần học ${data.weekNumber}${isFocusWeek ? ` - ${focusWeekLabel}` : ''}`
+    : isFocusWeek ? focusWeekLabel : hasPassedTimetableCutoff(new Date()) ? 'Về tuần sau' : 'Về tuần này';
   const gridEntries = entries.map(asGridEntry);
   const estimated = data?.timetable?.isEstimated ?? false;
   const isTemplate = data?.timetable?.isTemplate ?? false;
@@ -654,7 +673,7 @@ export function TeacherSchedule({ gender }: { gender?: TeacherGender }) {
           <button type="button" onClick={() => changeWeek(-1)} aria-label="Tuần trước" className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button type="button" onClick={() => setWeekStart(getWeekStart(new Date()))} className="h-10 border-x border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={goToFocusWeek} className="h-10 border-x border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             {weekButtonLabel}
           </button>
           <button type="button" onClick={() => changeWeek(1)} aria-label="Tuần sau" className="grid h-10 w-10 place-items-center text-slate-600 hover:bg-slate-50">
