@@ -21,6 +21,7 @@ const {
   listUsers,
   login,
   rotateRefreshToken,
+  resetUserPassword,
   setUserStatus,
   updateAvatar,
 } = require('./service');
@@ -221,6 +222,18 @@ router.patch('/users/:userId/status', requireTrustedOrigin, requireAuth, require
     return res.status(400).json({ success: false, message: 'Mã tài khoản không hợp lệ.' });
   }
   const user = await setUserStatus(req.params.userId, req.body?.status, {
+    actorUserId: req.auth.userId,
+    allowedSchoolIds: req.auth.schoolIds,
+    systemAdmin: req.auth.adminScope === 'system',
+  });
+  return res.json({ success: true, user });
+}));
+
+router.post('/users/:userId/password-reset', requireTrustedOrigin, requireAuth, requireAccountReady, requireRole('admin'), asyncRoute(async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(req.params.userId)) {
+    return res.status(400).json({ success: false, message: 'Mã tài khoản không hợp lệ.' });
+  }
+  const user = await resetUserPassword(req.params.userId, {
     actorUserId: req.auth.userId,
     allowedSchoolIds: req.auth.schoolIds,
     systemAdmin: req.auth.adminScope === 'system',

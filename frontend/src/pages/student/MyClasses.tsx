@@ -13,6 +13,8 @@ import {
   FileSpreadsheet,
   FileText,
   FileVideo2,
+  Mic,
+  MicOff,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,6 +22,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Undo2,
   X,
 } from 'lucide-react';
 import { AssignmentSubmissionFiles } from '@/components/AssignmentSubmissionFiles';
@@ -27,6 +30,7 @@ import { MathText } from '@/components/MathText';
 import { RichLessonContent } from '@/components/LessonEditorContent';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { authenticatedFetch } from '@/auth/authApi';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { useSavedItems } from './savedItems';
 import { isChapterLevelResourceLesson } from '@/utils/classLearningResourceDisplay';
 import {
@@ -71,6 +75,47 @@ interface MyClassesProps {
 function resizeAnswerTextarea(textarea: HTMLTextAreaElement) {
   textarea.style.height = 'auto';
   textarea.style.height = `${Math.max(textarea.scrollHeight, 128)}px`;
+}
+
+function PendingSubmissionImagePreview({ file }: { file: File }) {
+  const [imageUrl, setImageUrl] = useState('');
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  if (!imageUrl) return <FileImage className="h-4 w-4 shrink-0 text-blue-700" />;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        aria-label={`Xem trước ảnh ${file.name}`}
+        className="shrink-0 overflow-hidden rounded border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
+        <img src={imageUrl} alt="" className="h-10 w-10 object-cover" />
+      </button>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4"
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setExpanded(false); }}
+          onKeyDown={(event) => { if (event.key === 'Escape') setExpanded(false); }}
+        >
+          <section role="dialog" aria-modal="true" aria-label={`Xem trước ${file.name}`} className="relative flex max-h-[92vh] max-w-[94vw] flex-col overflow-hidden rounded-xl bg-white p-2 shadow-2xl">
+            <button type="button" onClick={() => setExpanded(false)} aria-label="Đóng xem trước" className="absolute right-3 top-3 z-10 rounded-full bg-white/95 p-2 text-slate-700 shadow hover:bg-white">
+              <X className="h-5 w-5" />
+            </button>
+            <img src={imageUrl} alt={file.name} className="max-h-[82vh] max-w-[92vw] rounded-lg object-contain" />
+            <p className="truncate px-2 pt-2 text-center text-xs text-slate-600">{file.name}</p>
+          </section>
+        </div>
+      )}
+    </>
+  );
 }
 
 type Semester = 'Kỳ 1' | 'Kỳ 2';
@@ -255,6 +300,7 @@ export function MyClasses(props: MyClassesProps) {
   const [formattingAnswerIndex, setFormattingAnswerIndex] = useState<number | null>(null);
   const [formatAnswerError, setFormatAnswerError] = useState('');
   const [formatAnswerErrorIndex, setFormatAnswerErrorIndex] = useState<number | null>(null);
+  const [formattedOriginalAnswers, setFormattedOriginalAnswers] = useState<Record<string, string>>({});
   const [editingAnswerIndex, setEditingAnswerIndex] = useState<number | null>(null);
   const [editingPlainAnswer, setEditingPlainAnswer] = useState(false);
   const [resourceFileUrl, setResourceFileUrl] = useState<string | null>(null);
@@ -262,6 +308,7 @@ export function MyClasses(props: MyClassesProps) {
   const [resourceFileError, setResourceFileError] = useState('');
   const refreshInFlight = useRef(false);
   const responseDraft = useRef({ assignmentId: null as string | null, dirty: false });
+  const speechTargetIndex = useRef<number | null>(null);
   const saved = useSavedItems();
   const savedResourceIds = new Set(saved.items.filter((item) => item.type === 'resource').map((item) => item.id));
   const savedAssignmentIds = new Set(saved.items.filter((item) => item.type === 'assignment' && 'assignmentId' in item).map((item) => item.id));
@@ -589,7 +636,48 @@ export function MyClasses(props: MyClassesProps) {
   const assignmentAnswerValues = selectedAssignmentContent
     ? structuredAnswers ?? Array.from({ length: selectedAssignmentContent.questions.length }, () => '')
     : [];
+  const hasAnswersToFormat = selectedAssignmentContent
+    ? assignmentAnswerValues.some((answer) => answer.trim())
+    : Boolean(responseText.trim());
   const assignmentQuestionMaximums = distributeAssignmentPoints(selectedAssignmentContent?.questions.length ?? 0);
+  const speech = useSpeechInput((transcript) => {
+    const targetIndex = speechTargetIndex.current;
+    if (targetIndex === null) return;
+    responseDraft.current.dirty = true;
+    if (targetIndex >= 0) {
+      setFormattedOriginalAnswers((current) => {
+        if (!(String(targetIndex) in current)) return current;
+        const next = { ...current };
+        delete next[String(targetIndex)];
+        return next;
+      });
+    } else {
+      setFormattedOriginalAnswers((current) => {
+        if (!('-1' in current)) return current;
+        const next = { ...current };
+        delete next['-1'];
+        return next;
+      });
+    }
+    setResponseText((currentText) => {
+      const appendTranscript = (answer: string) => (
+        `${answer}${answer && !/\s$/.test(answer) ? ' ' : ''}${transcript}`
+      );
+      if (targetIndex < 0) return appendTranscript(currentText);
+      const questionCount = selectedAssignmentContent?.questions.length ?? 0;
+      const answers = parseAssignmentAnswers(currentText, questionCount)
+        ?? Array.from({ length: questionCount }, () => '');
+      if (targetIndex >= answers.length) return currentText;
+      answers[targetIndex] = appendTranscript(answers[targetIndex]);
+      return serializeAssignmentAnswers(answers);
+    });
+  });
+  const { cancel: cancelSpeech } = speech;
+  const toggleSpeechForAnswer = (index: number) => {
+    if (speech.listening && speechTargetIndex.current !== index) cancelSpeech();
+    speechTargetIndex.current = index;
+    speech.toggle();
+  };
   const selectedResourceIdForFile = selectedResource?.id;
   const selectedFileId = selectedResource?.files[0]?.id;
 
@@ -644,11 +732,14 @@ export function MyClasses(props: MyClassesProps) {
     if (responseDraft.current.assignmentId !== assignmentId) {
       responseDraft.current = { assignmentId, dirty: false };
       setSubmissionFiles([]);
+      setFormattedOriginalAnswers({});
       setEditingAnswerIndex(null);
       setEditingPlainAnswer(false);
+      speechTargetIndex.current = null;
+      cancelSpeech();
     }
     if (!responseDraft.current.dirty) setResponseText(selectedAssignment?.responseText ?? '');
-  }, [selectedAssignment?.id, selectedAssignment?.responseText]);
+  }, [selectedAssignment?.id, selectedAssignment?.responseText, cancelSpeech]);
   const allPendingAssignments = assignments.filter((assignment) => assignment.submittedAt === null);
   const submittedAssignments = assignments.filter((assignment) => assignment.submittedAt !== null);
 
@@ -829,50 +920,98 @@ export function MyClasses(props: MyClassesProps) {
     }
   };
 
-  const handleFormatAnswer = async (answer: string, index: number) => {
-    if (!answer.trim() || !selectedAssignment || !canEditAssignment(selectedAssignment, currentTime)) return;
+  const handleFormatAllAnswers = async () => {
+    if (!selectedAssignment || !canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex !== null) return;
     const assignmentId = selectedAssignment.id;
-    setFormattingAnswerIndex(index);
+    const questionCount = selectedAssignmentContent?.questions.length ?? 0;
+    const answersToFormat = selectedAssignmentContent
+      ? [...assignmentAnswerValues]
+      : [responseText];
+    if (!answersToFormat.some((answer) => answer.trim())) return;
+    setFormattingAnswerIndex(-2);
     setFormatAnswerError('');
     setFormatAnswerErrorIndex(null);
     try {
-      const response = await authenticatedFetch('/api/ai/format-answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: answer }),
-      });
-      const result: {
-        success: boolean;
-        data?: { formattedText?: string };
-        message?: string;
-      } = await response.json();
-      const formattedText = result.data?.formattedText;
-      if (!response.ok || !result.success || typeof formattedText !== 'string' || !formattedText.trim()) {
-        throw new Error(result.message || 'Không thể chuẩn hóa ký hiệu trong câu trả lời.');
-      }
-      if (selectedAssignmentId !== assignmentId) return;
-      responseDraft.current.dirty = true;
-      if (selectedAssignmentContent) {
-        const questionCount = selectedAssignmentContent.questions.length;
-        setResponseText((currentText) => {
-          const currentAnswers = parseAssignmentAnswers(currentText, questionCount)
-            ?? Array.from({ length: questionCount }, () => '');
-          currentAnswers[index] = formattedText.trim();
-          return serializeAssignmentAnswers(currentAnswers);
+      for (let index = 0; index < answersToFormat.length; index += 1) {
+        const answer = answersToFormat[index];
+        if (!answer.trim()) continue;
+        const response = await authenticatedFetch('/api/ai/format-answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: answer }),
         });
-        setEditingAnswerIndex(null);
-      } else {
-        setResponseText(formattedText.trim());
-        setEditingPlainAnswer(false);
+        const result: {
+          success: boolean;
+          data?: { formattedText?: string };
+          message?: string;
+        } = await response.json();
+        const formattedText = result.data?.formattedText;
+        if (!response.ok || !result.success || typeof formattedText !== 'string' || !formattedText.trim()) {
+          throw new Error(result.message || `Không thể chuẩn hóa câu trả lời ${index + 1}.`);
+        }
+        if (selectedAssignmentId !== assignmentId) return;
+        const answerIndex = selectedAssignmentContent ? index : -1;
+        setFormattedOriginalAnswers((current) => (
+          String(answerIndex) in current
+            ? current
+            : { ...current, [answerIndex]: answer }
+        ));
+        responseDraft.current.dirty = true;
+        if (selectedAssignmentContent) {
+          setResponseText((currentText) => {
+            const currentAnswers = parseAssignmentAnswers(currentText, questionCount)
+              ?? Array.from({ length: questionCount }, () => '');
+            currentAnswers[index] = formattedText.trim();
+            return serializeAssignmentAnswers(currentAnswers);
+          });
+        } else {
+          setResponseText(formattedText.trim());
+        }
       }
+      setEditingAnswerIndex(null);
+      setEditingPlainAnswer(false);
     } catch (requestError) {
       setFormatAnswerError(
         requestError instanceof Error ? requestError.message : 'Không thể chuẩn hóa ký hiệu trong câu trả lời.',
       );
-      setFormatAnswerErrorIndex(index);
+      setFormatAnswerErrorIndex(-2);
     } finally {
       setFormattingAnswerIndex(null);
     }
+  };
+
+  const undoFormattedAnswer = (index: number) => {
+    const original = formattedOriginalAnswers[String(index)];
+    if (original === undefined || !selectedAssignmentContent) return;
+    const questionCount = selectedAssignmentContent.questions.length;
+    setResponseText((currentText) => {
+      const currentAnswers = parseAssignmentAnswers(currentText, questionCount)
+        ?? Array.from({ length: questionCount }, () => '');
+      currentAnswers[index] = original;
+      return serializeAssignmentAnswers(currentAnswers);
+    });
+    setFormattedOriginalAnswers((current) => {
+      const next = { ...current };
+      delete next[String(index)];
+      return next;
+    });
+    responseDraft.current.dirty = true;
+    setFormatAnswerError('');
+    setFormatAnswerErrorIndex(null);
+  };
+
+  const undoFormattedPlainAnswer = () => {
+    const original = formattedOriginalAnswers['-1'];
+    if (original === undefined) return;
+    setResponseText(original);
+    setFormattedOriginalAnswers((current) => {
+      const next = { ...current };
+      delete next['-1'];
+      return next;
+    });
+    responseDraft.current.dirty = true;
+    setFormatAnswerError('');
+    setFormatAnswerErrorIndex(null);
   };
 
   if (selectedGroup) {
@@ -1182,18 +1321,33 @@ export function MyClasses(props: MyClassesProps) {
               <article className="mx-auto max-w-4xl">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <h1 className="min-w-0 flex-1 text-2xl font-bold text-slate-950 sm:text-3xl">{selectedAssignment.title}</h1>
-                  <button
-                    type="button"
-                    disabled={saved.loading || Boolean(saved.error) || bookmarkPending.includes(`assignment:${selectedAssignment.id}`)}
-                    aria-pressed={savedAssignmentIds.has(selectedAssignment.id)}
-                    aria-label={savedAssignmentIds.has(selectedAssignment.id) ? 'Bỏ lưu bài tập' : 'Lưu bài tập'}
-                    onClick={() => void toggleAssignmentBookmark(selectedAssignment)}
-                    className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    <Star className={`h-4 w-4 ${savedAssignmentIds.has(selectedAssignment.id) ? 'fill-amber-400 text-amber-500' : ''}`} />
-                    {savedAssignmentIds.has(selectedAssignment.id) ? 'Đã lưu' : 'Lưu bài'}
-                  </button>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {canEditAssignment(selectedAssignment, currentTime) && (
+                      <button
+                        type="button"
+                        disabled={!hasAnswersToFormat || formattingAnswerIndex !== null || speech.listening}
+                        onClick={() => void handleFormatAllAnswers()}
+                        className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-blue-200 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {formattingAnswerIndex === -2 ? 'Đang chuẩn hóa...' : 'Chuẩn hóa cả bài'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={saved.loading || Boolean(saved.error) || bookmarkPending.includes(`assignment:${selectedAssignment.id}`)}
+                      aria-pressed={savedAssignmentIds.has(selectedAssignment.id)}
+                      aria-label={savedAssignmentIds.has(selectedAssignment.id) ? 'Bỏ lưu bài tập' : 'Lưu bài tập'}
+                      onClick={() => void toggleAssignmentBookmark(selectedAssignment)}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      <Star className={`h-4 w-4 ${savedAssignmentIds.has(selectedAssignment.id) ? 'fill-amber-400 text-amber-500' : ''}`} />
+                      {savedAssignmentIds.has(selectedAssignment.id) ? 'Đã lưu' : 'Lưu bài'}
+                    </button>
+                  </div>
                 </div>
+                {formatAnswerErrorIndex === -2 && formatAnswerError && <p role="alert" className="mt-2 text-sm text-rose-700">{formatAnswerError}</p>}
+                {speech.error && <p role="alert" className="mt-2 text-sm text-rose-700">{speech.error}</p>}
                 {bookmarkError && <p role="alert" className="mt-3 text-sm text-rose-700">{bookmarkError}</p>}
                 <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500">
                   <span className="inline-flex items-center gap-2">
@@ -1264,7 +1418,9 @@ export function MyClasses(props: MyClassesProps) {
                       <ul className="mt-3 space-y-2">
                         {submissionFiles.map((file, index) => (
                           <li key={`${file.name}-${file.size}-${index}`} className="flex items-center gap-2 text-sm text-slate-700">
-                            <FileText className="h-4 w-4 shrink-0 text-blue-700" />
+                            {file.type.startsWith('image/')
+                              ? <PendingSubmissionImagePreview file={file} />
+                              : <FileText className="h-4 w-4 shrink-0 text-blue-700" />}
                             <span className="min-w-0 flex-1 truncate">{file.name}</span>
                             <span className="shrink-0 text-xs text-slate-500">{(file.size / (1024 * 1024)).toFixed(2)} MB</span>
                             <button
@@ -1332,12 +1488,18 @@ export function MyClasses(props: MyClassesProps) {
                                   const nextAnswers = [...assignmentAnswerValues];
                                   nextAnswers[index] = event.target.value;
                                   responseDraft.current.dirty = true;
+                                  setFormattedOriginalAnswers((current) => {
+                                    if (!(String(index) in current)) return current;
+                                    const next = { ...current };
+                                    delete next[String(index)];
+                                    return next;
+                                  });
                                   setEditingAnswerIndex(index);
                                   resizeAnswerTextarea(event.currentTarget);
                                   setResponseText(serializeAssignmentAnswers(nextAnswers));
                                 }}
                                 onBlur={() => setEditingAnswerIndex(null)}
-                                readOnly={!canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex === index}
+                                readOnly={!canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex === index || formattingAnswerIndex === -2}
                                 rows={1}
                                 maxLength={20000}
                                 className="input-field mt-2 min-h-32 w-full resize-none overflow-hidden read-only:bg-slate-50 read-only:text-slate-600"
@@ -1345,6 +1507,35 @@ export function MyClasses(props: MyClassesProps) {
                               />
                             )}
                           </label>
+                          {canEditAssignment(selectedAssignment, currentTime) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={formattingAnswerIndex !== null}
+                                onClick={() => toggleSpeechForAnswer(index)}
+                                className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${speech.listening && speechTargetIndex.current === index ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                              >
+                                {speech.listening && speechTargetIndex.current === index ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                                {speech.listening && speechTargetIndex.current === index ? 'Dừng ghi âm' : 'Trả lời bằng giọng nói'}
+                              </button>
+                              {String(index) in formattedOriginalAnswers && (
+                                <button
+                                  type="button"
+                                  disabled={formattingAnswerIndex !== null || speech.listening}
+                                  onClick={() => undoFormattedAnswer(index)}
+                                  className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                                >
+                                  <Undo2 className="h-4 w-4" />Hoàn tác câu này
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {speechTargetIndex.current === index && speech.interim && (
+                            <p role="status" className="mt-2 text-xs text-blue-700">Đang nghe: {speech.interim}</p>
+                          )}
+                          {speechTargetIndex.current === index && speech.error && (
+                            <p role="alert" className="mt-2 text-xs text-rose-700">{speech.error}</p>
+                          )}
                           {selectedAssignment.score !== null && (
                             <section className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
                               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1381,20 +1572,6 @@ export function MyClasses(props: MyClassesProps) {
                                 </p>
                               )}
                             </section>
-                          )}
-                          {canEditAssignment(selectedAssignment, currentTime) && (
-                            <button
-                              type="button"
-                              disabled={!assignmentAnswerValues[index]?.trim() || formattingAnswerIndex !== null}
-                              onClick={() => void handleFormatAnswer(assignmentAnswerValues[index] ?? '', index)}
-                              className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Sparkles className="h-4 w-4" />
-                              {formattingAnswerIndex === index ? 'Đang chuẩn hóa...' : 'Chuẩn hóa ký hiệu'}
-                            </button>
-                          )}
-                          {formatAnswerErrorIndex === index && formatAnswerError && (
-                            <p role="alert" className="mt-2 text-sm text-rose-700">{formatAnswerError}</p>
                           )}
                         </article>
                       ))}
@@ -1435,12 +1612,18 @@ export function MyClasses(props: MyClassesProps) {
                             value={responseText}
                             onChange={(event) => {
                               responseDraft.current.dirty = true;
+                              setFormattedOriginalAnswers((current) => {
+                                if (!('-1' in current)) return current;
+                                const next = { ...current };
+                                delete next['-1'];
+                                return next;
+                              });
                               setEditingPlainAnswer(true);
                               resizeAnswerTextarea(event.currentTarget);
                               setResponseText(event.target.value);
                             }}
                             onBlur={() => setEditingPlainAnswer(false)}
-                            readOnly={!canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex === -1}
+                            readOnly={!canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex === -1 || formattingAnswerIndex === -2}
                             rows={1}
                             maxLength={20000}
                             className="input-field mt-2 min-h-32 w-full resize-none overflow-hidden read-only:bg-slate-50 read-only:text-slate-600"
@@ -1449,15 +1632,30 @@ export function MyClasses(props: MyClassesProps) {
                         )}
                       </label>
                       {canEditAssignment(selectedAssignment, currentTime) && (
-                        <button
-                          type="button"
-                          disabled={!responseText.trim() || formattingAnswerIndex !== null}
-                          onClick={() => void handleFormatAnswer(responseText, -1)}
-                          className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Sparkles className="h-4 w-4" />
-                          {formattingAnswerIndex === -1 ? 'Đang chuẩn hóa...' : 'Chuẩn hóa ký hiệu'}
-                        </button>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={formattingAnswerIndex !== null}
+                            onClick={() => toggleSpeechForAnswer(-1)}
+                            className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${speech.listening && speechTargetIndex.current === -1 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                          >
+                            {speech.listening && speechTargetIndex.current === -1 ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                            {speech.listening && speechTargetIndex.current === -1 ? 'Dừng ghi âm' : 'Trả lời bằng giọng nói'}
+                          </button>
+                          {'-1' in formattedOriginalAnswers && (
+                            <button
+                              type="button"
+                              disabled={formattingAnswerIndex !== null || speech.listening}
+                              onClick={undoFormattedPlainAnswer}
+                              className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                            >
+                              <Undo2 className="h-4 w-4" />Hoàn tác chuẩn hóa
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {speechTargetIndex.current === -1 && speech.interim && (
+                        <p role="status" className="mt-2 text-xs text-blue-700">Đang nghe: {speech.interim}</p>
                       )}
                       {formatAnswerErrorIndex === -1 && formatAnswerError && (
                         <p role="alert" className="mt-2 text-sm text-rose-700">{formatAnswerError}</p>

@@ -511,6 +511,7 @@ function App() {
     return (
       <FirstLoginSetup
         user={authUser}
+        onLogout={() => void logout()}
         onComplete={(user) => {
           setAuthUser(user);
           setRole(user.role);

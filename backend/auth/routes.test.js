@@ -167,6 +167,23 @@ class FakeAuthPool {
           : [],
       };
     }
+    if (normalized.startsWith('SELECT u.id, u.role, u.admin_scope FROM users u')) {
+      const target = this.targetUsers.get(values[0]);
+      const inScope = values[1] || target?.school_ids?.some((schoolId) => values[2].includes(schoolId));
+      return {
+        rows: target && inScope
+          ? [{ id: target.id, role: target.role, admin_scope: target.admin_scope }]
+          : [],
+      };
+    }
+    if (normalized.startsWith('UPDATE users SET password_hash = $2, must_change_password = true')) {
+      const target = this.targetUsers.get(values[0]);
+      if (target) {
+        target.password_hash = values[1];
+        target.must_change_password = true;
+      }
+      return { rowCount: target ? 1 : 0, rows: [] };
+    }
     if (normalized.startsWith('UPDATE users SET status = $2')) {
       const target = this.targetUsers.get(values[0]);
       if (target) target.status = values[1];
@@ -547,6 +564,51 @@ test('admins can disable accounts, revoke sessions, and re-enable them without r
   assert.equal(enableResponse.status, 200);
   assert.equal(activePool.targetUsers.get(TARGET_USER_ID).status, 'active');
   assert.ok(activePool.sessions.get('target-session').revoked_at);
+});
+
+test('admins can issue a one-time 12-character alphanumeric password and revoke target sessions', async () => {
+  activePool.targetUsers.set(TARGET_USER_ID, {
+    id: TARGET_USER_ID,
+    role: 'student',
+    admin_scope: null,
+    status: 'active',
+    school_ids: [SCHOOL_ID],
+    password_hash: 'old-password-hash',
+    must_change_password: false,
+  });
+  activePool.sessions.set('target-session', {
+    id: 'target-session',
+    user_id: TARGET_USER_ID,
+    expires_at: futureDate(),
+    revoked_at: null,
+  });
+
+  const response = await postWithAccessToken(
+    `users/${TARGET_USER_ID}/password-reset`,
+    signAccessToken(USER_ID, SESSION_ID),
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  const { temporaryPassword } = body.user;
+  assert.equal(body.success, true);
+  assert.equal(body.user.id, TARGET_USER_ID);
+  assert.equal(temporaryPassword.length, 12);
+  assert.match(temporaryPassword, /[A-Za-z]/);
+  assert.match(temporaryPassword, /\d/);
+  assert.equal(activePool.targetUsers.get(TARGET_USER_ID).must_change_password, true);
+  assert.ok(await argon2.verify(activePool.targetUsers.get(TARGET_USER_ID).password_hash, temporaryPassword));
+  assert.ok(activePool.sessions.get('target-session').revoked_at);
+
+  activePool.targetUsers.set(TARGET_USER_ID, {
+    ...activePool.targetUsers.get(TARGET_USER_ID),
+    role: 'admin',
+    admin_scope: 'school',
+  });
+  const adminTargetResponse = await postWithAccessToken(
+    `users/${TARGET_USER_ID}/password-reset`,
+    signAccessToken(USER_ID, SESSION_ID),
+  );
+  assert.equal(adminTargetResponse.status, 403);
 });
 
 test('role-specific profile completion stores optional student and lecturer details', async () => {

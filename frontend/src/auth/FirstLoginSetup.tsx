@@ -1,13 +1,15 @@
 import { useState } from 'react';
+import { LogOut } from 'lucide-react';
 import { changePassword, completeProfile, type AuthUser } from './authApi';
 import { PasswordInput } from '@/components/PasswordInput';
 
 interface FirstLoginSetupProps {
   user: AuthUser;
   onComplete: (user: AuthUser) => void;
+  onLogout: () => void;
 }
 
-export function FirstLoginSetup({ user, onComplete }: FirstLoginSetupProps) {
+export function FirstLoginSetup({ user, onComplete, onLogout }: FirstLoginSetupProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -49,13 +51,18 @@ export function FirstLoginSetup({ user, onComplete }: FirstLoginSetupProps) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
       <form onSubmit={(event) => void submit(event)} className="w-full max-w-md space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Thiết lập tài khoản</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {!passwordChanged
-              ? 'Đổi mật khẩu ban đầu trước khi tiếp tục.'
-              : `Hoàn thiện hồ sơ${user.role === 'student' ? ' học sinh' : user.role === 'lecturer' ? ' giáo viên' : ''} để bắt đầu sử dụng EduFlow.`}
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">Thiết lập tài khoản</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {!passwordChanged
+                ? 'Đổi mật khẩu ban đầu trước khi tiếp tục.'
+                : `Hoàn thiện hồ sơ${user.role === 'student' ? ' học sinh' : user.role === 'lecturer' ? ' giáo viên' : ''} để bắt đầu sử dụng EduFlow.`}
+            </p>
+          </div>
+          <button type="button" onClick={onLogout} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700">
+            <LogOut className="h-4 w-4" /> Thoát
+          </button>
         </div>
         {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         {!passwordChanged ? (

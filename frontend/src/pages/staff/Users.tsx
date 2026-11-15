@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Copy, Search, UserPlus } from 'lucide-react';
+import { Copy, KeyRound, Search, UserPlus, X } from 'lucide-react';
 import { authenticatedFetch } from '@/auth/authApi';
 import { showToast } from '@/components/toast';
 import type { AuthUser } from '@/auth/authApi';
@@ -28,6 +28,7 @@ interface ApiResult<T> {
   schools?: T;
   school?: T;
   invitationToken?: string;
+  temporaryPassword?: string;
 }
 
 async function requestJson<T>(path: string, method = 'GET', body?: unknown): Promise<ApiResult<T>> {
@@ -59,6 +60,8 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusBusyId, setStatusBusyId] = useState('');
+  const [passwordBusyId, setPasswordBusyId] = useState('');
+  const [resetCredential, setResetCredential] = useState<{ fullName: string; email: string; password: string; status: UserRecord['status'] } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -131,6 +134,40 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
       setError('');
     } catch {
       setError('Không thể sao chép. Hãy chọn và sao chép liên kết thủ công.');
+    }
+  };
+
+  const resetUserPassword = async (user: UserRecord) => {
+    if (!window.confirm(`Cấp mật khẩu tạm mới cho ${user.full_name}? Mật khẩu hiện tại sẽ không còn dùng được.`)) return;
+    setPasswordBusyId(user.id);
+    setResetCredential(null);
+    setError('');
+    try {
+      const result = await requestJson<{ id: string; temporaryPassword: string }>(
+        `/api/auth/users/${encodeURIComponent(user.id)}/password-reset`,
+        'POST',
+      );
+      if (!result.user?.temporaryPassword) throw new Error('Phản hồi cấp lại mật khẩu không có mật khẩu tạm.');
+      setResetCredential({
+        fullName: user.full_name,
+        email: user.email,
+        password: result.user.temporaryPassword,
+        status: user.status,
+      });
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Không thể cấp lại mật khẩu.');
+    } finally {
+      setPasswordBusyId('');
+    }
+  };
+
+  const copyTemporaryPassword = async () => {
+    if (!resetCredential) return;
+    try {
+      await navigator.clipboard.writeText(resetCredential.password);
+      showToast('Đã sao chép mật khẩu tạm.');
+    } catch {
+      setError('Không thể sao chép. Hãy chọn và sao chép mật khẩu thủ công.');
     }
   };
 
@@ -220,10 +257,33 @@ export function Users({ currentUser }: { currentUser: AuthUser }) {
           </select>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Người dùng</th><th className="px-4 py-3">Vai trò</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Trường</th><th className="px-4 py-3">Thao tác</th></tr></thead><tbody className="divide-y divide-slate-100">
-          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Đang tải…</td></tr> : filteredUsers.map((user) => <tr key={user.id}><td className="px-4 py-3"><p className="font-medium">{user.full_name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role === 'lecturer' ? 'Giáo viên' : user.role === 'student' ? 'Học sinh' : user.admin_scope === 'system' ? 'Quản trị viên hệ thống' : 'Quản trị viên trường'}</td><td className="px-4 py-3">{user.status === 'active' ? 'Đang hoạt động' : 'Tạm khóa'}</td><td className="px-4 py-3 text-xs text-slate-500">{user.school_ids?.length ? user.school_ids.map((id) => schoolNames.get(id) ?? 'Trường không hoạt động').join(', ') : user.admin_scope === 'system' ? 'Toàn hệ thống' : 'Chưa gắn trường'}</td><td className="px-4 py-3">{user.role === 'admin' ? <span className="text-xs text-slate-400">—</span> : <button type="button" disabled={statusBusyId === user.id || user.id === currentUser.id} onClick={() => void changeUserStatus(user)} className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50">{statusBusyId === user.id ? 'Đang cập nhật…' : user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa'}</button>}</td></tr>)}
+          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Đang tải…</td></tr> : filteredUsers.map((user) => <tr key={user.id}><td className="px-4 py-3"><p className="font-medium">{user.full_name}</p><p className="text-slate-500">{user.email}</p></td><td className="px-4 py-3">{user.role === 'lecturer' ? 'Giáo viên' : user.role === 'student' ? 'Học sinh' : user.admin_scope === 'system' ? 'Quản trị viên hệ thống' : 'Quản trị viên trường'}</td><td className="px-4 py-3">{user.status === 'active' ? 'Đang hoạt động' : 'Tạm khóa'}</td><td className="px-4 py-3 text-xs text-slate-500">{user.school_ids?.length ? user.school_ids.map((id) => schoolNames.get(id) ?? 'Trường không hoạt động').join(', ') : user.admin_scope === 'system' ? 'Toàn hệ thống' : 'Chưa gắn trường'}</td><td className="px-4 py-3">{user.role === 'admin' ? <span className="text-xs text-slate-400">—</span> : <div className="flex flex-wrap items-center gap-x-3 gap-y-2"><button type="button" disabled={passwordBusyId === user.id || statusBusyId === user.id || user.id === currentUser.id} onClick={() => void resetUserPassword(user)} className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 disabled:cursor-wait disabled:opacity-50">{passwordBusyId === user.id ? <><span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-300 border-t-indigo-700" />Đang cấp…</> : <><KeyRound className="h-3.5 w-3.5" />Cấp lại mật khẩu</>}</button><button type="button" disabled={statusBusyId === user.id || passwordBusyId === user.id || user.id === currentUser.id} onClick={() => void changeUserStatus(user)} className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50">{statusBusyId === user.id ? 'Đang cập nhật…' : user.status === 'active' ? 'Khóa tài khoản' : 'Mở khóa'}</button></div>}</td></tr>)}
           {!loading && filteredUsers.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Không tìm thấy người dùng.</td></tr>}
         </tbody></table></div>
       </section>
+      {resetCredential && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setResetCredential(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="temporary-password-title" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 id="temporary-password-title" className="text-lg font-semibold text-slate-900">Mật khẩu tạm đã được cấp</h2>
+                <p className="mt-1 text-sm text-slate-600">{resetCredential.fullName} · {resetCredential.email}</p>
+              </div>
+              <button type="button" onClick={() => setResetCredential(null)} aria-label="Đóng" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <label htmlFor="temporary-password" className="mt-5 block text-xs font-medium text-slate-600">Mật khẩu mới · 12 ký tự gồm chữ và số</label>
+            <input id="temporary-password" readOnly value={resetCredential.password} onFocus={(event) => event.currentTarget.select()} className="input-field mt-1 font-mono text-lg tracking-wider" />
+            <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-800">
+              Hãy gửi mật khẩu này cho người dùng qua kênh riêng. Họ sẽ cần đổi mật khẩu sau khi đăng nhập; các phiên đăng nhập trước đã bị thu hồi.
+              {resetCredential.status === 'disabled' && ' Tài khoản hiện vẫn đang bị khóa, cần mở khóa trước khi người dùng có thể đăng nhập.'}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setResetCredential(null)} className="btn-ghost">Đóng</button>
+              <button type="button" onClick={() => void copyTemporaryPassword()} className="btn-primary"><Copy className="h-4 w-4" /><span>Sao chép mật khẩu</span></button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

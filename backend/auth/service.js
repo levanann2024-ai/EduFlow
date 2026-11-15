@@ -1,5 +1,5 @@
 const argon2 = require('argon2');
-const { randomBytes, randomUUID } = require('node:crypto');
+const { randomBytes, randomInt, randomUUID } = require('node:crypto');
 const { getPool } = require('../db/pool');
 const { hasValidSchoolScope } = require('./school-scope');
 const {
@@ -11,7 +11,25 @@ const {
 
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const PASSWORD_MIN_LENGTH = 12;
+const TEMP_PASSWORD_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const TEMP_PASSWORD_DIGITS = '23456789';
+const TEMP_PASSWORD_CHARACTERS = `${TEMP_PASSWORD_LETTERS}${TEMP_PASSWORD_DIGITS}`;
 let dummyPasswordHash;
+
+function generateTemporaryPassword() {
+  const password = [
+    TEMP_PASSWORD_LETTERS[randomInt(TEMP_PASSWORD_LETTERS.length)],
+    TEMP_PASSWORD_DIGITS[randomInt(TEMP_PASSWORD_DIGITS.length)],
+  ];
+  while (password.length < PASSWORD_MIN_LENGTH) {
+    password.push(TEMP_PASSWORD_CHARACTERS[randomInt(TEMP_PASSWORD_CHARACTERS.length)]);
+  }
+  for (let index = password.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [password[index], password[swapIndex]] = [password[swapIndex], password[index]];
+  }
+  return password.join('');
+}
 
 function normalizeEmail(email) {
   return email.trim().toLowerCase();
@@ -698,6 +716,65 @@ async function setUserStatus(userId, status, { actorUserId, allowedSchoolIds, sy
   }
 }
 
+async function resetUserPassword(userId, { actorUserId, allowedSchoolIds, systemAdmin }) {
+  if (userId === actorUserId) {
+    const error = new Error('Không thể cấp lại mật khẩu cho tài khoản đang sử dụng.');
+    error.status = 400;
+    throw error;
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT u.id, u.role, u.admin_scope
+         FROM users u
+        WHERE u.id = $1
+          AND ($2::boolean OR EXISTS (
+            SELECT 1
+              FROM school_memberships sm
+             WHERE sm.user_id = u.id AND sm.status = 'active'
+               AND sm.school_id = ANY($3::uuid[])
+          ))
+        FOR UPDATE OF u`,
+      [userId, systemAdmin, allowedSchoolIds],
+    );
+    const target = result.rows[0];
+    if (!target) {
+      const error = new Error('Không tìm thấy tài khoản trong phạm vi quản lý.');
+      error.status = 404;
+      throw error;
+    }
+    if (target.role === 'admin') {
+      const error = new Error('Không thể cấp lại mật khẩu cho tài khoản quản trị viên.');
+      error.status = 403;
+      throw error;
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await argon2.hash(temporaryPassword, { type: argon2.argon2id });
+    await client.query(
+      `UPDATE users
+          SET password_hash = $2, must_change_password = true, updated_at = now()
+        WHERE id = $1`,
+      [userId, passwordHash],
+    );
+    await client.query(
+      `UPDATE auth_sessions
+          SET revoked_at = COALESCE(revoked_at, now())
+        WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
+    await client.query('COMMIT');
+    return { id: userId, temporaryPassword };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   ACCESS_TOKEN_TTL_SECONDS,
   PASSWORD_MIN_LENGTH,
@@ -713,5 +790,6 @@ module.exports = {
   login,
   publicUser,
   rotateRefreshToken,
+  resetUserPassword,
   setUserStatus,
 };

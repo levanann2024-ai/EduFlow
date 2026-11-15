@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, X } from 'lucide-react';
 import {
   downloadClassAssignmentSubmissionFile,
   type AssignmentSubmissionFile as SubmissionFile,
@@ -20,6 +20,7 @@ export function AssignmentSubmissionFiles({
   files: SubmissionFile[];
 }) {
   const [loadedFiles, setLoadedFiles] = useState<Record<string, LoadedSubmissionFile>>({});
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
   const fileIds = files.map((file) => file.id).join(',');
 
   useEffect(() => {
@@ -61,14 +62,15 @@ export function AssignmentSubmissionFiles({
         return (
           <article key={file.id} className="rounded-xl border border-slate-200 bg-white p-3">
             {file.mediaType.startsWith('image/') && loaded?.url ? (
-              <a href={loaded.url} download={file.name} className="block">
+              <button type="button" onClick={() => setPreviewFile({ url: loaded.url!, name: file.name })} className="block max-w-full text-left" aria-label={`Xem trước ảnh ${file.name}`}>
                 <img
                   src={loaded.url}
                   alt={file.name}
                   loading="lazy"
-                  className="max-h-[480px] max-w-full rounded-lg object-contain"
+                  className="max-h-[360px] max-w-full cursor-zoom-in rounded-lg object-contain"
                 />
-              </a>
+                <span className="mt-1 block text-xs text-blue-700">Bấm để xem ảnh</span>
+              </button>
             ) : (
               <div className="flex items-center gap-3">
                 <FileText className="h-5 w-5 shrink-0 text-blue-700" />
@@ -92,6 +94,22 @@ export function AssignmentSubmissionFiles({
           </article>
         );
       })}
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4"
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewFile(null); }}
+          onKeyDown={(event) => { if (event.key === 'Escape') setPreviewFile(null); }}
+        >
+          <section role="dialog" aria-modal="true" aria-label={`Xem trước ${previewFile.name}`} className="relative flex max-h-[92vh] max-w-[94vw] flex-col overflow-hidden rounded-xl bg-white p-2 shadow-2xl">
+            <button type="button" onClick={() => setPreviewFile(null)} aria-label="Đóng xem trước" className="absolute right-3 top-3 z-10 rounded-full bg-white/95 p-2 text-slate-700 shadow hover:bg-white">
+              <X className="h-5 w-5" />
+            </button>
+            <img src={previewFile.url} alt={previewFile.name} className="max-h-[82vh] max-w-[92vw] rounded-lg object-contain" />
+            <p className="truncate px-2 pt-2 text-center text-xs text-slate-600">{previewFile.name}</p>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
