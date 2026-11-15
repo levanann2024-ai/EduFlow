@@ -234,6 +234,7 @@ export function StudentDashboard({
   const [studentExamRooms, setStudentExamRooms] = useState<StudentExamRoom[]>([]);
   const [studentAppeals, setStudentAppeals] = useState<ExamAppeal[]>([]);
   const [liveDataError, setLiveDataError] = useState('');
+  const [progressError, setProgressError] = useState('');
   const [loadingLiveData, setLoadingLiveData] = useState(true);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -439,6 +440,13 @@ export function StudentDashboard({
     .filter((assignment) => assignment.submittedAt !== null && assignment.gradedAt === null);
   const recentAssignmentGrades = (liveProgress?.assignments ?? [])
     .filter((assignment) => isWithinRecentDays(assignment.gradedAt, Date.now(), 7));
+  const gradedAssignments = (liveProgress?.assignments ?? [])
+    .filter((assignment) => assignment.score !== null)
+    .sort((first, second) => {
+      const firstTimestamp = Date.parse(first.gradedAt ?? first.submittedAt ?? first.createdAt ?? '') || 0;
+      const secondTimestamp = Date.parse(second.gradedAt ?? second.submittedAt ?? second.createdAt ?? '') || 0;
+      return secondTimestamp - firstTimestamp;
+    });
   const gradedExamRoomIds = new Set((liveProgress?.examResults ?? []).map((result) => result.roomId));
   const pendingExamGrades = liveProgress
     ? studentExamRooms.filter((room) => room.hasSubmitted && !gradedExamRoomIds.has(room.id))
@@ -553,6 +561,7 @@ export function StudentDashboard({
     const loadLiveData = async () => {
       setLoadingLiveData(true);
       setLiveDataError('');
+      setProgressError('');
       const [progressResult, timetableResult, nextTimetableResult, examRoomsResult, appealsResult] = await Promise.allSettled([
         getStudentProgress(),
         getStudentTimetable(getCurrentSemester(tomorrowDate), firstWeekStart),
@@ -562,8 +571,16 @@ export function StudentDashboard({
       ]);
       if (!active) return;
       const errors: string[] = [];
-      if (progressResult.status === 'fulfilled') setLiveProgress(progressResult.value);
-      else errors.push(progressResult.reason instanceof Error ? progressResult.reason.message : 'Không thể tải bài tập và lịch kiểm tra.');
+      if (progressResult.status === 'fulfilled') {
+        setLiveProgress(progressResult.value);
+        setProgressError('');
+      } else {
+        const message = progressResult.reason instanceof Error
+          ? progressResult.reason.message
+          : 'Không thể tải kết quả bài tập đã chấm.';
+        setProgressError(message);
+        errors.push(message);
+      }
       if (examRoomsResult.status === 'fulfilled') setStudentExamRooms(examRoomsResult.value);
       else errors.push(examRoomsResult.reason instanceof Error ? examRoomsResult.reason.message : 'Không thể tải trạng thái bài kiểm tra.');
       if (appealsResult.status === 'fulfilled') setStudentAppeals(appealsResult.value);
@@ -728,17 +745,36 @@ export function StudentDashboard({
                 {activityFilter === 'submitted' && (
                   <p className="py-6 text-center text-xs leading-5 text-slate-500">Chưa có dữ liệu bài đã nộp để hiển thị tại đây.</p>
                 )}
-                {activityFilter === 'graded' && studentResults.slice(0, 4).map((result) => (
-                  <button key={result.id} type="button" onClick={() => onNavigate('my-results')} className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Trophy className="h-4 w-4" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{result.name}</span>
-                      <span className="mt-1 block truncate text-[0.5625rem] text-slate-500">{result.subject} - {result.date}</span>
-                    </span>
-                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[0.5625rem] font-semibold text-emerald-700">{result.score}/10</span>
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                  </button>
-                ))}
+                {activityFilter === 'graded' && (
+                  <>
+                    {gradedAssignments.slice(0, 4).map((assignment) => (
+                      <button
+                        key={assignment.id}
+                        type="button"
+                        onClick={() => onOpenAssignment(assignment.subject, assignment.id)}
+                        className="flex min-h-[55px] w-full items-center gap-2.5 py-2 text-left transition hover:bg-blue-50"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Trophy className="h-4 w-4" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[0.6875rem] font-semibold text-slate-800">{assignment.title}</span>
+                          <span className="mt-1 block truncate text-[0.5625rem] text-slate-500">
+                            {assignment.subject} · {assignment.gradedAt ? new Date(assignment.gradedAt).toLocaleDateString('vi-VN') : 'Đã chấm'}
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[0.5625rem] font-semibold text-emerald-700">{assignment.score ?? '—'}/10</span>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      </button>
+                    ))}
+                    {loadingLiveData && gradedAssignments.length === 0 && (
+                      <p role="status" className="py-5 text-center text-xs text-slate-500">Đang tải bài tập đã chấm…</p>
+                    )}
+                    {!loadingLiveData && gradedAssignments.length === 0 && (
+                      <p role={progressError ? 'alert' : undefined} className="py-5 text-center text-xs text-slate-500">
+                        {progressError || 'Chưa có bài tập về nhà nào được chấm.'}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             </section>
 

@@ -51,6 +51,13 @@ import {
 import { FirstLoginSetup } from '@/auth/FirstLoginSetup';
 import { InvitationAcceptance } from '@/auth/InvitationAcceptance';
 import { login as authenticate, logout as endSession, restoreSession, saveAvatar, type AuthUser } from '@/auth/authApi';
+import { getStudentSubjectCode, getStudentSubjectSlug } from '@/pages/student/studentSubjectRoutes';
+import {
+  ensureAppHistoryRoute,
+  pushAppHistoryRoute,
+  readEduFlowHistoryEntry,
+  replaceAppHistoryRoute,
+} from '@/routing/appHistory';
 import type { Page, Role } from '@/types';
 
 const allowedPages: Record<Role, Page[]> = {
@@ -75,6 +82,24 @@ const teacherPageByPath: Record<string, Page> = {
   '/teacher/saved': 'saved',
   '/teacher/contact': 'feedback',
 };
+
+function getPagePath(role: Role, page: Page) {
+  const teacherRoute = role === 'lecturer'
+    ? Object.entries(teacherPageByPath).find(([, pageId]) => pageId === page)?.[0]
+    : undefined;
+  const slug = role === 'admin' && page.startsWith('admin-') ? page.slice('admin-'.length) : page;
+  return teacherRoute ?? `/${role}/${slug}`;
+}
+
+function getPageFromPath(role: Role, pathname: string): Page | null {
+  if (role === 'student' && getStudentSubjectSlugFromPath(pathname)) return 'my-classes';
+  return allowedPages[role].find((page) => getPagePath(role, page) === pathname) ?? null;
+}
+
+function getStudentSubjectSlugFromPath(pathname: string) {
+  const match = pathname.match(/^\/(?:student\/)?my-classes\/([^/]+)\/?$/);
+  return match?.[1]?.toLocaleLowerCase('vi') ?? null;
+}
 
 function App() {
   const [role, setRole] = useState<Role | null>(null);
@@ -117,12 +142,42 @@ function App() {
   const [initialResourceId, setInitialResourceId] = useState<string | null>(null);
   const [initialAssignmentId, setInitialAssignmentId] = useState<string | null>(null);
   const [initialChatConversationId, setInitialChatConversationId] = useState<string | null>(null);
+  const [studentRouteSubjectSlug, setStudentRouteSubjectSlug] = useState(
+    () => getStudentSubjectSlugFromPath(window.location.pathname),
+  );
 
   useEffect(() => {
-    const syncAuthScreen = () => setAuthScreen(window.location.pathname === '/' ? 'landing' : 'login');
-    window.addEventListener('popstate', syncAuthScreen);
-    return () => window.removeEventListener('popstate', syncAuthScreen);
-  }, []);
+    const syncLocation = () => {
+      const pathname = window.location.pathname;
+      if (!role) {
+        setAuthScreen(pathname === '/' ? 'landing' : 'login');
+        return;
+      }
+      const nextPage = getPageFromPath(role, pathname);
+      if (nextPage) {
+        const historyEntry = readEduFlowHistoryEntry(window.history.state);
+        if (historyEntry?.role !== role || historyEntry.page !== nextPage || historyEntry.path !== pathname) {
+          replaceAppHistoryRoute(window.history, role, nextPage, pathname);
+        }
+        setPage(nextPage);
+        const subjectSlug = role === 'student' ? getStudentSubjectSlugFromPath(pathname) : null;
+        const subjectSeed = subjectSlug ? getStudentSubjectCode(subjectSlug) ?? subjectSlug : null;
+        setStudentRouteSubjectSlug(subjectSlug);
+        setResourceSubjectSeed(subjectSeed);
+        setInitialSubjectView(subjectSeed ? 'lessons' : null);
+        setInitialSubjectTopic(null);
+        return;
+      }
+      setPage('dashboard');
+      setStudentRouteSubjectSlug(null);
+      setResourceSubjectSeed(null);
+      setInitialSubjectView(null);
+      setInitialSubjectTopic(null);
+      replaceAppHistoryRoute(window.history, role, 'dashboard', getPagePath(role, 'dashboard'));
+    };
+    window.addEventListener('popstate', syncLocation);
+    return () => window.removeEventListener('popstate', syncLocation);
+  }, [role]);
 
   useEffect(() => {
     if (!authUser || (authUser.role !== 'student' && authUser.role !== 'lecturer')
@@ -209,9 +264,12 @@ function App() {
     if (nextPage === 'ai-practice') setPracticeSeed(null);
     else setPracticeTopicSeed(null);
     setPage(nextPage);
-    if (role === 'lecturer') {
-      const route = Object.entries(teacherPageByPath).find(([, pageId]) => pageId === nextPage)?.[0];
-      if (route && route !== window.location.pathname) window.history.pushState({ page: nextPage }, '', route);
+    setStudentRouteSubjectSlug(null);
+    if (role && allowedPages[role].includes(nextPage)) {
+      const route = getPagePath(role, nextPage);
+      if (route && route !== window.location.pathname) {
+        pushAppHistoryRoute(window.history, role, nextPage, route, window.location.pathname, getPagePath(role, 'dashboard'));
+      }
     }
   };
   const consumeAssignmentEditorSeed = useCallback(() => setAssignmentEditorSeed(null), []);
@@ -227,6 +285,7 @@ function App() {
     setOnboardingOpen(false);
     setAuthScreen('landing');
     window.history.replaceState(null, '', '/');
+    setStudentRouteSubjectSlug(null);
   };
 
   const openLogin = () => {
@@ -253,6 +312,7 @@ function App() {
     navigateToPage('my-classes');
     setResourceSubjectSeed(subjectCode);
     setInitialSubjectView('lessons');
+    setStudentSubjectPath(subjectCode);
   };
 
   const openSubjectAssignments = (subjectCode: string, topic?: string) => {
@@ -260,6 +320,37 @@ function App() {
     setResourceSubjectSeed(subjectCode);
     setInitialSubjectView('assignments');
     setInitialSubjectTopic(topic ?? null);
+    setStudentSubjectPath(subjectCode);
+  };
+
+  const setStudentSubjectPath = (subject: string, historyMode: 'push' | 'replace' = 'replace') => {
+    const slug = getStudentSubjectSlug(subject);
+    if (!slug) return;
+    const route = `/my-classes/${slug}`;
+    if (window.location.pathname !== route) {
+      if (historyMode === 'push') {
+        pushAppHistoryRoute(window.history, 'student', 'my-classes', route, window.location.pathname, getPagePath('student', 'dashboard'));
+      } else {
+        replaceAppHistoryRoute(window.history, 'student', 'my-classes', route);
+      }
+    }
+    setStudentRouteSubjectSlug(slug);
+    setResourceSubjectSeed(getStudentSubjectCode(slug) ?? slug);
+  };
+
+  const exitStudentSubject = () => {
+    const listPath = getPagePath('student', 'my-classes');
+    const currentEntry = readEduFlowHistoryEntry(window.history.state);
+    setStudentRouteSubjectSlug(null);
+    setResourceSubjectSeed(null);
+    setInitialSubjectView(null);
+    setInitialSubjectTopic(null);
+    if (currentEntry?.role === 'student' && currentEntry.parentPath === listPath) {
+      window.history.back();
+    } else if (getStudentSubjectSlugFromPath(window.location.pathname)) {
+      replaceAppHistoryRoute(window.history, 'student', 'my-classes', listPath);
+    }
+    setStudentRouteSubjectSlug(null);
   };
 
   const openScheduledContent = (subject: string, topic: string, type: 'lesson' | 'exam' | 'homework') => {
@@ -276,9 +367,11 @@ function App() {
       'Giáo dục thể chất': 'GDTC10',
     };
     navigateToPage('my-classes');
-    setResourceSubjectSeed(subjectCodes[subject] ?? null);
+    const subjectSlug = getStudentSubjectSlug(subject);
+    setResourceSubjectSeed(subjectCodes[subject] ?? (subjectSlug ? getStudentSubjectCode(subjectSlug) : null));
     setInitialSubjectView(type === 'homework' ? 'assignments' : 'lessons');
     setInitialSubjectTopic(topic);
+    setStudentSubjectPath(subject);
   };
 
   const openStudentAssignment = (subject: string, assignmentId?: string) => {
@@ -292,6 +385,7 @@ function App() {
     setInitialSubjectView('exam');
     setInitialSubjectTopic(null);
     setInitialExamSessionId(result.sessionId);
+    setStudentSubjectPath(result.subject);
   };
 
   const askStudentAI = (prompt: string, subject = '') => {
@@ -357,6 +451,22 @@ function App() {
         if (!cancelled && user) {
           setAuthUser(user);
           setRole(user.role);
+          const requestedPage = getPageFromPath(user.role, window.location.pathname);
+          setPage(requestedPage ?? 'dashboard');
+          const subjectSlug = user.role === 'student'
+            ? getStudentSubjectSlugFromPath(window.location.pathname)
+            : null;
+          const subjectSeed = subjectSlug
+            ? getStudentSubjectCode(subjectSlug) ?? subjectSlug
+            : null;
+          setStudentRouteSubjectSlug(subjectSlug);
+          setResourceSubjectSeed(subjectSeed);
+          setInitialSubjectView(subjectSeed ? 'lessons' : null);
+          if (requestedPage) {
+            ensureAppHistoryRoute(window.history, user.role, requestedPage, window.location.pathname, getPagePath(user.role, 'dashboard'));
+          } else {
+            replaceAppHistoryRoute(window.history, user.role, 'dashboard', getPagePath(user.role, 'dashboard'));
+          }
         }
       })
       .catch((error: unknown) => {
@@ -416,15 +526,6 @@ function App() {
     };
   }, [notificationIsDemo, notificationRole, notificationUserId, notificationsOpen, userSettings.language]);
 
-  useEffect(() => {
-    const syncTeacherRoute = () => {
-      const nextPage = teacherPageByPath[window.location.pathname];
-      if (role === 'lecturer' && nextPage) setPage(nextPage);
-    };
-    window.addEventListener('popstate', syncTeacherRoute);
-    return () => window.removeEventListener('popstate', syncTeacherRoute);
-  }, [role]);
-
   if (window.location.pathname === '/upload-mobile') {
     return <MobileExamUploadPage />;
   }
@@ -470,7 +571,8 @@ function App() {
           setAuthUser(user);
           setRole(user.role);
           setPage('dashboard');
-          window.history.replaceState(null, '', window.location.pathname);
+          setStudentRouteSubjectSlug(null);
+          replaceAppHistoryRoute(window.history, user.role, 'dashboard', getPagePath(user.role, 'dashboard'));
         }}
       />
     );
@@ -482,10 +584,22 @@ function App() {
       setAuthUser(user);
       setRole(user.role);
       setAuthError('');
-      const requestedPage = user.role === 'lecturer' ? teacherPageByPath[window.location.pathname] : undefined;
+      const requestedPage = getPageFromPath(user.role, window.location.pathname);
       setPage(requestedPage ?? 'dashboard');
-      if (user.role === 'lecturer' && !requestedPage) window.history.replaceState(null, '', '/teacher/dashboard');
-      if (user.role !== 'lecturer') window.history.replaceState(null, '', '/');
+      const subjectSlug = user.role === 'student'
+        ? getStudentSubjectSlugFromPath(window.location.pathname)
+        : null;
+      const subjectSeed = subjectSlug
+        ? getStudentSubjectCode(subjectSlug) ?? subjectSlug
+        : null;
+      setStudentRouteSubjectSlug(subjectSlug);
+      setResourceSubjectSeed(subjectSeed);
+      setInitialSubjectView(subjectSeed ? 'lessons' : null);
+      if (requestedPage) {
+        ensureAppHistoryRoute(window.history, user.role, requestedPage, window.location.pathname, getPagePath(user.role, 'dashboard'));
+      } else {
+        replaceAppHistoryRoute(window.history, user.role, 'dashboard', getPagePath(user.role, 'dashboard'));
+      }
     };
     return (
       <Login
@@ -662,6 +776,8 @@ function App() {
                   initialExamClassId={initialExamClassId}
                   initialResourceId={initialResourceId}
                   initialAssignmentId={initialAssignmentId}
+                  routeSubjectSlug={studentRouteSubjectSlug}
+                  onSubjectSelected={(subject) => setStudentSubjectPath(subject, 'push')}
                   onExitGroup={() => {
                     setResourceSubjectSeed(null);
                     setInitialSubjectView(null);
@@ -670,6 +786,7 @@ function App() {
                     setInitialExamClassId(null);
                     setInitialResourceId(null);
                     setInitialAssignmentId(null);
+                    exitStudentSubject();
                   }}
                   onOpenSchedule={() => navigateToPage('schedule')}
                   onAskAI={askStudentAI}

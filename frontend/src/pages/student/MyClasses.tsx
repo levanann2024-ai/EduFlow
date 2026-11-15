@@ -32,6 +32,7 @@ import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { authenticatedFetch } from '@/auth/authApi';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { useSavedItems } from './savedItems';
+import { getStudentSubjectSlug } from './studentSubjectRoutes';
 import { isChapterLevelResourceLesson } from '@/utils/classLearningResourceDisplay';
 import {
   distributeAssignmentPoints,
@@ -68,6 +69,8 @@ interface MyClassesProps {
   initialExamClassId?: string | null;
   initialResourceId?: string | null;
   initialAssignmentId?: string | null;
+  routeSubjectSlug: string | null;
+  onSubjectSelected: (subject: string) => void;
   onExitGroup: () => void;
   onAskAI: (prompt: string, subject?: string) => void;
 }
@@ -265,6 +268,8 @@ export function MyClasses(props: MyClassesProps) {
     initialExamClassId,
     initialResourceId,
     initialAssignmentId,
+    routeSubjectSlug,
+    onSubjectSelected,
     onExitGroup,
     onAskAI,
   } = props;
@@ -511,12 +516,38 @@ export function MyClasses(props: MyClassesProps) {
   }, [groups, initialResourceId, selectedGroupKey]);
 
   useEffect(() => {
-    if (!initialResourceId && !initialAssignmentId && !initialExamSessionId && !selectedGroupKey && initialSubjectCode) {
+    if (initialAssignmentId || initialResourceId || initialExamSessionId) return;
+    if (!routeSubjectSlug) {
+      if (selectedGroupKey) {
+        setSelectedGroupKey(null);
+        setSelectedResourceId(null);
+        setSelectedAssignmentId(null);
+      }
+      return;
+    }
+    const currentGroup = groups.find((group) => group.key === selectedGroupKey);
+    if (currentGroup && getStudentSubjectSlug(currentGroup.subject) === routeSubjectSlug) return;
+    const match = groups.find((group) => getStudentSubjectSlug(group.subject) === routeSubjectSlug);
+    if (!match) {
+      setSelectedGroupKey(null);
+      return;
+    }
+    setSelectedGroupKey(match.key);
+    setSelectedResourceId(null);
+    setSelectedAssignmentId(null);
+    setActiveTab(initialSubjectView === 'assignments'
+      ? 'assignment'
+      : initialSubjectView === 'exam' ? 'exam' : 'lesson');
+  }, [groups, initialAssignmentId, initialExamSessionId, initialResourceId, initialSubjectView, routeSubjectSlug, selectedGroupKey]);
+
+  useEffect(() => {
+    if (!routeSubjectSlug && !initialResourceId && !initialAssignmentId && !initialExamSessionId && !selectedGroupKey && initialSubjectCode) {
       const subjectCode = normalizeSubjectName(initialSubjectCode).replace(/\d+$/, '');
       const match = groups.find((group) => {
         const subjectName = normalizeSubjectName(group.subject);
         return group.subject.toLocaleLowerCase('vi').includes(initialSubjectCode.toLocaleLowerCase('vi'))
-          || (subjectCode.length >= 3 && subjectName.startsWith(subjectCode));
+          || (subjectCode.length >= 3 && subjectName.startsWith(subjectCode))
+          || getStudentSubjectSlug(group.subject) === initialSubjectCode.toLocaleLowerCase('vi');
       });
       if (match) {
         setSelectedGroupKey(match.key);
@@ -537,7 +568,7 @@ export function MyClasses(props: MyClassesProps) {
         }
       }
     }
-  }, [groups, initialAssignmentId, initialExamSessionId, initialResourceId, initialSubjectCode, initialSubjectTopic, initialSubjectView, selectedGroupKey, semester]);
+  }, [groups, initialAssignmentId, initialExamSessionId, initialResourceId, initialSubjectCode, initialSubjectTopic, initialSubjectView, routeSubjectSlug, selectedGroupKey, semester]);
 
   const filteredGroups = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('vi');
@@ -745,6 +776,7 @@ export function MyClasses(props: MyClassesProps) {
 
   const openGroup = (group: LearningGroup, view: 'lesson' | 'assignment' | 'exam') => {
     setSelectedGroupKey(group.key);
+    onSubjectSelected(group.subject);
     setActiveTab(view);
     const matchingResources = group.resources.filter((item) => displaySemester(item.semester) === semester);
     const matchingAssignments = group.assignments.filter((item) => item.semester === semester);
