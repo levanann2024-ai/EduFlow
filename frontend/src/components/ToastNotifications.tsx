@@ -6,6 +6,9 @@ interface ToastEntry extends ToastDetail {
   id: string;
 }
 
+const TOAST_DURATION_MS = 5_000;
+const TOAST_TRANSITION_MS = 300;
+
 function ToastItem({ toast, onDismiss }: { toast: ToastEntry; onDismiss: (id: string) => void }) {
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -14,8 +17,8 @@ function ToastItem({ toast, onDismiss }: { toast: ToastEntry; onDismiss: (id: st
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setVisible(true));
-    const exitStart = window.setTimeout(() => setLeaving(true), 5000);
-    const remove = window.setTimeout(() => onDismiss(toast.id), 5300);
+    const exitStart = window.setTimeout(() => setLeaving(true), TOAST_DURATION_MS - TOAST_TRANSITION_MS);
+    const remove = window.setTimeout(() => onDismiss(toast.id), TOAST_DURATION_MS);
     return () => {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(exitStart);

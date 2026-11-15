@@ -11,6 +11,27 @@ export interface ParsedAssignmentContent {
 }
 
 const assignmentAnswersFormat = 'eduflow-assignment-answers-v1';
+const formattedMathPattern = /\$\$[\s\S]+?\$\$|\$(?:\\.|[^$\n])+\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g;
+const rawMathNotationPattern = /(?:\\[A-Za-z]+|[A-Za-z0-9)]\s*[_^]\s*(?:\{[^}]+\}|[A-Za-z0-9]+)|\b[A-Z][a-z]?\d+\b)/;
+const unicodeMathNotationPattern = /[₀-₉⁰-⁹≤≥≠±×÷√∑πΔΩ⇌→]/u;
+
+export function isAnswerAlreadyNormalized(answer: string): boolean {
+  const formattedMath = answer.match(formattedMathPattern);
+  const remainingText = answer.replace(formattedMathPattern, ' ');
+  if (formattedMath?.length) return !rawMathNotationPattern.test(remainingText);
+  return unicodeMathNotationPattern.test(remainingText) && !rawMathNotationPattern.test(remainingText);
+}
+
+export function getAnswersToNormalize(
+  answers: readonly string[],
+  alreadyNormalizedIndexes: ReadonlySet<number>,
+): Array<{ index: number; answer: string }> {
+  return answers.flatMap((answer, index) => (
+    answer.trim() && !alreadyNormalizedIndexes.has(index) && !isAnswerAlreadyNormalized(answer)
+      ? [{ index, answer }]
+      : []
+  ));
+}
 
 export function distributeAssignmentPoints(questionCount: number): number[] {
   if (!Number.isInteger(questionCount) || questionCount <= 0) return [];

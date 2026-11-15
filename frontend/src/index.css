@@ -56,12 +56,8 @@
   }
 
   .toast-progress-fill {
+    width: 100%;
     animation: toast-progress-fill 5s linear forwards;
-  }
-
-  .reduce-motion .toast-progress-fill {
-    animation: none;
-    transform: scaleX(1);
   }
 
   .reduce-motion .toast-item {
@@ -184,6 +180,10 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .reduce-motion .toast-progress-fill {
+    animation-duration: 5s !important;
   }
 
   .btn-primary {

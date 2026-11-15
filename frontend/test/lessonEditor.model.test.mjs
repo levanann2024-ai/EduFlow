@@ -2,15 +2,19 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { EditorState } from '@tiptap/pm/state';
 import { getSchema } from '@tiptap/core';
-import { MarkdownManager } from '@tiptap/markdown';
+import { Markdown, MarkdownManager } from '@tiptap/markdown';
+import { StarterKit } from '@tiptap/starter-kit';
 import { createServer } from 'vite';
 
 let vite;
 let schema;
+let answerSchema;
 let markdownManager;
+let answerMarkdownManager;
 let normalizeLessonEditorMath;
 let normalizeLessonEditorMathContent;
 let clampLessonImageWidth;
+let getAnswersToNormalize;
 
 const fontMark = (fontSize) => [{
   type: 'textStyle',
@@ -114,16 +118,22 @@ before(async () => {
     server: { middlewareMode: true },
     appType: 'custom',
   });
-  const [extensions, editorTypes, imageUtils] = await Promise.all([
+  const [extensions, mathExtensions, editorTypes, imageUtils, assignmentQuestions] = await Promise.all([
     vite.ssrLoadModule('/src/components/LessonEditorExtensions.tsx'),
+    vite.ssrLoadModule('/src/components/LessonMathExtensions.ts'),
     vite.ssrLoadModule('/src/types/lessonEditor.ts'),
     vite.ssrLoadModule('/src/utils/lessonImage.ts'),
+    vite.ssrLoadModule('/src/pages/student/assignmentQuestions.ts'),
   ]);
   schema = getSchema(extensions.lessonEditorExtensions);
   markdownManager = new MarkdownManager({ extensions: extensions.lessonEditorExtensions });
+  const answerExtensions = [StarterKit, mathExtensions.InlineMath, mathExtensions.BlockMath, Markdown];
+  answerSchema = getSchema(answerExtensions);
+  answerMarkdownManager = new MarkdownManager({ extensions: answerExtensions });
   normalizeLessonEditorMath = editorTypes.normalizeLessonEditorMath;
   normalizeLessonEditorMathContent = editorTypes.normalizeLessonEditorMathContent;
   clampLessonImageWidth = imageUtils.clampLessonImageWidth;
+  getAnswersToNormalize = assignmentQuestions.getAnswersToNormalize;
 });
 
 after(async () => {
@@ -218,6 +228,34 @@ test('normalizing styled inline HTML after Markdown parsing creates editable for
   ]);
   assert.ok(JSON.stringify(normalized).includes('Google Sans Text'));
   assert.equal(JSON.stringify(normalized).includes('$(\\omega t + \\varphi)$'), false);
+});
+
+test('answer editor parses inline LaTeX into clickable math nodes before displaying the answer', () => {
+  const source = String.raw`Giả sử ban đầu có $1\text{ mol } \text{N}_2$ và $3\text{ mol } \text{H}_2$.
+$\text{N}_2 + 3\text{H}_2 \rightarrow 2\text{NH}_3$`;
+  const parsed = answerMarkdownManager.parse(source);
+  const normalized = normalizeLessonEditorMath(parsed);
+  const document = answerSchema.nodeFromJSON(normalized);
+
+  assert.deepEqual(formulas(document).map(({ latex }) => latex), [
+    '1\\text{ mol } \\text{N}_2',
+    '3\\text{ mol } \\text{H}_2',
+    '\\text{N}_2 + 3\\text{H}_2 \\rightarrow 2\\text{NH}_3',
+  ]);
+});
+
+test('normalizing assignment answers skips empty, already-normalized, and unchanged formatted answers', () => {
+  const answers = [
+    'Câu trả lời chưa chuẩn hóa: N2 + 3H2 -> 2NH3',
+    String.raw`$N_2 + 3H_2 \rightarrow 2NH_3$`,
+    'Phương trình đã định dạng: N₂ + 3H₂ → 2NH₃',
+    '',
+  ];
+
+  assert.deepEqual(getAnswersToNormalize(answers, new Set([0])), []);
+  assert.deepEqual(getAnswersToNormalize(answers, new Set()), [
+    { index: 0, answer: answers[0] },
+  ]);
 });
 
 test('pasting LaTeX in parsed paragraphs and lists creates formula nodes without changing surrounding text', () => {

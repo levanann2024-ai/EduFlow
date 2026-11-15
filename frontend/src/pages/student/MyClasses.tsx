@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { AssignmentSubmissionFiles } from '@/components/AssignmentSubmissionFiles';
 import { MathText } from '@/components/MathText';
+import { MathAnswerEditor } from '@/components/MathAnswerEditor';
+import { showToast } from '@/components/toast';
 import { RichLessonContent } from '@/components/LessonEditorContent';
 import { recordStudentLearningActivity } from '@/api/studentLearningActivity';
 import { authenticatedFetch } from '@/auth/authApi';
@@ -36,6 +38,7 @@ import { getStudentSubjectSlug } from './studentSubjectRoutes';
 import { isChapterLevelResourceLesson } from '@/utils/classLearningResourceDisplay';
 import {
   distributeAssignmentPoints,
+  getAnswersToNormalize,
   parseAssignmentAnswers,
   parseAssignmentContent,
   serializeAssignmentAnswers,
@@ -75,11 +78,6 @@ interface MyClassesProps {
   onSubjectSelected: (subject: string) => void;
   onExitGroup: () => void;
   onAskAI: (prompt: string, subject?: string) => void;
-}
-
-function resizeAnswerTextarea(textarea: HTMLTextAreaElement) {
-  textarea.style.height = 'auto';
-  textarea.style.height = `${Math.max(textarea.scrollHeight, 128)}px`;
 }
 
 function PendingSubmissionImagePreview({ file }: { file: File }) {
@@ -670,9 +668,11 @@ export function MyClasses(props: MyClassesProps) {
   const assignmentAnswerValues = selectedAssignmentContent
     ? structuredAnswers ?? Array.from({ length: selectedAssignmentContent.questions.length }, () => '')
     : [];
+  const formattedAnswerIndexes = new Set(Object.keys(formattedOriginalAnswers).map(Number));
+  const plainAnswerIndexes = formattedAnswerIndexes.has(-1) ? new Set<number>([0]) : new Set<number>();
   const hasAnswersToFormat = selectedAssignmentContent
-    ? assignmentAnswerValues.some((answer) => answer.trim())
-    : Boolean(responseText.trim());
+    ? getAnswersToNormalize(assignmentAnswerValues, formattedAnswerIndexes).length > 0
+    : getAnswersToNormalize([responseText], plainAnswerIndexes).length > 0;
   const assignmentQuestionMaximums = distributeAssignmentPoints(selectedAssignmentContent?.questions.length ?? 0);
   const speech = useSpeechInput((transcript) => {
     const targetIndex = speechTargetIndex.current;
@@ -937,6 +937,7 @@ export function MyClasses(props: MyClassesProps) {
     setSubmitError('');
     try {
       await submitAssignment(selectedAssignment.id, submissionText, submissionFiles);
+      showToast(t(language, selectedAssignment.submittedAt ? 'Đã cập nhật bài nộp.' : 'Đã nộp bài.'));
       if (!isDemo) {
         void recordStudentLearningActivity('assignment_submit').catch((activityError: unknown) => {
           console.error('Could not record student assignment activity.', activityError);
@@ -960,51 +961,65 @@ export function MyClasses(props: MyClassesProps) {
     const assignmentId = selectedAssignment.id;
     const questionCount = selectedAssignmentContent?.questions.length ?? 0;
     const answersToFormat = selectedAssignmentContent
-      ? [...assignmentAnswerValues]
-      : [responseText];
-    if (!answersToFormat.some((answer) => answer.trim())) return;
+      ? getAnswersToNormalize(assignmentAnswerValues, formattedAnswerIndexes)
+      : getAnswersToNormalize([responseText], plainAnswerIndexes);
+    if (!answersToFormat.length) return;
     setFormattingAnswerIndex(-2);
     setFormatAnswerError('');
     setFormatAnswerErrorIndex(null);
+    const failures: string[] = [];
+    let formattedCount = 0;
     try {
-      for (let index = 0; index < answersToFormat.length; index += 1) {
-        const answer = answersToFormat[index];
-        if (!answer.trim()) continue;
-        const response = await authenticatedFetch('/api/ai/format-answer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: answer }),
-        });
-        const result: {
-          success: boolean;
-          data?: { formattedText?: string };
-          message?: string;
-        } = await response.json();
-        const formattedText = result.data?.formattedText;
-        if (!response.ok || !result.success || typeof formattedText !== 'string' || !formattedText.trim()) {
-          throw new Error(result.message || `Không thể chuẩn hóa câu trả lời ${index + 1}.`);
-        }
-        if (selectedAssignmentId !== assignmentId) return;
+      for (const { index, answer } of answersToFormat) {
         const answerIndex = selectedAssignmentContent ? index : -1;
-        setFormattedOriginalAnswers((current) => (
-          String(answerIndex) in current
-            ? current
-            : { ...current, [answerIndex]: answer }
-        ));
-        responseDraft.current.dirty = true;
-        if (selectedAssignmentContent) {
-          setResponseText((currentText) => {
-            const currentAnswers = parseAssignmentAnswers(currentText, questionCount)
-              ?? Array.from({ length: questionCount }, () => '');
-            currentAnswers[index] = formattedText.trim();
-            return serializeAssignmentAnswers(currentAnswers);
+        try {
+          const response = await authenticatedFetch('/api/ai/format-answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: answer }),
           });
-        } else {
-          setResponseText(formattedText.trim());
+          const result: {
+            success: boolean;
+            data?: { formattedText?: string };
+            message?: string;
+          } = await response.json();
+          const formattedText = result.data?.formattedText;
+          if (!response.ok || !result.success || typeof formattedText !== 'string' || !formattedText.trim()) {
+            throw new Error(result.message || `Không thể chuẩn hóa câu trả lời ${index + 1}.`);
+          }
+          if (responseDraft.current.assignmentId !== assignmentId) return;
+          setFormattedOriginalAnswers((current) => (
+            String(answerIndex) in current
+              ? current
+              : { ...current, [answerIndex]: answer }
+          ));
+          responseDraft.current.dirty = true;
+          if (selectedAssignmentContent) {
+            setResponseText((currentText) => {
+              const currentAnswers = parseAssignmentAnswers(currentText, questionCount)
+                ?? Array.from({ length: questionCount }, () => '');
+              currentAnswers[index] = formattedText.trim();
+              return serializeAssignmentAnswers(currentAnswers);
+            });
+          } else {
+            setResponseText(formattedText.trim());
+          }
+          formattedCount += 1;
+        } catch (requestError) {
+          const label = selectedAssignmentContent ? `Câu ${index + 1}` : 'Bài làm';
+          const message = requestError instanceof Error
+            ? requestError.message
+            : 'Không thể chuẩn hóa ký hiệu trong câu trả lời.';
+          failures.push(`${label}: ${message}`);
         }
       }
       setEditingAnswerIndex(null);
       setEditingPlainAnswer(false);
+      if (failures.length) {
+        const successMessage = formattedCount ? `Đã chuẩn hóa ${formattedCount} câu. ` : '';
+        setFormatAnswerError(`${successMessage}${failures.join(' ')}`);
+        setFormatAnswerErrorIndex(-2);
+      }
     } catch (requestError) {
       setFormatAnswerError(
         requestError instanceof Error ? requestError.message : 'Không thể chuẩn hóa ký hiệu trong câu trả lời.',
@@ -1513,15 +1528,14 @@ export function MyClasses(props: MyClassesProps) {
                                 </div>
                               )
                             ) : (
-                              <textarea
-                                autoFocus={editingAnswerIndex === index}
-                                ref={(textarea) => {
-                                  if (textarea) resizeAnswerTextarea(textarea);
-                                }}
+                              <MathAnswerEditor
                                 value={assignmentAnswerValues[index] ?? ''}
-                                onChange={(event) => {
+                                editable={canEditAssignment(selectedAssignment, currentTime)
+                                  && formattingAnswerIndex !== index
+                                  && formattingAnswerIndex !== -2}
+                                onChange={(value) => {
                                   const nextAnswers = [...assignmentAnswerValues];
-                                  nextAnswers[index] = event.target.value;
+                                  nextAnswers[index] = value.slice(0, 20000);
                                   responseDraft.current.dirty = true;
                                   setFormattedOriginalAnswers((current) => {
                                     if (!(String(index) in current)) return current;
@@ -1529,16 +1543,9 @@ export function MyClasses(props: MyClassesProps) {
                                     delete next[String(index)];
                                     return next;
                                   });
-                                  setEditingAnswerIndex(index);
-                                  resizeAnswerTextarea(event.currentTarget);
                                   setResponseText(serializeAssignmentAnswers(nextAnswers));
                                 }}
                                 onBlur={() => setEditingAnswerIndex(null)}
-                                readOnly={!canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex === index || formattingAnswerIndex === -2}
-                                rows={1}
-                                maxLength={20000}
-                                className="input-field mt-2 min-h-32 w-full resize-none overflow-hidden read-only:bg-slate-50 read-only:text-slate-600"
-                                placeholder={`Nhập câu trả lời cho câu ${question.number}...`}
                               />
                             )}
                           </label>
@@ -1639,13 +1646,12 @@ export function MyClasses(props: MyClassesProps) {
                             </div>
                           )
                         ) : (
-                          <textarea
-                            autoFocus={editingPlainAnswer}
-                            ref={(textarea) => {
-                              if (textarea) resizeAnswerTextarea(textarea);
-                            }}
+                          <MathAnswerEditor
                             value={responseText}
-                            onChange={(event) => {
+                            editable={canEditAssignment(selectedAssignment, currentTime)
+                              && formattingAnswerIndex !== -1
+                              && formattingAnswerIndex !== -2}
+                            onChange={(value) => {
                               responseDraft.current.dirty = true;
                               setFormattedOriginalAnswers((current) => {
                                 if (!('-1' in current)) return current;
@@ -1653,16 +1659,9 @@ export function MyClasses(props: MyClassesProps) {
                                 delete next['-1'];
                                 return next;
                               });
-                              setEditingPlainAnswer(true);
-                              resizeAnswerTextarea(event.currentTarget);
-                              setResponseText(event.target.value);
+                              setResponseText(value.slice(0, 20000));
                             }}
                             onBlur={() => setEditingPlainAnswer(false)}
-                            readOnly={!canEditAssignment(selectedAssignment, currentTime) || formattingAnswerIndex === -1 || formattingAnswerIndex === -2}
-                            rows={1}
-                            maxLength={20000}
-                            className="input-field mt-2 min-h-32 w-full resize-none overflow-hidden read-only:bg-slate-50 read-only:text-slate-600"
-                            placeholder="Nhập câu trả lời..."
                           />
                         )}
                       </label>
