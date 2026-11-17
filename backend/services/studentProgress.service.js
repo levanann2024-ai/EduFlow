@@ -180,7 +180,7 @@ function createStudentProgressService({
   listStudentAssignments = schoolService.listStudentAssignments,
   listStudentExamResults = schoolService.listStudentExamResults,
   listStudentExamRooms = schoolService.listStudentExamRooms,
-  listStudentLearningResources = schoolService.listStudentLearningResources,
+  listStudentLearningResourceSummaries = schoolService.listStudentLearningResourceSummaries,
   listStudentSubjectAverages = schoolService.listStudentSubjectAverages,
   assignmentQuestionMaximums = schoolService.assignmentQuestionMaximums,
   generateJsonAnalysis = generateJson,
@@ -206,7 +206,7 @@ function createStudentProgressService({
       listStudentAssignments(auth),
       listStudentExamResults(auth),
       listStudentExamRooms(auth),
-      listStudentLearningResources(auth),
+      listStudentLearningResourceSummaries(auth),
     ]);
 
     const classSummaries = classes.map(mapClass);

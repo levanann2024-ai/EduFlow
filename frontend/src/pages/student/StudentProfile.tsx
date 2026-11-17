@@ -7,7 +7,7 @@ import { AccountProfileSection } from '@/components/AccountProfileSection';
 import { readUserSettings, saveUserSettings, type AppLanguage, type ExplanationStyle } from '@/settings/userSettings';
 import {
   getTeacherExamRoomGrading,
-  listClassAssignments,
+  listClassAssignmentSummaries,
   listClassSubjects,
   listClasses,
   listStudentExamResults,
@@ -156,7 +156,7 @@ export function StudentProfile({
 
       const currentAcademicYear = [...new Set(classes.map((item) => item.academic_year))]
         .sort((first, second) => second.localeCompare(first, 'vi', { numeric: true }))[0];
-      let assignments: Awaited<ReturnType<typeof listClassAssignments>> = [];
+      let assignments: Awaited<ReturnType<typeof listClassAssignmentSummaries>> = [];
       const teacherClassSubjects = await Promise.allSettled(classes.map(async (classItem) => ({
         classId: classItem.id,
         subjects: await listClassSubjects(classItem.id),
@@ -174,9 +174,9 @@ export function StudentProfile({
         const assignmentResults = await Promise.allSettled(classes
           .filter((classItem) => classItem.academic_year === currentAcademicYear)
           .flatMap((classItem) => (subjectsByClass.get(classItem.id) ?? []).map((subject) => (
-            listClassAssignments(classItem.id, currentAcademicYear, 'Kỳ 1', subject)
+            listClassAssignmentSummaries(classItem.id, currentAcademicYear, 'Kỳ 1', subject)
           ).then(async (firstSemester) => {
-            const secondSemester = await listClassAssignments(classItem.id, currentAcademicYear, 'Kỳ 2', subject);
+            const secondSemester = await listClassAssignmentSummaries(classItem.id, currentAcademicYear, 'Kỳ 2', subject);
             return [firstSemester, secondSemester];
           }))));
         assignments = assignmentResults.flatMap((result) => (
@@ -195,14 +195,11 @@ export function StudentProfile({
         icon: 'assignment' as const,
       }));
       const gradingItems: ProfileActivityItem[] = assignments.flatMap((assignment) => {
-        const latestGradedAt = assignment.students
-          .map((student) => student.gradedAt)
-          .filter((date): date is string => Boolean(date))
-          .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
+        const latestGradedAt = assignment.latestGradedAt;
         return latestGradedAt ? [{
           id: `graded-assignment:${assignment.id}:${latestGradedAt}`,
           title: `Đã chấm: ${assignment.title}`,
-          detail: `${assignment.subject} · ${assignment.students.filter((student) => student.gradedAt).length} bài`,
+          detail: `${assignment.subject} · ${assignment.gradedCount} bài`,
           date: latestGradedAt,
           icon: 'grading' as const,
         }] : [];

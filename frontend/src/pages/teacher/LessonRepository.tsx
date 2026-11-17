@@ -28,18 +28,21 @@ import {
   deleteClassLearningResourceChapter,
   deleteClassLearningResourceLesson,
   downloadClassLearningResourceFile,
+  getClassAssignmentDescription,
+  getClassLearningResource,
   getTeacherLessonDraft,
-  listClassAssignments,
+  listClassAssignmentSummaries,
   listClassLearningResourceChapters,
-  listClassLearningResources,
+  listClassLearningResourceSummaries,
   listClassSubjects,
   listClasses,
   renameClassLearningResourceChapter,
   renameClassLearningResourceLesson,
   renameClassAssignmentChapter,
   renameClassAssignmentLesson,
-  type ClassAssignment,
+  type ClassAssignmentSummary,
   type ClassLearningResource,
+  type ClassLearningResourceSummary,
   type SchoolClass,
   createTeacherLessonDraft,
   updateClassLearningResource,
@@ -106,8 +109,10 @@ type ReviewAssignmentDraft = {
 type ReviewAssignmentGroup = {
   chapter: string;
   isFree?: boolean;
-  lessons: Array<{ lesson: string; assignments: ClassAssignment[] }>;
+  lessons: Array<{ lesson: string; assignments: ClassAssignmentSummary[] }>;
 };
+
+type ReviewAssignment = ClassAssignmentSummary & { description: string };
 
 export interface LessonRepositoryDraft {
   id: string;
@@ -180,8 +185,14 @@ export function LessonRepository({
   const [subjects, setSubjects] = useState<string[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [selectedSubject, setSelectedSubject] = useState('');
-  const [reviewResources, setReviewResources] = useState<ClassLearningResource[]>([]);
-  const [reviewAssignments, setReviewAssignments] = useState<ClassAssignment[]>([]);
+  const [reviewResources, setReviewResources] = useState<ClassLearningResourceSummary[]>([]);
+  const [reviewResourceDetail, setReviewResourceDetail] = useState<ClassLearningResource | null>(null);
+  const [reviewResourceLoading, setReviewResourceLoading] = useState(false);
+  const [reviewResourceError, setReviewResourceError] = useState('');
+  const [reviewAssignments, setReviewAssignments] = useState<ClassAssignmentSummary[]>([]);
+  const [reviewAssignmentDetail, setReviewAssignmentDetail] = useState<{ id: string; description: string } | null>(null);
+  const [reviewAssignmentLoading, setReviewAssignmentLoading] = useState(false);
+  const [reviewAssignmentError, setReviewAssignmentError] = useState('');
   const [assignmentChapters, setAssignmentChapters] = useState<string[]>([]);
   const [savedResourceChapters, setSavedResourceChapters] = useState<string[]>([]);
   const [creatingChapter, setCreatingChapter] = useState(false);
@@ -198,6 +209,7 @@ export function LessonRepository({
   const [assignmentLessonDraft, setAssignmentLessonDraft] = useState('');
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
   const [selectedReviewAssignmentId, setSelectedReviewAssignmentId] = useState<string | null>(null);
+  const [pendingReviewAssignmentEditId, setPendingReviewAssignmentEditId] = useState<string | null>(null);
   const [reviewPreviewTab, setReviewPreviewTab] = useState<'lesson' | 'assignment'>('lesson');
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({
@@ -481,7 +493,9 @@ export function LessonRepository({
     const classroom = classes.find((item) => item.id === classId);
     if (!classId || !classroom || !selectedSubject) {
       setReviewResources([]);
+      setReviewResourceDetail(null);
       setReviewAssignments([]);
+      setReviewAssignmentDetail(null);
       setAssignmentChapters([]);
       setSavedResourceChapters([]);
       setRecentEntries([]);
@@ -489,11 +503,13 @@ export function LessonRepository({
     }
     let active = true;
     setReviewResources([]);
+    setReviewResourceDetail(null);
     setReviewAssignments([]);
+    setReviewAssignmentDetail(null);
     setLoadingRecent(true);
     Promise.all([
-      listClassLearningResources(classId),
-      listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
+      listClassLearningResourceSummaries(classId),
+      listClassAssignmentSummaries(classId, classroom.academic_year, semester, selectedSubject),
       listClassLearningResourceChapters(classId, {
         academicYear: classroom.academic_year,
         semester,
@@ -526,7 +542,7 @@ export function LessonRepository({
             lesson: assignment.lesson,
             period: assignment.period,
             className: classroom.code,
-            note: assignment.description,
+            note: assignment.descriptionPreview,
             kind: 'assignment' as const,
             createdAt: assignment.createdAt ?? assignment.dueAt,
           })),
@@ -702,15 +718,26 @@ export function LessonRepository({
       setSavingChapter(false);
     }
   };
-  const selectedReviewResource = visibleReviewResources.find((resource) => resource.id === selectedReviewId)
+  const selectedReviewResourceSummary = visibleReviewResources.find((resource) => resource.id === selectedReviewId)
     ?? visibleReviewResources[0]
     ?? null;
-  const selectedReviewAssignment = visibleReviewAssignments.find((assignment) =>
+  const selectedReviewResource = useMemo(() => (
+    selectedReviewResourceSummary
+      && reviewResourceDetail?.id === selectedReviewResourceSummary.id
+      ? { ...reviewResourceDetail, ...selectedReviewResourceSummary }
+      : null
+  ), [reviewResourceDetail, selectedReviewResourceSummary]);
+  const selectedReviewAssignmentSummary = visibleReviewAssignments.find((assignment) =>
     assignment.id === selectedReviewAssignmentId) ?? visibleReviewAssignments[0] ?? null;
+  const selectedReviewAssignment = useMemo(() => (
+    selectedReviewAssignmentSummary && reviewAssignmentDetail?.id === selectedReviewAssignmentSummary.id
+      ? { ...selectedReviewAssignmentSummary, description: reviewAssignmentDetail.description }
+      : null
+  ), [reviewAssignmentDetail, selectedReviewAssignmentSummary]);
   const reviewChapterGroups = useMemo(() => {
-    const chapters = new Map<string, Map<string, ClassLearningResource[]>>();
+    const chapters = new Map<string, Map<string, ClassLearningResourceSummary[]>>();
     visibleReviewResources.forEach((resource) => {
-      const lessons = chapters.get(resource.chapter) ?? new Map<string, ClassLearningResource[]>();
+      const lessons = chapters.get(resource.chapter) ?? new Map<string, ClassLearningResourceSummary[]>();
       const lessonName = isChapterLevelResourceLesson(resource.lesson) ? '' : resource.lesson;
       const items = lessons.get(lessonName) ?? [];
       items.push(resource);
@@ -727,15 +754,15 @@ export function LessonRepository({
       .sort((first, second) => first.chapter.localeCompare(second.chapter, 'vi', { numeric: true }));
   }, [visibleReviewResources]);
   const reviewAssignmentGroups = useMemo(() => {
-    const chapters = new Map<string, Map<string, { lesson: string; assignments: ClassAssignment[] }>>();
-    const freeAssignments: ClassAssignment[] = [];
+    const chapters = new Map<string, Map<string, { lesson: string; assignments: ClassAssignmentSummary[] }>>();
+    const freeAssignments: ClassAssignmentSummary[] = [];
     visibleReviewAssignments.forEach((assignment) => {
       if (!assignment.chapter.trim() || !assignment.lesson.trim()) {
         freeAssignments.push(assignment);
         return;
       }
       const lessons = chapters.get(assignment.chapter)
-        ?? new Map<string, { lesson: string; assignments: ClassAssignment[] }>();
+        ?? new Map<string, { lesson: string; assignments: ClassAssignmentSummary[] }>();
       const lessonKey = normalizeAssignmentGroupLabel(assignment.lesson);
       const group = lessons.get(lessonKey) ?? {
         lesson: assignment.lesson.trim().replace(/\s+/g, ' '),
@@ -762,6 +789,41 @@ export function LessonRepository({
     return groups;
   }, [visibleReviewAssignments]);
 
+  const selectedReviewResourceId = selectedReviewResourceSummary?.id ?? null;
+  const selectedResourceClassId = selectedClasses[0] ?? '';
+
+  useEffect(() => {
+    if (activeTab !== 'review' || reviewPreviewTab !== 'lesson'
+      || !selectedResourceClassId || !selectedReviewResourceId) {
+      setReviewResourceLoading(false);
+      return;
+    }
+    if (reviewResourceDetail?.id === selectedReviewResourceId) return;
+    let active = true;
+    setReviewResourceDetail(null);
+    setReviewResourceError('');
+    setReviewResourceLoading(true);
+    getClassLearningResource(selectedResourceClassId, selectedReviewResourceId)
+      .then((resource) => {
+        if (active) setReviewResourceDetail(resource);
+      })
+      .catch((requestError) => {
+        if (active) {
+          setReviewResourceError(requestError instanceof Error ? requestError.message : 'Không thể tải nội dung bài giảng.');
+        }
+      })
+      .finally(() => {
+        if (active) setReviewResourceLoading(false);
+      });
+    return () => { active = false; };
+  }, [
+    activeTab,
+    reviewPreviewTab,
+    reviewResourceDetail?.id,
+    selectedResourceClassId,
+    selectedReviewResourceId,
+  ]);
+
   useEffect(() => {
     if (!selectedReviewAssignment) return;
     const chapter = selectedReviewAssignment.chapter.trim() && selectedReviewAssignment.lesson.trim()
@@ -775,6 +837,55 @@ export function LessonRepository({
       ));
     }
   }, [selectedReviewAssignment]);
+
+  useEffect(() => {
+    const assignmentId = selectedReviewAssignmentSummary?.id;
+    if (activeTab !== 'review' || reviewPreviewTab !== 'assignment' || !selectedResourceClassId || !assignmentId) {
+      setReviewAssignmentLoading(false);
+      return;
+    }
+    if (reviewAssignmentDetail?.id === assignmentId) return;
+    let active = true;
+    setReviewAssignmentDetail(null);
+    setReviewAssignmentError('');
+    setReviewAssignmentLoading(true);
+    getClassAssignmentDescription(selectedResourceClassId, assignmentId)
+      .then((description) => {
+        if (active) setReviewAssignmentDetail({ id: assignmentId, description });
+      })
+      .catch((requestError) => {
+        if (active) {
+          setReviewAssignmentError(requestError instanceof Error ? requestError.message : 'Không thể tải nội dung bài tập.');
+        }
+      })
+      .finally(() => {
+        if (active) setReviewAssignmentLoading(false);
+      });
+    return () => { active = false; };
+  }, [
+    activeTab,
+    reviewAssignmentDetail?.id,
+    reviewPreviewTab,
+    selectedResourceClassId,
+    selectedReviewAssignmentSummary?.id,
+  ]);
+
+  useEffect(() => {
+    if (!pendingReviewAssignmentEditId
+      || pendingReviewAssignmentEditId !== selectedReviewAssignmentSummary?.id
+      || reviewAssignmentDetail?.id !== pendingReviewAssignmentEditId
+      || !selectedReviewAssignmentSummary) return;
+    setReviewAssignmentDraft({
+      title: selectedReviewAssignmentSummary.title,
+      chapter: selectedReviewAssignmentSummary.chapter,
+      lesson: selectedReviewAssignmentSummary.lesson,
+      period: selectedReviewAssignmentSummary.period ?? '',
+      description: reviewAssignmentDetail.description,
+      dueAt: dateTimeLocalValue(selectedReviewAssignmentSummary.dueAt),
+    });
+    setEditingReviewAssignment(true);
+    setPendingReviewAssignmentEditId(null);
+  }, [pendingReviewAssignmentEditId, reviewAssignmentDetail, selectedReviewAssignmentSummary]);
 
   useEffect(() => {
     if (!selectedReviewResource) {
@@ -1018,8 +1129,8 @@ export function LessonRepository({
       setFiles([]);
       showToast(contentType === 'lesson' ? 'Bài giảng đã được đăng.' : 'Bài tập đã được giao.');
       const [resources, assignments] = await Promise.all([
-        listClassLearningResources(classId),
-        listClassAssignments(classId, classroom.academic_year, semester, selectedSubject),
+        listClassLearningResourceSummaries(classId),
+        listClassAssignmentSummaries(classId, classroom.academic_year, semester, selectedSubject),
       ]);
       setReviewResources(resources.filter((resource) => resource.subject === selectedSubject));
       setReviewAssignments(assignments);
@@ -1036,7 +1147,7 @@ export function LessonRepository({
         })),
         ...assignments.map((assignment) => ({
           id: assignment.id, title: assignment.title, chapter: assignment.chapter, lesson: assignment.lesson,
-          period: assignment.period, className: classroom.code, note: assignment.description,
+          period: assignment.period, className: classroom.code, note: assignment.descriptionPreview,
           kind: 'assignment' as const, createdAt: assignment.createdAt ?? assignment.dueAt,
         })),
       ].sort((first, second) => second.createdAt.localeCompare(first.createdAt)).slice(0, 4));
@@ -1089,9 +1200,19 @@ export function LessonRepository({
         ...(selectedReviewResource.files.length ? { fileName: reviewDraft.fileName.trim() } : {}),
         ...(replacementFile ? { file: replacementFile } : {}),
       });
-      const updatedResources = (await listClassLearningResources(selectedClass.id))
+      const updatedResources = (await listClassLearningResourceSummaries(selectedClass.id))
         .filter((resource) => resource.subject === selectedReviewResource.subject);
       setReviewResources(updatedResources);
+      const updatedSummary = updatedResources.find((resource) => resource.id === selectedReviewResource.id);
+      if (updatedSummary) {
+        setReviewResourceDetail({
+          ...selectedReviewResource,
+          ...updatedSummary,
+          content: editorDocument ? '' : reviewDraft.content,
+          editorDocument,
+          note: reviewDraft.note.trim(),
+        });
+      }
       setReplacementFile(null);
       setReviewEditorDocument(editorDocument);
       reviewEditorDocumentRef.current = editorDocument;
@@ -1144,7 +1265,7 @@ export function LessonRepository({
         subject: selectedSubject,
         newChapter: nextChapter,
       });
-      const resources = await listClassLearningResources(selectedClass.id);
+      const resources = await listClassLearningResourceSummaries(selectedClass.id);
       setReviewResources(resources.filter((resource) => resource.subject === selectedSubject));
       setRecentEntries((current) => current.map((entry) => resourceIds.has(entry.id)
         ? { ...entry, chapter: nextChapter }
@@ -1236,7 +1357,7 @@ export function LessonRepository({
         subject: selectedSubject,
         newLesson: nextLesson,
       });
-      const resources = await listClassLearningResources(selectedClass.id);
+      const resources = await listClassLearningResourceSummaries(selectedClass.id);
       setReviewResources(resources.filter((resource) => resource.subject === selectedSubject));
       setRecentEntries((current) => current.map((entry) => resourceIds.has(entry.id)
         ? { ...entry, lesson: nextLesson }
@@ -1328,7 +1449,7 @@ export function LessonRepository({
     }
   };
 
-  const startEditingAssignment = (assignment: ClassAssignment) => {
+  const startEditingAssignment = (assignment: ReviewAssignment) => {
     setSelectedReviewAssignmentId(assignment.id);
     setSelectedReviewId(null);
     setEditingReview(false);
@@ -1363,13 +1484,17 @@ export function LessonRepository({
         period: reviewAssignmentDraft.period.trim() || null,
         dueAt: new Date(reviewAssignmentDraft.dueAt).toISOString(),
       });
-      const assignments = await listClassAssignments(
+      const assignments = await listClassAssignmentSummaries(
         selectedClass.id,
         selectedClass.academic_year,
         semester,
         selectedSubject,
       );
       setReviewAssignments(assignments);
+      setReviewAssignmentDetail({
+        id: selectedReviewAssignment.id,
+        description: reviewAssignmentDraft.description,
+      });
       setRecentEntries((current) => current.map((entry) => entry.id === selectedReviewAssignment.id
         ? {
           ...entry,
@@ -1389,7 +1514,7 @@ export function LessonRepository({
     }
   };
 
-  const removeReviewedAssignment = async (assignment: ClassAssignment) => {
+  const removeReviewedAssignment = async (assignment: ClassAssignmentSummary) => {
     if (!selectedClass) return;
     const hasSubmissions = assignment.submittedCount > 0;
     const confirmation = window.confirm(
@@ -2302,7 +2427,7 @@ export function LessonRepository({
                                                 setEditingReview(true);
                                               }}
                                               className={`flex min-h-10 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
-                                                selectedReviewResource?.id === resource.id
+                                                selectedReviewResourceSummary?.id === resource.id
                                                   ? 'border-blue-600 bg-blue-50 text-blue-900'
                                                   : 'border-transparent text-slate-600 hover:bg-white'
                                               }`}
@@ -2499,17 +2624,23 @@ export function LessonRepository({
                                             type="button"
                                             onClick={() => {
                                               setSelectedReviewAssignmentId(assignment.id);
+                                              setPendingReviewAssignmentEditId(null);
                                               setSelectedReviewId(null);
                                               setEditingReview(false);
                                               setEditingReviewAssignment(false);
+                                              setReviewPreviewTab('assignment');
                                             }}
                                             onDoubleClick={(event) => {
                                               event.preventDefault();
                                               event.stopPropagation();
-                                              startEditingAssignment(assignment);
+                                              setSelectedReviewAssignmentId(assignment.id);
+                                              setSelectedReviewId(null);
+                                              setEditingReview(false);
+                                              setReviewPreviewTab('assignment');
+                                              setPendingReviewAssignmentEditId(assignment.id);
                                             }}
                                             className={`flex min-h-9 min-w-0 w-full items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
-                                              selectedReviewAssignment?.id === assignment.id
+                                              selectedReviewAssignmentSummary?.id === assignment.id
                                                 ? 'border-rose-500 bg-rose-50 text-rose-900'
                                                 : 'border-transparent text-slate-600 hover:bg-white'
                                             }`}
@@ -2533,7 +2664,12 @@ export function LessonRepository({
               ) : <p className="py-3 text-sm text-slate-500">{selectedClass ? 'Không có bài tập còn hạn trong học kỳ này.' : 'Chọn lớp để xem bài tập.'}</p>)}
             </aside>
             <article className="min-h-0 overflow-y-auto p-5 sm:p-8">
-              {reviewPreviewTab === 'assignment' && selectedReviewAssignment ? (
+              {reviewPreviewTab === 'assignment' && selectedReviewAssignmentSummary
+                && (reviewAssignmentLoading || reviewAssignmentError) ? (
+                <div role={reviewAssignmentError ? 'alert' : 'status'} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  {reviewAssignmentError || 'Đang tải nội dung bài tập...'}
+                </div>
+              ) : reviewPreviewTab === 'assignment' && selectedReviewAssignment ? (
                 <div className="mx-auto max-w-4xl">
                   {editingReviewAssignment ? (
                     <div className="space-y-4">
@@ -2639,6 +2775,11 @@ export function LessonRepository({
                       />
                     </>
                   )}
+                </div>
+              ) : reviewPreviewTab === 'lesson' && selectedReviewResourceSummary
+                && (reviewResourceLoading || reviewResourceError) ? (
+                <div role={reviewResourceError ? 'alert' : 'status'} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  {reviewResourceError || 'Đang tải nội dung bài giảng...'}
                 </div>
               ) : reviewPreviewTab === 'lesson' && selectedReviewResource ? (
                 <>

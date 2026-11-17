@@ -46,16 +46,20 @@ import {
 } from './assignmentQuestions';
 import {
   downloadClassLearningResourceFile,
+  getStudentAssignment,
+  getStudentLearningResource,
   listClasses,
-  listStudentAssignments,
+  listStudentAssignmentSummaries,
   listStudentExamResults,
-  listStudentLearningResources,
+  listStudentLearningResourceSummaries,
   listStudentSubjectAverages,
   markStudentExamResultRead,
   submitAssignment,
   type StudentAssignment,
+  type StudentAssignmentSummary,
   type StudentExamResult,
   type StudentLearningResource,
+  type StudentLearningResourceSummary,
   type SchoolClass,
   type StudentSubjectAverage,
 } from '@/api/schoolApi';
@@ -136,8 +140,8 @@ type LearningGroup = {
   academicYear: string;
   teacherName: string | null;
   teacherGender?: 'female' | 'male' | 'other' | 'unspecified' | null;
-  resources: StudentLearningResource[];
-  assignments: StudentAssignment[];
+  resources: StudentLearningResourceSummary[];
+  assignments: StudentAssignmentSummary[];
 };
 
 type LearningGroupSource = Pick<
@@ -148,13 +152,13 @@ type LearningGroupSource = Pick<
 
 type ChapterGroup = {
   chapter: string;
-  lessons: Array<{ lesson: string; resources: StudentLearningResource[] }>;
+  lessons: Array<{ lesson: string; resources: StudentLearningResourceSummary[] }>;
 };
 
 type AssignmentChapterGroup = {
   chapter: string;
   isFree?: boolean;
-  lessons: Array<{ lesson: string; assignments: StudentAssignment[] }>;
+  lessons: Array<{ lesson: string; assignments: StudentAssignmentSummary[] }>;
 };
 
 function resourceFileIcon(title: string) {
@@ -174,22 +178,22 @@ function formatDueDate(value: string) {
   return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 }
 
-function isAssignmentPastDue(assignment: StudentAssignment, now = Date.now()) {
+function isAssignmentPastDue(assignment: Pick<StudentAssignmentSummary, 'dueAt'>, now = Date.now()) {
   return now > new Date(assignment.dueAt).getTime();
 }
 
-function assignmentStatus(assignment: StudentAssignment, now = Date.now()) {
+function assignmentStatus(assignment: StudentAssignmentSummary, now = Date.now()) {
   if (assignment.score !== null) return `Đã chấm - ${assignment.score}/10`;
   if (assignment.submittedAt) return 'Đã làm';
   return isAssignmentPastDue(assignment, now) ? 'Quá hạn nộp bài' : 'Chưa làm';
 }
 
-function assignmentStatusPriority(assignment: StudentAssignment) {
+function assignmentStatusPriority(assignment: StudentAssignmentSummary) {
   if (assignment.score !== null) return 2;
   return assignment.submittedAt ? 1 : 0;
 }
 
-function sortAssignmentsByStatus(assignments: StudentAssignment[]) {
+function sortAssignmentsByStatus(assignments: StudentAssignmentSummary[]) {
   return assignments
     .map((assignment, index) => ({ assignment, index }))
     .sort((first, second) =>
@@ -198,7 +202,7 @@ function sortAssignmentsByStatus(assignments: StudentAssignment[]) {
     .map(({ assignment }) => assignment);
 }
 
-function assignmentGradeRevision(assignment: StudentAssignment) {
+function assignmentGradeRevision(assignment: Pick<StudentAssignmentSummary, 'gradedAt' | 'score'>) {
   return assignment.gradedAt ?? `score:${assignment.score}`;
 }
 
@@ -274,8 +278,15 @@ export function MyClasses(props: MyClassesProps) {
     onExitGroup,
     onAskAI,
   } = props;
-  const [resources, setResources] = useState<StudentLearningResource[]>([]);
-  const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
+  const [resources, setResources] = useState<StudentLearningResourceSummary[]>([]);
+  const [resourceDetail, setResourceDetail] = useState<StudentLearningResource | null>(null);
+  const [resourceDetailLoading, setResourceDetailLoading] = useState(false);
+  const [resourceDetailError, setResourceDetailError] = useState('');
+  const [assignments, setAssignments] = useState<StudentAssignmentSummary[]>([]);
+  const [assignmentDetail, setAssignmentDetail] = useState<StudentAssignment | null>(null);
+  const [assignmentDetailLoading, setAssignmentDetailLoading] = useState(false);
+  const [assignmentDetailError, setAssignmentDetailError] = useState('');
+  const [assignmentDetailReloadKey, setAssignmentDetailReloadKey] = useState(0);
   const [examResults, setExamResults] = useState<StudentExamResult[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [subjectAverages, setSubjectAverages] = useState<StudentSubjectAverage[]>([]);
@@ -313,6 +324,11 @@ export function MyClasses(props: MyClassesProps) {
   const [resourceFileLoading, setResourceFileLoading] = useState(false);
   const [resourceFileError, setResourceFileError] = useState('');
   const refreshInFlight = useRef(false);
+  const refreshGeneration = useRef(0);
+  const mounted = useRef(false);
+  const assignmentDetailRefreshController = useRef<AbortController | null>(null);
+  const refreshExamResultsRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
   const responseDraft = useRef({ assignmentId: null as string | null, dirty: false });
   const speechTargetIndex = useRef<number | null>(null);
   const saved = useSavedItems();
@@ -346,6 +362,7 @@ export function MyClasses(props: MyClassesProps) {
     const refreshExamResults = async () => {
       if (refreshing) return;
       refreshing = true;
+      setExamResultsLoading(true);
       try {
         const nextResults = await listStudentExamResults();
         if (active) {
@@ -363,55 +380,86 @@ export function MyClasses(props: MyClassesProps) {
         refreshing = false;
       }
     };
+    refreshExamResultsRef.current = refreshExamResults;
     void refreshExamResults();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refreshExamResults();
-    }, 15_000);
-    document.addEventListener('visibilitychange', refreshExamResults);
     return () => {
       active = false;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', refreshExamResults);
+      if (refreshExamResultsRef.current === refreshExamResults) {
+        refreshExamResultsRef.current = null;
+      }
     };
   }, [studentUserId]);
 
-  const refresh = async (silent = false) => {
+  const refresh = async () => {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
-    if (!silent) setLoading(true);
+    const generation = ++refreshGeneration.current;
+    setLoading(true);
     try {
       const [nextResources, nextAssignments, nextClasses] = await Promise.all([
-        listStudentLearningResources(),
-        listStudentAssignments(),
+        listStudentLearningResourceSummaries(),
+        listStudentAssignmentSummaries(),
         listClasses(),
       ]);
+      if (!mounted.current || generation !== refreshGeneration.current) return;
       setResources(nextResources);
+      setResourceDetail(null);
       setAssignments(nextAssignments);
       setClasses(nextClasses);
       setLoadError('');
+      const selectedAssignmentIdToRefresh = activeTab === 'assignment' ? assignmentDetail?.id : null;
+      if (selectedAssignmentIdToRefresh) {
+        assignmentDetailRefreshController.current?.abort();
+        const controller = new AbortController();
+        assignmentDetailRefreshController.current = controller;
+        setAssignmentDetailLoading(true);
+        getStudentAssignment(selectedAssignmentIdToRefresh, controller.signal)
+          .then((detail) => {
+            if (mounted.current && generation === refreshGeneration.current && !controller.signal.aborted) {
+              setAssignmentDetail(detail);
+              setAssignmentDetailError('');
+            }
+          })
+          .catch((requestError: unknown) => {
+            if (mounted.current && generation === refreshGeneration.current && !controller.signal.aborted) {
+              setAssignmentDetailError(requestError instanceof Error
+                ? requestError.message
+                : 'Không thể tải chi tiết bài tập.');
+            }
+          })
+          .finally(() => {
+            if (mounted.current && generation === refreshGeneration.current && !controller.signal.aborted) {
+              setAssignmentDetailLoading(false);
+            }
+          });
+      }
     } catch (requestError) {
+      if (!mounted.current || generation !== refreshGeneration.current) return;
       setLoadError(requestError instanceof Error ? requestError.message : 'Không thể tải tài liệu lớp học.');
     } finally {
-      if (!silent) setLoading(false);
+      if (mounted.current && generation === refreshGeneration.current) setLoading(false);
       refreshInFlight.current = false;
     }
   };
+  refreshRef.current = refresh;
 
   useEffect(() => {
-    void refresh();
-  }, []);
-
-  useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (!document.hidden) void refresh(true);
-    };
-    const timer = window.setInterval(refreshWhenVisible, 5_000);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
+    mounted.current = true;
     return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      mounted.current = false;
+      refreshGeneration.current += 1;
+      assignmentDetailRefreshController.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    void refreshRef.current();
+  }, []);
+
+  const refreshPageData = () => {
+    void refresh();
+    void refreshExamResultsRef.current?.();
+  };
 
   useEffect(() => {
     let active = true;
@@ -486,7 +534,6 @@ export function MyClasses(props: MyClassesProps) {
     setSelectedGroupKey(match.key);
     setSelectedAssignmentId(assignment.id);
     setSelectedResourceId(null);
-    setResponseText(assignment.responseText ?? '');
     setActiveTab('assignment');
   }, [groups, initialAssignmentId, selectedGroupKey]);
 
@@ -595,9 +642,9 @@ export function MyClasses(props: MyClassesProps) {
     [selectedGroup, semester],
   );
   const chapterGroups = useMemo(() => {
-    const chapters = new Map<string, Map<string, StudentLearningResource[]>>();
+    const chapters = new Map<string, Map<string, StudentLearningResourceSummary[]>>();
     visibleResources.forEach((resource) => {
-      const chapter = chapters.get(resource.chapter) ?? new Map<string, StudentLearningResource[]>();
+      const chapter = chapters.get(resource.chapter) ?? new Map<string, StudentLearningResourceSummary[]>();
       const lessonName = isChapterLevelResourceLesson(resource.lesson) ? '' : resource.lesson;
       const lessons = chapter.get(lessonName) ?? [];
       lessons.push(resource);
@@ -619,14 +666,14 @@ export function MyClasses(props: MyClassesProps) {
     [selectedGroup, semester],
   );
   const assignmentChapterGroups = useMemo(() => {
-    const chapters = new Map<string, Map<string, StudentAssignment[]>>();
-    const freeAssignments: StudentAssignment[] = [];
+    const chapters = new Map<string, Map<string, StudentAssignmentSummary[]>>();
+    const freeAssignments: StudentAssignmentSummary[] = [];
     visibleAssignments.forEach((assignment) => {
       if (!assignment.chapter.trim() || !assignment.lesson.trim()) {
         freeAssignments.push(assignment);
         return;
       }
-      const chapter = chapters.get(assignment.chapter) ?? new Map<string, StudentAssignment[]>();
+      const chapter = chapters.get(assignment.chapter) ?? new Map<string, StudentAssignmentSummary[]>();
       const lessons = chapter.get(assignment.lesson) ?? [];
       lessons.push(assignment);
       chapter.set(assignment.lesson, lessons);
@@ -650,9 +697,11 @@ export function MyClasses(props: MyClassesProps) {
     return groups;
   }, [visibleAssignments]);
   const selectedResource = visibleResources.find((resource) => resource.id === selectedResourceId) ?? visibleResources[0] ?? null;
-  const selectedAssignment = visibleAssignments.find((assignment) => assignment.id === selectedAssignmentId)
+  const selectedResourceContent = resourceDetail?.id === selectedResource?.id ? resourceDetail : null;
+  const selectedAssignmentSummary = visibleAssignments.find((assignment) => assignment.id === selectedAssignmentId)
     ?? visibleAssignments[0]
     ?? null;
+  const selectedAssignment = assignmentDetail?.id === selectedAssignmentSummary?.id ? assignmentDetail : null;
   const selectedAssignmentContent = selectedAssignment
     ? parseAssignmentContent(selectedAssignment.description)
     : null;
@@ -712,8 +761,35 @@ export function MyClasses(props: MyClassesProps) {
     speechTargetIndex.current = index;
     speech.toggle();
   };
-  const selectedResourceIdForFile = selectedResource?.id;
-  const selectedFileId = selectedResource?.files[0]?.id;
+  const selectedResourceIdForDetail = activeTab === 'lesson' ? selectedResource?.id : undefined;
+
+  useEffect(() => {
+    if (!selectedResourceIdForDetail) {
+      setResourceDetailLoading(false);
+      return;
+    }
+    if (resourceDetail?.id === selectedResourceIdForDetail) return;
+    let active = true;
+    setResourceDetail(null);
+    setResourceDetailError('');
+    setResourceDetailLoading(true);
+    getStudentLearningResource(selectedResourceIdForDetail)
+      .then((detail) => {
+        if (active) setResourceDetail(detail);
+      })
+      .catch((requestError) => {
+        if (active) {
+          setResourceDetailError(requestError instanceof Error ? requestError.message : 'Không thể tải nội dung bài giảng.');
+        }
+      })
+      .finally(() => {
+        if (active) setResourceDetailLoading(false);
+      });
+    return () => { active = false; };
+  }, [resourceDetail?.id, selectedResourceIdForDetail]);
+
+  const selectedResourceIdForFile = activeTab === 'lesson' ? selectedResource?.id : undefined;
+  const selectedFileId = selectedResourceIdForFile ? selectedResource?.files[0]?.id : undefined;
 
   useEffect(() => {
     if (!selectedResourceIdForFile || !selectedFileId) {
@@ -755,14 +831,44 @@ export function MyClasses(props: MyClassesProps) {
   }, [selectedResource]);
 
   useEffect(() => {
-    if (selectedAssignment) {
-      const chapterKey = `assignment:${selectedAssignment.chapter}`;
+    if (selectedAssignmentSummary) {
+      const chapterKey = `assignment:${selectedAssignmentSummary.chapter}`;
       setExpandedChapters((current) => new Set(current).add(chapterKey));
-      setExpandedLessons((current) => new Set(current).add(`${chapterKey}:${selectedAssignment.lesson}`));
+      setExpandedLessons((current) => new Set(current).add(`${chapterKey}:${selectedAssignmentSummary.lesson}`));
     }
-  }, [selectedAssignment]);
+  }, [selectedAssignmentSummary]);
   useEffect(() => {
-    const assignmentId = selectedAssignment?.id ?? null;
+    const assignmentId = activeTab === 'assignment' ? selectedAssignmentSummary?.id : undefined;
+    assignmentDetailRefreshController.current?.abort();
+    assignmentDetailRefreshController.current = null;
+    if (!assignmentId) {
+      setAssignmentDetail(null);
+      setAssignmentDetailLoading(false);
+      setAssignmentDetailError('');
+      return;
+    }
+    const controller = new AbortController();
+    setAssignmentDetail(null);
+    setAssignmentDetailLoading(true);
+    setAssignmentDetailError('');
+    getStudentAssignment(assignmentId, controller.signal)
+      .then((detail) => {
+        if (!controller.signal.aborted) setAssignmentDetail(detail);
+      })
+      .catch((requestError: unknown) => {
+        if (!controller.signal.aborted) {
+          setAssignmentDetailError(requestError instanceof Error
+            ? requestError.message
+            : 'Không thể tải chi tiết bài tập.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAssignmentDetailLoading(false);
+      });
+    return () => controller.abort();
+  }, [activeTab, assignmentDetailReloadKey, selectedAssignmentSummary?.id]);
+  useEffect(() => {
+    const assignmentId = selectedAssignmentSummary?.id ?? null;
     if (responseDraft.current.assignmentId !== assignmentId) {
       responseDraft.current = { assignmentId, dirty: false };
       setSubmissionFiles([]);
@@ -773,7 +879,7 @@ export function MyClasses(props: MyClassesProps) {
       cancelSpeech();
     }
     if (!responseDraft.current.dirty) setResponseText(selectedAssignment?.responseText ?? '');
-  }, [selectedAssignment?.id, selectedAssignment?.responseText, cancelSpeech]);
+  }, [selectedAssignmentSummary?.id, selectedAssignment?.responseText, cancelSpeech]);
   const allPendingAssignments = assignments.filter((assignment) => assignment.submittedAt === null);
   const submittedAssignments = assignments.filter((assignment) => assignment.submittedAt !== null);
 
@@ -786,7 +892,6 @@ export function MyClasses(props: MyClassesProps) {
     if (view === 'assignment' && matchingAssignments.length) {
       setSelectedAssignmentId(matchingAssignments[0].id);
       setSelectedResourceId(null);
-      setResponseText(matchingAssignments[0].responseText ?? '');
     } else {
       setSelectedResourceId(matchingResources[0]?.id ?? null);
       setSelectedAssignmentId(null);
@@ -799,7 +904,7 @@ export function MyClasses(props: MyClassesProps) {
     }
   };
 
-  const handleSaveResource = async (resource: StudentLearningResource) => {
+  const handleSaveResource = async (resource: StudentLearningResourceSummary) => {
     try {
       if (savedResourceIds.has(resource.id)) {
         await saved.removeSavedItem('resource', resource.id);
@@ -818,7 +923,7 @@ export function MyClasses(props: MyClassesProps) {
     }
   };
 
-  const toggleAssignmentBookmark = async (assignment: StudentAssignment) => {
+  const toggleAssignmentBookmark = async (assignment: Pick<StudentAssignmentSummary, 'id' | 'title' | 'subject'>) => {
     if (bookmarkPending.includes(`assignment:${assignment.id}`)) return;
     setBookmarkPending((current) => [...current, `assignment:${assignment.id}`]);
     setBookmarkError('');
@@ -886,7 +991,7 @@ export function MyClasses(props: MyClassesProps) {
     });
   };
 
-  const markAssignmentGradeAsRead = (assignment: StudentAssignment) => {
+  const markAssignmentGradeAsRead = (assignment: StudentAssignmentSummary) => {
     if (assignment.score === null) return;
     const revision = assignmentGradeRevision(assignment);
     const next = { ...readGradedAssignments, [assignment.id]: revision };
@@ -936,7 +1041,7 @@ export function MyClasses(props: MyClassesProps) {
     setSubmitting(true);
     setSubmitError('');
     try {
-      await submitAssignment(selectedAssignment.id, submissionText, submissionFiles);
+      const submission = await submitAssignment(selectedAssignment.id, submissionText, submissionFiles);
       showToast(t(language, selectedAssignment.submittedAt ? 'Đã cập nhật bài nộp.' : 'Đã nộp bài.'));
       if (!isDemo) {
         void recordStudentLearningActivity('assignment_submit').catch((activityError: unknown) => {
@@ -947,7 +1052,23 @@ export function MyClasses(props: MyClassesProps) {
       setSubmissionFiles([]);
       setEditingAnswerIndex(null);
       setEditingPlainAnswer(false);
-      await refresh();
+      setAssignments((current) => current.map((assignment) => assignment.id === submission.assignmentId
+        ? { ...assignment, submittedAt: submission.submittedAt, score: null, gradedAt: null }
+        : assignment));
+      setAssignmentDetail((current) => current?.id === submission.assignmentId
+        ? {
+          ...current,
+          responseText: submission.responseText,
+          submittedAt: submission.submittedAt,
+          files: submission.files,
+          score: null,
+          teacherFeedback: '',
+          questionScores: {},
+          questionFeedback: {},
+          gradedAt: null,
+        }
+        : current);
+      setResponseText(submission.responseText);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (requestError) {
       setSubmitError(requestError instanceof Error ? requestError.message : 'Không thể nộp bài tập.');
@@ -1090,6 +1211,14 @@ export function MyClasses(props: MyClassesProps) {
             {contentSidebarHidden
               ? <><PanelLeftOpen className="h-4 w-4" /><span className="hidden sm:inline">{t(language, "Hiện danh mục")}</span></>
               : <><PanelLeftClose className="h-4 w-4" /><span className="hidden sm:inline">{t(language, "Ẩn danh mục")}</span></>}
+          </button>
+          <button
+            type="button"
+            onClick={refreshPageData}
+            disabled={loading || examResultsLoading}
+            className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            {t(language, 'Làm mới')}
           </button>
         </header>
         <div className={`grid min-h-[min(72vh,760px)] ${contentSidebarHidden ? 'grid-cols-1' : 'lg:grid-cols-[360px_minmax(0,1fr)]'}`}>
@@ -1283,7 +1412,6 @@ export function MyClasses(props: MyClassesProps) {
                                               markAssignmentGradeAsRead(assignment);
                                               setSelectedAssignmentId(assignment.id);
                                               setSelectedResourceId(null);
-                                              setResponseText(assignment.responseText ?? '');
                                               setSubmitError('');
                                             }}
                                             className={`flex min-h-9 min-w-0 flex-1 items-start gap-2 overflow-hidden rounded-md border-l-2 px-2 py-1.5 text-left text-xs ${
@@ -1367,7 +1495,7 @@ export function MyClasses(props: MyClassesProps) {
                 bookmarkPendingIds={new Set(bookmarkPending.filter((key) => key.startsWith('exam:')).map((key) => key.slice('exam:'.length)))}
                 onToggleSaved={(result) => void toggleExamBookmark(result)}
               />
-            ) : activeTab === 'assignment' && selectedAssignment ? (
+            ) : activeTab === 'assignment' && selectedAssignmentSummary ? selectedAssignment ? (
               <article className="mx-auto max-w-4xl">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <h1 className="min-w-0 flex-1 text-2xl font-bold text-slate-950 sm:text-3xl">{selectedAssignment.title}</h1>
@@ -1719,6 +1847,22 @@ export function MyClasses(props: MyClassesProps) {
                   </button>
                 )}
               </article>
+            ) : (
+              <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-5">
+                {assignmentDetailLoading && <p role="status" className="text-sm text-slate-500">Đang tải chi tiết bài tập...</p>}
+                {assignmentDetailError && (
+                  <div role="alert" className="text-sm text-rose-700">
+                    <p>{assignmentDetailError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setAssignmentDetailReloadKey((key) => key + 1)}
+                      className="mt-2 font-semibold underline"
+                    >
+                      Thử tải lại
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : activeTab === 'lesson' && selectedResource ? (
               <article className="mx-auto max-w-4xl">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1749,15 +1893,18 @@ export function MyClasses(props: MyClassesProps) {
                     )}
                   </section>
                 )}
-                {(selectedResource.editorDocument || selectedResource.content) && (
+                {resourceDetailLoading && <p role="status" className="mt-7 text-sm text-slate-500">Đang tải nội dung bài giảng...</p>}
+                {resourceDetailError && <p role="alert" className="mt-7 text-sm text-rose-700">{resourceDetailError}</p>}
+                {selectedResourceContent && (selectedResourceContent.editorDocument || selectedResourceContent.content) && (
                   <section className="mt-7 text-base leading-7 text-slate-700">
-                    {selectedResource.editorDocument
-                      ? <RichLessonContent document={selectedResource.editorDocument} />
-                      : <MathText text={selectedResource.content} variant="lesson" />}
+                    {selectedResourceContent.editorDocument
+                      ? <RichLessonContent document={selectedResourceContent.editorDocument} />
+                      : <MathText text={selectedResourceContent.content} variant="lesson" />}
                   </section>
                 )}
-                {!selectedResource.editorDocument
-                  && !selectedResource.content
+                {selectedResourceContent
+                  && !selectedResourceContent.editorDocument
+                  && !selectedResourceContent.content
                   && selectedResource.files.length === 0
                   && (
                     <p role="status" className="mt-7 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -1803,6 +1950,14 @@ export function MyClasses(props: MyClassesProps) {
               <option value="Kỳ 1">{t(language, "Học kỳ 1")}</option>
               <option value="Kỳ 2">{t(language, "Học kỳ 2")}</option>
             </select>
+            <button
+              type="button"
+              onClick={refreshPageData}
+              disabled={loading || examResultsLoading}
+              className="min-h-10 shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              {t(language, 'Làm mới')}
+            </button>
           </div>
         </div>
         {loading ? <p className="rounded-xl bg-white p-8 text-center text-sm text-slate-500">{t(language, "Đang tải lớp học...")}</p> : null}

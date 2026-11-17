@@ -16,11 +16,11 @@ import {
   getClassGradebook,
   getHomeroomClassGradeSummary,
   getTeacherExamRoomGrading,
-  listClassAssignments,
+  listClassStudentAssignmentSummaries,
   listClasses,
   listClassSubjects,
   listTeacherExamRooms,
-  type ClassAssignment,
+  type ClassStudentAssignmentSummary,
   type GradebookStudent,
   type HomeroomGradeSummary,
   type SchoolClass,
@@ -160,7 +160,7 @@ export function ClassAnalytics() {
   const [scoreMode, setScoreMode] = useState<'subject' | 'assignment'>('subject');
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [students, setStudents] = useState<GradebookStudent[]>([]);
-  const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
+  const [assignments, setAssignments] = useState<ClassStudentAssignmentSummary[]>([]);
   const [examChartResults, setExamChartResults] = useState<TeacherExamChartResult[]>([]);
   const [homeroomSummary, setHomeroomSummary] = useState<HomeroomGradeSummary | null>(null);
   const [loadingClasses, setLoadingClasses] = useState(true);
@@ -182,6 +182,7 @@ export function ClassAnalytics() {
   const selectedStudent = sortedStudents.find((student) => student.id === selectedStudentId)
     ?? sortedStudents[0]
     ?? null;
+  const selectedStudentIdForAssignments = selectedStudent?.id;
   const recentAssignments = useMemo(() => [...assignments]
     .sort((first, second) => Date.parse(first.dueAt) - Date.parse(second.dueAt))
     .slice(-8), [assignments]);
@@ -222,14 +223,13 @@ export function ClassAnalytics() {
     if (scoreMode === 'assignment') {
       const assignmentPoints = recentAssignments
         .flatMap((assignment): ScorePoint[] => {
-          const studentResult = assignment.students.find((student) => student.id === selectedStudent.id);
-          return typeof studentResult?.score === 'number' && Number.isFinite(studentResult.score)
+          return typeof assignment.score === 'number' && Number.isFinite(assignment.score)
             ? [{
               label: assignment.title,
-              value: studentResult.score,
+              value: assignment.score,
               detail: assignment.title,
               kind: 'assignment',
-              recordedAt: studentResult.gradedAt ?? assignment.dueAt,
+              recordedAt: assignment.gradedAt ?? assignment.dueAt,
             }]
             : [];
         });
@@ -363,7 +363,7 @@ export function ClassAnalytics() {
 
   useEffect(() => {
     let active = true;
-    if (!selectedClass || !subject) {
+    if (!selectedClass || !selectedStudentIdForAssignments || !subject) {
       setAssignments([]);
       setLoadingAssignments(false);
       setAssignmentError('');
@@ -371,7 +371,13 @@ export function ClassAnalytics() {
     }
     setLoadingAssignments(true);
     setAssignmentError('');
-    listClassAssignments(selectedClass.id, selectedClass.academic_year, semester, subject)
+    listClassStudentAssignmentSummaries(
+      selectedClass.id,
+      selectedStudentIdForAssignments,
+      selectedClass.academic_year,
+      semester,
+      subject,
+    )
       .then((items) => {
         if (active) setAssignments(items);
       })
@@ -382,7 +388,7 @@ export function ClassAnalytics() {
         if (active) setLoadingAssignments(false);
       });
     return () => { active = false; };
-  }, [selectedClass, semester, subject]);
+  }, [selectedClass, selectedStudentIdForAssignments, semester, subject]);
 
   useEffect(() => {
     let active = true;

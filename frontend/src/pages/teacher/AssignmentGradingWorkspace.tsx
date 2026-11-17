@@ -6,13 +6,16 @@ import { authenticatedFetch } from '@/auth/authApi';
 import { showToast } from '@/components/toast';
 import {
   deleteClassAssignment,
-  listClassAssignmentSubmissions,
-  listClassAssignments,
+  getClassAssignmentDescription,
+  getClassAssignmentSubmission,
+  listClassAssignmentSubmissionSummaries,
+  listClassAssignmentSummaries,
   listClassSubjects,
   listClasses,
   saveClassAssignmentGrade,
   type AssignmentSubmission,
-  type ClassAssignment,
+  type AssignmentSubmissionSummary,
+  type ClassAssignmentSummary,
   type SchoolClass,
 } from '@/api/schoolApi';
 import { sortByVietnameseName } from './studentSorting';
@@ -71,10 +74,12 @@ export function AssignmentGradingWorkspace() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [selectedClassId, setSelectedClassId] = useState('');
   const [subjects, setSubjects] = useState<string[]>([]);
-  const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
+  const [assignments, setAssignments] = useState<ClassAssignmentSummary[]>([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
-  const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
+  const [submissionSummaries, setSubmissionSummaries] = useState<AssignmentSubmissionSummary[]>([]);
+  const [selectedSubmissionDetail, setSelectedSubmissionDetail] = useState<AssignmentSubmission | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [assignmentDescription, setAssignmentDescription] = useState<string | null>(null);
   const [score, setScore] = useState('');
   const [feedback, setFeedback] = useState('');
   const [questionScoreInputs, setQuestionScoreInputs] = useState<Record<string, string>>({});
@@ -86,16 +91,19 @@ export function AssignmentGradingWorkspace() {
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingAssignments, setLoadingAssignments] = useState(false);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [loadingAssignmentDetail, setLoadingAssignmentDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingAssignment, setDeletingAssignment] = useState(false);
   const [error, setError] = useState('');
 
   const selectedClass = classes.find((classroom) => classroom.id === selectedClassId) ?? null;
   const selectedAssignment = assignments.find((assignment) => assignment.id === selectedAssignmentId) ?? null;
-  const selectedSubmission = submissions.find((submission) => submission.studentId === selectedStudentId) ?? null;
+  const selectedSubmission = selectedSubmissionDetail?.studentId === selectedStudentId
+    ? selectedSubmissionDetail
+    : null;
   const parsedAssignment = useMemo(
-    () => selectedAssignment ? parseAssignmentContent(selectedAssignment.description) : null,
-    [selectedAssignment],
+    () => assignmentDescription === null ? null : parseAssignmentContent(assignmentDescription),
+    [assignmentDescription],
   );
   const questionMaximums = distributeAssignmentPoints(parsedAssignment?.questions.length ?? 0);
   const questionTotal = parsedAssignment?.questions.reduce((total, _question, index) => {
@@ -122,14 +130,30 @@ export function AssignmentGradingWorkspace() {
     [parsedAssignment, selectedSubmission?.responseText],
   );
   const sortedSubmissions = useMemo(
-    () => sortByVietnameseName(submissions, (submission) => submission.studentName),
-    [submissions],
+    () => sortByVietnameseName(submissionSummaries, (submission) => submission.studentName),
+    [submissionSummaries],
   );
   const visibleAssignments = useMemo(() => [...assignments].sort((first, second) => {
-    const firstGraded = first.students.filter((student) => student.gradedAt).length;
-    const secondGraded = second.students.filter((student) => student.gradedAt).length;
-    return firstGraded - secondGraded || second.dueAt.localeCompare(first.dueAt);
+    return first.gradedCount - second.gradedCount || second.dueAt.localeCompare(first.dueAt);
   }), [assignments]);
+  const gradingStateRef = useRef({
+    selectedSubmission,
+    selectedStudentId,
+    score,
+    feedback,
+    questionScoreInputs,
+    questionFeedbackInputs,
+    parsedAssignment,
+  });
+  gradingStateRef.current = {
+    selectedSubmission,
+    selectedStudentId,
+    score,
+    feedback,
+    questionScoreInputs,
+    questionFeedbackInputs,
+    parsedAssignment,
+  };
 
   useEffect(() => {
     let active = true;
@@ -153,7 +177,8 @@ export function AssignmentGradingWorkspace() {
     setSubjects([]);
     setAssignments([]);
     setSelectedAssignmentId('');
-    setSubmissions([]);
+    setSubmissionSummaries([]);
+    setSelectedSubmissionDetail(null);
     setSelectedStudentId('');
     if (!selectedClassId) return () => { active = false; };
     listClassSubjects(selectedClassId)
@@ -170,22 +195,25 @@ export function AssignmentGradingWorkspace() {
     let active = true;
     if (!selectedClass || subjects.length === 0) {
       setAssignments([]);
+      setSubmissionSummaries([]);
+      setSelectedSubmissionDetail(null);
       setLoadingAssignments(false);
       return () => { active = false; };
     }
     setLoadingAssignments(true);
     setAssignments([]);
     setSelectedAssignmentId('');
-    setSubmissions([]);
+    setSubmissionSummaries([]);
+    setSelectedSubmissionDetail(null);
     setSelectedStudentId('');
+    setAssignmentDescription(null);
     setError('');
     Promise.all(subjects.flatMap((subject) => ['Kỳ 1', 'Kỳ 2'].map((semester) =>
-      listClassAssignments(selectedClass.id, selectedClass.academic_year, semester, subject))))
+      listClassAssignmentSummaries(selectedClass.id, selectedClass.academic_year, semester, subject))))
       .then((results) => {
         if (!active) return;
         const items = results.flat().sort((first, second) =>
-          first.students.filter((student) => student.gradedAt).length
-            - second.students.filter((student) => student.gradedAt).length
+          first.gradedCount - second.gradedCount
             || (second.createdAt ?? second.dueAt).localeCompare(first.createdAt ?? first.dueAt));
         setAssignments(items);
         setSelectedAssignmentId(items[0]?.id ?? '');
@@ -202,24 +230,26 @@ export function AssignmentGradingWorkspace() {
   useEffect(() => {
     let active = true;
     if (!selectedClassId || !selectedAssignmentId) {
-      setSubmissions([]);
+      setSubmissionSummaries([]);
       setSelectedStudentId('');
+      setSelectedSubmissionDetail(null);
       return () => { active = false; };
     }
     setLoadingSubmissions(true);
-    setSubmissions([]);
+    setSubmissionSummaries([]);
+    setSelectedSubmissionDetail(null);
     setSelectedStudentId('');
     setError('');
-    listClassAssignmentSubmissions(selectedClassId, selectedAssignmentId)
+    listClassAssignmentSubmissionSummaries(selectedClassId, selectedAssignmentId)
       .then((items) => {
         if (!active) return;
-        setSubmissions(items);
-        const firstToGrade = items.find((item) => item.responseText !== null && item.gradedAt === null)
-          ?? items.find((item) => item.responseText !== null);
+        setSubmissionSummaries(items);
+        const firstToGrade = items.find((item) => item.submittedAt && item.gradedAt === null)
+          ?? items.find((item) => item.submittedAt);
         setSelectedStudentId(firstToGrade?.studentId ?? '');
       })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : 'Không thể tải bài làm.');
+        if (active) setError(requestError instanceof Error ? requestError.message : 'Không thể tải danh sách bài nộp.');
       })
       .finally(() => {
         if (active) setLoadingSubmissions(false);
@@ -229,72 +259,120 @@ export function AssignmentGradingWorkspace() {
 
   useEffect(() => {
     let active = true;
+    if (!selectedClassId || !selectedAssignmentId) {
+      setAssignmentDescription(null);
+      setLoadingAssignmentDetail(false);
+      return () => { active = false; };
+    }
+    setAssignmentDescription(null);
+    setLoadingAssignmentDetail(true);
+    getClassAssignmentDescription(selectedClassId, selectedAssignmentId)
+      .then((description) => {
+        if (active) setAssignmentDescription(description);
+      })
+      .catch((requestError: unknown) => {
+        if (active) setError(requestError instanceof Error ? requestError.message : 'Không thể tải nội dung bài tập.');
+      })
+      .finally(() => {
+        if (active) setLoadingAssignmentDetail(false);
+      });
+    return () => { active = false; };
+  }, [selectedClassId, selectedAssignmentId]);
+
+  const selectedSubmissionSummary = submissionSummaries.find(
+    (submission) => submission.studentId === selectedStudentId,
+  ) ?? null;
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedClassId || !selectedAssignmentId || !selectedStudentId || !selectedSubmissionSummary?.submittedAt) {
+      setSelectedSubmissionDetail(null);
+      return () => { active = false; };
+    }
+    setLoadingSubmissions(true);
+    setSelectedSubmissionDetail(null);
+    getClassAssignmentSubmission(selectedClassId, selectedAssignmentId, selectedStudentId)
+      .then((submission) => {
+        if (active) setSelectedSubmissionDetail(submission);
+      })
+      .catch((requestError: unknown) => {
+        if (active) setError(requestError instanceof Error ? requestError.message : 'Không thể tải bài làm.');
+      })
+      .finally(() => {
+        if (active) setLoadingSubmissions(false);
+      });
+    return () => { active = false; };
+  }, [selectedClassId, selectedAssignmentId, selectedStudentId, selectedSubmissionSummary?.submittedAt]);
+
+  useEffect(() => {
+    let active = true;
     let inFlight = false;
     if (!selectedClassId || !selectedAssignmentId || activeTab !== 'assignments') {
       return () => { active = false; };
     }
 
     const syncSubmissions = async () => {
-      if (!active || inFlight || document.hidden || saving) return;
-      const currentSubmission = submissions.find((item) => item.studentId === selectedStudentId);
-      const currentQuestionScores = Object.fromEntries(Object.entries(questionScoreInputs)
-        .filter(([, value]) => value.trim() !== '')
-        .map(([key, value]) => [key, Number(value)]));
-      const currentQuestionFeedback = Object.fromEntries(Object.entries(questionFeedbackInputs)
-        .filter(([, value]) => value.trim() !== ''));
-      const savedQuestionFeedback = Object.fromEntries(Object.entries(currentSubmission?.questionFeedback ?? {})
-        .filter(([, value]) => value.trim() !== ''));
-      if (currentSubmission
-        && (score !== (currentSubmission.score?.toString() ?? '')
-          || feedback !== currentSubmission.teacherFeedback
-          || (parsedAssignment && JSON.stringify(currentQuestionScores) !== JSON.stringify(currentSubmission.questionScores))
-          || (parsedAssignment && JSON.stringify(currentQuestionFeedback) !== JSON.stringify(savedQuestionFeedback)))) {
-        return;
-      }
-
+      if (!active || inFlight || document.hidden) return;
       inFlight = true;
       try {
-        const latestSubmissions = await listClassAssignmentSubmissions(selectedClassId, selectedAssignmentId);
+        const latestSubmissions = await listClassAssignmentSubmissionSummaries(selectedClassId, selectedAssignmentId);
         if (!active) return;
-        setSubmissions((current) => latestSubmissions.map((latest) => {
-          const previous = current.find((item) => item.studentId === latest.studentId);
-          return previous
-            && previous.studentName === latest.studentName
-            && previous.responseText === latest.responseText
-            && previous.submittedAt === latest.submittedAt
-            && previous.score === latest.score
-            && previous.teacherFeedback === latest.teacherFeedback
-            && JSON.stringify(previous.questionScores) === JSON.stringify(latest.questionScores)
-            && JSON.stringify(previous.questionFeedback) === JSON.stringify(latest.questionFeedback)
-            && previous.gradedAt === latest.gradedAt
-            && previous.files.length === latest.files.length
-            && previous.files.every((file, index) => (
-              file.id === latest.files[index].id
-              && file.name === latest.files[index].name
-              && file.mediaType === latest.files[index].mediaType
-              && file.sizeBytes === latest.files[index].sizeBytes
-            ))
-            ? previous
-            : latest;
-        }));
+        setSubmissionSummaries(latestSubmissions);
         setAssignments((current) => current.map((assignment) => {
           if (assignment.id !== selectedAssignmentId) return assignment;
-          const students = assignment.students.map((student) => {
-            const submission = latestSubmissions.find((item) => item.studentId === student.id);
-            return submission
-              ? { ...student, submittedAt: submission.submittedAt, score: submission.score, gradedAt: submission.gradedAt }
-              : student;
-          });
           return {
             ...assignment,
-            submittedCount: students.filter((student) => student.submittedAt).length,
-            students,
+            submittedCount: latestSubmissions.filter((submission) => submission.submittedAt).length,
+            gradedCount: latestSubmissions.filter((submission) => submission.gradedAt).length,
           };
         }));
-        if (!selectedStudentId) {
-          const firstToGrade = latestSubmissions.find((item) => item.responseText !== null && item.gradedAt === null)
-            ?? latestSubmissions.find((item) => item.responseText !== null);
+        if (!gradingStateRef.current.selectedStudentId) {
+          const firstToGrade = latestSubmissions.find((item) => item.submittedAt && item.gradedAt === null)
+            ?? latestSubmissions.find((item) => item.submittedAt);
           if (firstToGrade) setSelectedStudentId(firstToGrade.studentId);
+        }
+        const current = gradingStateRef.current;
+        const latestSelected = latestSubmissions.find((item) => item.studentId === current.selectedStudentId);
+        const currentDetail = current.selectedSubmission;
+        const currentQuestionScores = Object.fromEntries(Object.entries(current.questionScoreInputs)
+          .filter(([, value]) => value.trim() !== '')
+          .map(([key, value]) => [key, Number(value)]));
+        const currentQuestionFeedback = Object.fromEntries(Object.entries(current.questionFeedbackInputs)
+          .filter(([, value]) => value.trim() !== ''));
+        const savedQuestionFeedback = Object.fromEntries(Object.entries(currentDetail?.questionFeedback ?? {})
+          .filter(([, value]) => value.trim() !== ''));
+        const draftIsClean = Boolean(currentDetail
+          && current.score === (currentDetail.score?.toString() ?? '')
+          && current.feedback === currentDetail.teacherFeedback
+          && (!current.parsedAssignment
+            || (JSON.stringify(currentQuestionScores) === JSON.stringify(currentDetail.questionScores)
+              && JSON.stringify(currentQuestionFeedback) === JSON.stringify(savedQuestionFeedback))));
+        if (latestSelected && currentDetail && draftIsClean
+          && (latestSelected.score !== currentDetail.score || latestSelected.gradedAt !== currentDetail.gradedAt)) {
+          const refreshedDetail = await getClassAssignmentSubmission(
+            selectedClassId,
+            selectedAssignmentId,
+            current.selectedStudentId,
+          );
+          const latestState = gradingStateRef.current;
+          const latestQuestionScores = Object.fromEntries(Object.entries(latestState.questionScoreInputs)
+            .filter(([, value]) => value.trim() !== '')
+            .map(([key, value]) => [key, Number(value)]));
+          const latestQuestionFeedback = Object.fromEntries(Object.entries(latestState.questionFeedbackInputs)
+            .filter(([, value]) => value.trim() !== ''));
+          const latestSavedQuestionFeedback = Object.fromEntries(Object.entries(latestState.selectedSubmission?.questionFeedback ?? {})
+            .filter(([, value]) => value.trim() !== ''));
+          const latestDraftIsClean = Boolean(latestState.selectedSubmission
+            && latestState.score === (latestState.selectedSubmission.score?.toString() ?? '')
+            && latestState.feedback === latestState.selectedSubmission.teacherFeedback
+            && (!latestState.parsedAssignment
+              || (JSON.stringify(latestQuestionScores) === JSON.stringify(latestState.selectedSubmission.questionScores)
+                && JSON.stringify(latestQuestionFeedback) === JSON.stringify(latestSavedQuestionFeedback))));
+          if (active && latestState.selectedStudentId === current.selectedStudentId
+            && latestState.selectedSubmission?.gradedAt === currentDetail.gradedAt
+            && latestDraftIsClean) {
+            setSelectedSubmissionDetail(refreshedDetail);
+          }
         }
         setError((current) => current.startsWith('Không thể đồng bộ bài làm mới nhất:')
           ? ''
@@ -310,24 +388,17 @@ export function AssignmentGradingWorkspace() {
       }
     };
 
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void syncSubmissions();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     const timer = window.setInterval(() => void syncSubmissions(), 15_000);
     return () => {
       active = false;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [
-    activeTab,
-    feedback,
-    parsedAssignment,
-    questionFeedbackInputs,
-    questionScoreInputs,
-    saving,
-    score,
-    selectedAssignmentId,
-    selectedClassId,
-    selectedStudentId,
-    submissions,
-  ]);
+  }, [activeTab, selectedAssignmentId, selectedClassId]);
 
   useEffect(() => {
     setScore(selectedSubmission?.score?.toString() ?? '');
@@ -384,15 +455,16 @@ export function AssignmentGradingWorkspace() {
           } : {}),
         },
       );
-      setSubmissions((current) => current.map((item) => item.studentId === selectedSubmission.studentId
-        ? { ...item, ...result }
+      setSelectedSubmissionDetail((current) => current?.studentId === selectedSubmission.studentId
+        ? { ...current, ...result }
+        : current);
+      setSubmissionSummaries((current) => current.map((item) => item.studentId === selectedSubmission.studentId
+        ? { ...item, score: result.score, gradedAt: result.gradedAt }
         : item));
       setAssignments((current) => current.map((assignment) => assignment.id === selectedAssignmentId
         ? {
           ...assignment,
-          students: assignment.students.map((student) => student.id === selectedSubmission.studentId
-            ? { ...student, submittedAt: selectedSubmission.submittedAt, gradedAt: result.gradedAt }
-            : student),
+          gradedCount: assignment.gradedCount + (selectedSubmission.gradedAt ? 0 : 1),
         }
         : assignment));
       showToast('Đã lưu điểm từng câu và nhận xét.');
@@ -422,7 +494,8 @@ export function AssignmentGradingWorkspace() {
       setAssignments((current) => current.filter((assignment) => assignment.id !== selectedAssignment.id));
       window.dispatchEvent(new CustomEvent('eduflow:assignment-deleted', { detail: { id: selectedAssignment.id } }));
       setSelectedAssignmentId('');
-      setSubmissions([]);
+      setSubmissionSummaries([]);
+      setSelectedSubmissionDetail(null);
       setSelectedStudentId('');
       setScore('');
       setFeedback('');
@@ -529,8 +602,6 @@ export function AssignmentGradingWorkspace() {
         ) : (
           <nav aria-label="Danh sách bài tập" className="flex gap-2 overflow-x-auto pb-1">
             {visibleAssignments.map((assignment) => {
-              const submittedCount = assignment.students.filter((student) => student.submittedAt).length;
-              const reviewedCount = assignment.students.filter((student) => student.gradedAt).length;
               return (
                 <button
                   key={assignment.id}
@@ -546,7 +617,7 @@ export function AssignmentGradingWorkspace() {
                 >
                   <span className="block truncate text-sm font-bold text-slate-900">{assignment.title}</span>
                   <span className="mt-1 block text-xs font-medium text-slate-600">
-                    {submittedCount}/{assignment.studentCount} bài nộp - {reviewedCount}/{assignment.studentCount} bài đã chấm
+                    {assignment.submittedCount}/{assignment.studentCount} bài nộp - {assignment.gradedCount}/{assignment.studentCount} bài đã chấm
                   </span>
                 </button>
               );
@@ -581,8 +652,8 @@ export function AssignmentGradingWorkspace() {
                   </button>
                 </div>
               </div>
-              {loadingSubmissions ? (
-                <p role="status" className="p-6 text-sm text-slate-500">Đang tải bài làm...</p>
+              {loadingSubmissions || loadingAssignmentDetail ? (
+                <p role="status" className="p-6 text-sm text-slate-500">Đang tải nội dung và bài làm...</p>
               ) : (
                 <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_250px]">
                   <section className="min-w-0 space-y-4 p-4 sm:p-5">
@@ -768,7 +839,7 @@ export function AssignmentGradingWorkspace() {
                     </div>
                     <nav aria-label="Danh sách bài làm học sinh" className="max-h-[70vh] divide-y divide-slate-100 overflow-y-auto">
                       {sortedSubmissions.map((submission) => {
-                        const hasSubmitted = submission.responseText !== null;
+                        const hasSubmitted = submission.submittedAt !== null;
                         return (
                           <button
                             key={submission.studentId}

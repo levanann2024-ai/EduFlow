@@ -19,16 +19,15 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  getClassGradebook,
+  getClassGradebookSummary,
   getHomeroomClassGradeSummary,
   getTeacherTimetable,
   listClassSubjects,
-  listClassLearningResources,
+  listClassLearningResourceSummaries,
   listClasses,
   listTeacherExamAppeals,
   listTeacherExamRooms,
   type ExamAppeal,
-  type GradebookStudent,
   type HomeroomGradeSummary,
   type ProgressSemester,
   type SchoolClass,
@@ -168,19 +167,6 @@ function isPastDue(value: string) {
   return dueDay < today;
 }
 
-function averageFromGrades(student: GradebookStudent) {
-  if (student.confirmedAverage !== null) return student.confirmedAverage;
-  const scores = [
-    ...student.grades.regular.map((value) => ({ value, weight: 1 })),
-    { value: student.grades.midterm, weight: 2 },
-    { value: student.grades.final, weight: 3 },
-  ].filter((score): score is { value: number; weight: number } => score.value !== null);
-  const totalWeight = scores.reduce((sum, score) => sum + score.weight, 0);
-  return totalWeight > 0
-    ? scores.reduce((sum, score) => sum + score.value * score.weight, 0) / totalWeight
-    : null;
-}
-
 function averageForSubject(
   subject: string,
   values: Array<{ studentId: string; studentName: string; average: number | null; previousAverage?: number | null }>,
@@ -258,19 +244,16 @@ async function loadClassProgress(
   }
 
   const assignedSubjects = await listClassSubjects(classItem.id);
-  const gradebooks = await Promise.all(assignedSubjects.map(async (subject) => ({
+  const gradebookSummaries = await Promise.all(assignedSubjects.map(async (subject) => ({
     subject,
-    students: await getClassGradebook(classItem.id, academicYear, semester, subject),
+    summary: await getClassGradebookSummary(classItem.id, academicYear, semester, subject),
   })));
-  const subjects = gradebooks.map(({ subject, students }) => averageForSubject(
+  const subjects = gradebookSummaries.map(({ subject, summary }) => ({
     subject,
-    students.map((student) => ({
-      studentId: student.id,
-      studentName: student.fullName,
-      average: averageFromGrades(student),
-      previousAverage: student.previousConfirmedAverage,
-    })),
-  ));
+    average: summary.average,
+    gradedStudents: summary.gradedStudents,
+    concerns: summary.concerns.map((concern) => ({ ...concern, subject })),
+  }));
   return {
     classId: classItem.id,
     className: classItem.name,
@@ -348,7 +331,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
             loadSection(`Tiến độ ${classItem.name}`, loadClassProgress(classItem, academicYear, semester))
           ))),
           Promise.all(currentYearClasses.map((classItem) => (
-            loadSection(`Tài liệu ${classItem.name}`, listClassLearningResources(classItem.id).then((resources) => (
+            loadSection(`Tài liệu ${classItem.name}`, listClassLearningResourceSummaries(classItem.id, 2).then((resources) => (
               resources.map((resource) => ({
                 id: resource.id,
                 title: resource.title,

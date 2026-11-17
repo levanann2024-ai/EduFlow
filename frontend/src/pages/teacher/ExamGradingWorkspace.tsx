@@ -7,7 +7,7 @@ import { sortByVietnameseName } from './studentSorting';
 import {
   getTeacherExamRoomGrading,
   listTeacherExamAppeals,
-  listTeacherExamRooms,
+  listTeacherExamRoomIds,
   publishTeacherExamRoomGrades,
   saveTeacherExamSessionGrade,
   type ExamAppeal,
@@ -160,6 +160,9 @@ export function ExamGradingWorkspace() {
   const [exams, setExams] = useState<LoadedExam[]>([]);
   const [appeals, setAppeals] = useState<ExamAppeal[]>([]);
   const [appealsError, setAppealsError] = useState('');
+  const [appealsLoading, setAppealsLoading] = useState(false);
+  const [appealsLoaded, setAppealsLoaded] = useState(false);
+  const refreshAppealsRef = useRef<(() => Promise<void>) | null>(null);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [scoreInputs, setScoreInputs] = useState<Record<string, string>>({});
@@ -183,11 +186,13 @@ export function ExamGradingWorkspace() {
     async function loadAppeals() {
       if (refreshingAppeals) return;
       refreshingAppeals = true;
+      setAppealsLoading(true);
       try {
         const items = await listTeacherExamAppeals();
         if (active) {
           setAppeals(items);
           setAppealsError('');
+          setAppealsLoaded(true);
         }
       } catch (loadError: unknown) {
         if (active) {
@@ -195,15 +200,16 @@ export function ExamGradingWorkspace() {
         }
       } finally {
         refreshingAppeals = false;
+        if (active) setAppealsLoading(false);
       }
     }
+    refreshAppealsRef.current = loadAppeals;
     async function loadExams(initial = false) {
       if (refreshing) return;
       refreshing = true;
-      void loadAppeals();
       try {
-        const rooms = await listTeacherExamRooms<TeacherExamGradingRoom>();
-        const details = await Promise.all(rooms.map((room) => getTeacherExamRoomGrading(room.id)));
+        const roomIds = await listTeacherExamRoomIds();
+        const details = await Promise.all(roomIds.map((roomId) => getTeacherExamRoomGrading(roomId)));
         if (!active) return;
         const loaded = details.map(({ room, students }) => ({ room, students }));
         loaded.sort((first, second) => {
@@ -258,6 +264,7 @@ export function ExamGradingWorkspace() {
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       active = false;
+      refreshAppealsRef.current = null;
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
@@ -394,7 +401,37 @@ export function ExamGradingWorkspace() {
   return (
     <section className="space-y-4">
       {(error || syncError) && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error || syncError}</p>}
-      {appealsError && <p role="alert" className="rounded-xl border border-red-300 bg-red-100 p-3 text-sm font-semibold text-red-900">Không thể tải thông tin phúc khảo: {appealsError}</p>}
+      <details
+        className="rounded-xl border border-slate-200 bg-white"
+        onToggle={(event) => {
+          if (event.currentTarget.open) void refreshAppealsRef.current?.();
+        }}
+      >
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">
+          Yêu cầu phúc khảo{appealsLoaded ? ` (${appeals.length})` : ''}
+        </summary>
+        <div className="space-y-2 border-t border-slate-100 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-slate-600">Thông tin phúc khảo được tải khi mở mục này.</p>
+            <button
+              type="button"
+              onClick={() => void refreshAppealsRef.current?.()}
+              disabled={appealsLoading}
+              className="min-h-9 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {appealsLoading ? 'Đang tải...' : 'Làm mới phúc khảo'}
+            </button>
+          </div>
+          {appealsLoading && <p role="status" className="text-sm text-slate-500">Đang tải yêu cầu phúc khảo...</p>}
+          {appealsError && <p role="alert" className="text-sm font-semibold text-red-800">Không thể tải thông tin phúc khảo: {appealsError}</p>}
+          {appealsLoaded && !appealsLoading && !appealsError && appeals.length === 0 && (
+            <p className="text-sm text-slate-500">Chưa có yêu cầu phúc khảo.</p>
+          )}
+          {appealsLoaded && !appealsLoading && appeals.length > 0 && (
+            <p className="text-sm text-slate-600">Trạng thái và chi tiết hiển thị trong bài làm tương ứng.</p>
+          )}
+        </div>
+      </details>
       {loading ? (
         <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Đang tải dữ liệu bài thi và bài nộp...</p>
       ) : exams.length === 0 ? (

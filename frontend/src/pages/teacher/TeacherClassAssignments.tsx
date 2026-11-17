@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Calendar, Check, ClipboardList, Circle, Eye, X } from 'lucide-react';
-import { listClassAssignments, type ClassAssignment } from '@/api/schoolApi';
+import {
+  listClassAssignmentSubmissionSummaries,
+  listClassAssignmentSummaries,
+  type AssignmentSubmissionSummary,
+  type ClassAssignmentSummary,
+} from '@/api/schoolApi';
 import { sortByVietnameseName } from './studentSorting';
 
 interface TeacherClassAssignmentsProps {
@@ -20,8 +25,11 @@ export function TeacherClassAssignments({
   academicYear,
   subjects,
 }: TeacherClassAssignmentsProps) {
-  const [assignments, setAssignments] = useState<ClassAssignment[]>([]);
+  const [assignments, setAssignments] = useState<ClassAssignmentSummary[]>([]);
+  const [submissionsByAssignment, setSubmissionsByAssignment] = useState<Record<string, AssignmentSubmissionSummary[]>>({});
   const [checkingAssignmentId, setCheckingAssignmentId] = useState<string | null>(null);
+  const [loadingSubmissionAssignmentId, setLoadingSubmissionAssignmentId] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -30,6 +38,8 @@ export function TeacherClassAssignments({
     let active = true;
     if (subjects.length === 0) {
       setAssignments([]);
+      setSubmissionsByAssignment({});
+      setCheckingAssignmentId(null);
       setLoading(false);
       return () => {
         active = false;
@@ -38,9 +48,10 @@ export function TeacherClassAssignments({
     setLoading(true);
     setError('');
     setAssignments([]);
+    setSubmissionsByAssignment({});
     setCheckingAssignmentId(null);
     Promise.all(subjects.flatMap((subject) => ['Kỳ 1', 'Kỳ 2'].map((semester) =>
-      listClassAssignments(classId, academicYear, semester, subject))))
+      listClassAssignmentSummaries(classId, academicYear, semester, subject))))
       .then((results) => {
         if (active) {
           setAssignments(results.flat().sort((first, second) =>
@@ -57,6 +68,28 @@ export function TeacherClassAssignments({
       active = false;
     };
   }, [classId, academicYear, subjects, reloadKey]);
+
+  useEffect(() => {
+    if (!checkingAssignmentId) return () => {};
+    let active = true;
+    setLoadingSubmissionAssignmentId(checkingAssignmentId);
+    setSubmissionError('');
+    listClassAssignmentSubmissionSummaries(classId, checkingAssignmentId)
+      .then((submissions) => {
+        if (active) {
+          setSubmissionsByAssignment((current) => ({ ...current, [checkingAssignmentId]: submissions }));
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (active) {
+          setSubmissionError(requestError instanceof Error ? requestError.message : 'Không thể tải trạng thái bài nộp.');
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingSubmissionAssignmentId(null);
+      });
+    return () => { active = false; };
+  }, [checkingAssignmentId, classId]);
 
   return (
     <section className="space-y-5 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
@@ -94,8 +127,9 @@ export function TeacherClassAssignments({
                     type="button"
                     aria-expanded={checkingAssignmentId === assignment.id}
                     aria-controls={`assignment-submissions-${assignment.id}`}
-                    onClick={() => setCheckingAssignmentId((current) =>
-                      current === assignment.id ? null : assignment.id)}
+                    onClick={() => setCheckingAssignmentId((current) => (
+                      current === assignment.id ? null : assignment.id
+                    ))}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
                   >
                     {checkingAssignmentId === assignment.id
@@ -109,23 +143,28 @@ export function TeacherClassAssignments({
                   id={`assignment-submissions-${assignment.id}`}
                   className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
                 >
-                  {assignment.students.length === 0 ? (
+                  {loadingSubmissionAssignmentId === assignment.id ? (
+                    <p role="status" className="text-sm text-slate-500">Đang tải trạng thái bài nộp...</p>
+                  ) : submissionError ? (
+                    <p role="alert" className="text-sm text-rose-700">{submissionError}</p>
+                  ) : (submissionsByAssignment[assignment.id] ?? []).length === 0 ? (
                     <p className="text-sm text-slate-500">Lớp hiện chưa có học sinh đang theo học.</p>
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2">
                       {([
                         {
-                          title: `Đã nộp (${assignment.students.filter((student) => student.submittedAt).length})`,
+                          title: `Đã nộp (${(submissionsByAssignment[assignment.id] ?? []).filter((student) => student.submittedAt).length})`,
                           submitted: true,
                         },
                         {
-                          title: `Chưa nộp (${assignment.students.filter((student) => !student.submittedAt).length})`,
+                          title: `Chưa nộp (${(submissionsByAssignment[assignment.id] ?? []).filter((student) => !student.submittedAt).length})`,
                           submitted: false,
                         },
                       ]).map(({ title, submitted }) => {
                         const students = sortByVietnameseName(
-                          assignment.students.filter((student) => Boolean(student.submittedAt) === submitted),
-                          (student) => student.fullName,
+                          (submissionsByAssignment[assignment.id] ?? [])
+                            .filter((student) => Boolean(student.submittedAt) === submitted),
+                          (student) => student.studentName,
                         );
                         return (
                           <section key={title}>
@@ -136,7 +175,7 @@ export function TeacherClassAssignments({
                               <ul className="space-y-2">
                                 {students.map((student) => (
                                   <li
-                                    key={student.id}
+                                    key={student.studentId}
                                     className={`flex min-h-10 items-center gap-2 rounded-lg px-2 py-2 text-sm ${
                                       submitted && student.score !== null ? scoreColor(student.score) : 'text-slate-700'
                                     }`}
@@ -145,7 +184,7 @@ export function TeacherClassAssignments({
                                       ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                                       : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />}
                                     <span className="min-w-0 flex-1">
-                                      <span className="block truncate">{student.fullName}</span>
+                                      <span className="block truncate">{student.studentName}</span>
                                       {student.submittedAt && (
                                         <span className="block text-xs text-slate-500">
                                           Nộp lúc {new Date(student.submittedAt).toLocaleString('vi-VN')}

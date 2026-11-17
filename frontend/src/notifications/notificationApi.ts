@@ -1,17 +1,17 @@
 import { authenticatedFetch } from '@/auth/authApi';
 import type { Role, Page } from '@/types';
 import {
-  listClassAssignments,
+  listClassAssignmentSummaries,
   listClassSubjects,
   listClasses,
-  listStudentAssignments,
+  listStudentAssignmentNotificationSummaries,
   listStudentExamAppeals,
   listStudentExamResults,
   listStudentExamRooms,
   listTeacherExamAppeals,
   listTeacherExamRooms,
-  type ClassAssignment,
-  type StudentAssignment,
+  type ClassAssignmentSummary,
+  type StudentAssignmentNotificationSummary,
   type StudentExamRoom,
   type StudentExamResult,
   type ExamAppeal,
@@ -58,7 +58,11 @@ function formatDue(value: string, language: AppLanguage) {
     : new Intl.DateTimeFormat(language === 'en' ? 'en' : 'vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function assignmentNotifications(assignments: StudentAssignment[], now: number, language: AppLanguage) {
+function assignmentNotifications(
+  assignments: StudentAssignmentNotificationSummary[],
+  now: number,
+  language: AppLanguage,
+) {
   const items: UserNotification[] = [];
   for (const assignment of assignments) {
     const createdAt = validDate(assignment.createdAt);
@@ -189,21 +193,22 @@ function teacherExamNotifications(rooms: ExamRoomRecord[], now: number, language
     }));
 }
 
-function teacherSubmissionNotifications(assignments: ClassAssignment[], classCode: string, now: number, language: AppLanguage) {
+function teacherSubmissionNotifications(
+  assignments: ClassAssignmentSummary[],
+  classCode: string,
+  now: number,
+  language: AppLanguage,
+) {
   return assignments.flatMap((assignment) => {
-    const ungraded = assignment.students.filter((student) => student.submittedAt && !student.gradedAt);
-    if (ungraded.length === 0) return [];
-    const latestSubmission = ungraded
-      .map((student) => student.submittedAt)
-      .filter((value): value is string => Boolean(value))
-      .sort((first, second) => Date.parse(second) - Date.parse(first))[0];
+    const latestSubmission = assignment.latestUngradedSubmissionAt;
+    if (!assignment.ungradedCount || !latestSubmission) return [];
     if (!isWithin(validDate(latestSubmission), now, 30)) return [];
     return [{
       id: `teacher:assignment:submissions:${assignment.id}:${latestSubmission}`,
       kind: 'grading' as const,
       title: language === 'en'
-        ? `${ungraded.length} submission${ungraded.length === 1 ? '' : 's'} awaiting grading`
-        : `${ungraded.length} bài nộp đang chờ chấm`,
+        ? `${assignment.ungradedCount} submission${assignment.ungradedCount === 1 ? '' : 's'} awaiting grading`
+        : `${assignment.ungradedCount} bài nộp đang chờ chấm`,
       detail: `${assignment.title} · ${assignment.subject} · ${classCode}`,
       createdAt: latestSubmission ?? assignment.createdAt ?? assignment.dueAt,
       destination: 'ai-grading' as const,
@@ -223,7 +228,7 @@ async function loadTeacherAssignmentNotifications(now: number, language: AppLang
   const results = await Promise.allSettled(currentClasses.map(async (classItem) => {
     const subjects = await listClassSubjects(classItem.id);
     const assignmentGroups = await Promise.all(subjects.map((subject) => (
-      listClassAssignments(classItem.id, academicYear, semester, subject)
+      listClassAssignmentSummaries(classItem.id, academicYear, semester, subject)
     )));
     return assignmentGroups.flatMap((assignments) => (
       teacherSubmissionNotifications(assignments, classItem.code, now, language)
@@ -249,7 +254,7 @@ export async function loadNotificationFeed(role: Role, language: AppLanguage = '
   );
   if (role === 'student') {
     const [assignmentsResult, gradesResult, appealsResult, examsResult] = await Promise.allSettled([
-      listStudentAssignments(),
+      listStudentAssignmentNotificationSummaries(),
       listStudentExamResults(),
       listStudentExamAppeals(),
       listStudentExamRooms(),

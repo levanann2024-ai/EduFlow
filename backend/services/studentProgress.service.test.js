@@ -50,7 +50,7 @@ function makeDependencies(overrides = {}) {
       calls.push(['rooms', receivedAuth]);
       return [];
     },
-    listStudentLearningResources: async (receivedAuth) => {
+    listStudentLearningResourceSummaries: async (receivedAuth) => {
       calls.push(['resources', receivedAuth]);
       return [];
     },

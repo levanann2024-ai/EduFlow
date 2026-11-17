@@ -32,30 +32,44 @@ const {
   deleteClassLearningResourceChapter,
   deleteClassLearningResourceLesson,
   getClass,
+  getClassAssignmentDescription,
+  getClassAssignmentSubmission,
   getHomeroomClassGradeSummary,
   listClassAssignmentSubmissions,
+  listClassAssignmentSubmissionSummaries,
   getClassAssignmentSubmissionFile,
   getClassLearningResourceFile,
+  getClassLearningResource,
   getClassLearningResourceAsset,
   getTeacherLessonDraft,
   getTeacherLessonDraftAsset,
   getClassGradebook,
+  getClassGradebookSummary,
   listClasses,
   listClassAssignments,
+  listClassAssignmentSummaries,
+  listClassStudentAssignmentSummaries,
   listClassLearningResources,
+  listClassLearningResourceSummaries,
   listClassLearningResourceChapters,
   listClassStudents,
   listStudentExamRooms,
   listStudentExamResults,
   markStudentExamResultRead,
   getStudentExamResultFile,
+  getStudentLearningResource,
   listStudentAssignments,
+  getStudentAssignment,
+  listStudentAssignmentSummaries,
+  listStudentAssignmentNotificationSummaries,
   listStudentLearningResources,
+  listStudentLearningResourceSummaries,
   getStudentTimetable,
   listStudentSubjectAverages,
   listTeacherClassSubjects,
   listTeacherAssessments,
   listTeacherExamRooms,
+  listTeacherExamRoomIds,
   publishTeacherExamRoomGrades,
   saveClassGradebook,
   saveStudentGrades,
@@ -311,6 +325,24 @@ function requireUuid(value, field) {
   return value;
 }
 
+function resourceSummaryLimit(value) {
+  if (value === undefined) return 20;
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+    const error = new Error('Giới hạn tài liệu không hợp lệ.');
+    error.status = 400;
+    error.code = 'SCHOOL_INVALID_RESOURCE_LIMIT';
+    throw error;
+  }
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit > 20) {
+    const error = new Error('Giới hạn tài liệu không hợp lệ.');
+    error.status = 400;
+    error.code = 'SCHOOL_INVALID_RESOURCE_LIMIT';
+    throw error;
+  }
+  return limit;
+}
+
 router.use('/classes', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount);
 router.use('/assignments', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount);
 router.use('/student/resources', requireAuthForSchoolReads, requireAccountReady, requirePersistentAccount);
@@ -402,6 +434,10 @@ router.delete('/teacher/assessments/:kind/:clientId', asyncRoute(async (req, res
 }));
 
 router.get('/teacher/exam-rooms', asyncRoute(async (req, res) => {
+  if (req.query.idsOnly === 'true') {
+    const roomIds = await listTeacherExamRoomIds(req.auth);
+    return res.json({ success: true, rooms: roomIds.map((id) => ({ id })) });
+  }
   const rooms = await listTeacherExamRooms(req.auth);
   return res.json({ success: true, rooms });
 }));
@@ -514,6 +550,16 @@ router.get('/classes/:classId/gradebook', asyncRoute(async (req, res) => {
   return res.json({ success: true, students });
 }));
 
+router.get('/classes/:classId/gradebook-summary', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const summary = await getClassGradebookSummary(req.auth, classId, {
+    academicYear: req.query.academicYear,
+    semester: req.query.semester,
+    subject: req.query.subject,
+  });
+  return res.json({ success: true, summary });
+}));
+
 router.post('/classes/:classId/progress-analysis', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const result = await analyzeTeacherClassProgress(req.auth, classId, req.body ?? {});
@@ -572,6 +618,27 @@ router.get('/classes/:classId/assignments', asyncRoute(async (req, res) => {
   return res.json({ success: true, assignments });
 }));
 
+router.get('/classes/:classId/assignment-summaries', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const assignments = await listClassAssignmentSummaries(req.auth, classId, {
+    academicYear: req.query.academicYear,
+    semester: req.query.semester,
+    subject: req.query.subject,
+  });
+  return res.json({ success: true, assignments });
+}));
+
+router.get('/classes/:classId/students/:studentId/assignment-summaries', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const studentId = requireUuid(req.params.studentId, 'studentId');
+  const assignments = await listClassStudentAssignmentSummaries(req.auth, classId, studentId, {
+    academicYear: req.query.academicYear,
+    semester: req.query.semester,
+    subject: req.query.subject,
+  });
+  return res.json({ success: true, assignments });
+}));
+
 router.patch('/classes/:classId/assignment-chapters/:chapter', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const result = await renameClassAssignmentChapter(req.auth, classId, req.params.chapter, req.body ?? {});
@@ -615,6 +682,13 @@ router.put('/classes/:classId/assignments/:assignmentId', asyncRoute(async (req,
   return res.json({ success: true, assignment });
 }));
 
+router.get('/classes/:classId/assignments/:assignmentId/detail', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const assignmentId = requireUuid(req.params.assignmentId, 'assignmentId');
+  const assignment = await getClassAssignmentDescription(req.auth, classId, assignmentId);
+  return res.json({ success: true, assignment });
+}));
+
 router.delete('/classes/:classId/assignments/:assignmentId', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const assignmentId = requireUuid(req.params.assignmentId, 'assignmentId');
@@ -627,6 +701,21 @@ router.get('/classes/:classId/assignments/:assignmentId/submissions', asyncRoute
   const assignmentId = requireUuid(req.params.assignmentId, 'assignmentId');
   const result = await listClassAssignmentSubmissions(req.auth, classId, assignmentId);
   return res.json({ success: true, ...result });
+}));
+
+router.get('/classes/:classId/assignments/:assignmentId/submission-summaries', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const assignmentId = requireUuid(req.params.assignmentId, 'assignmentId');
+  const result = await listClassAssignmentSubmissionSummaries(req.auth, classId, assignmentId);
+  return res.json({ success: true, ...result });
+}));
+
+router.get('/classes/:classId/assignments/:assignmentId/submissions/:studentId', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const assignmentId = requireUuid(req.params.assignmentId, 'assignmentId');
+  const studentId = requireUuid(req.params.studentId, 'studentId');
+  const submission = await getClassAssignmentSubmission(req.auth, classId, assignmentId, studentId);
+  return res.json({ success: true, submission });
 }));
 
 async function sendAssignmentSubmissionFile(req, res, studentId) {
@@ -662,6 +751,23 @@ router.get('/classes/:classId/resources', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const resources = await listClassLearningResources(req.auth, classId);
   return res.json({ success: true, resources });
+}));
+
+router.get('/classes/:classId/resource-summaries', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const resources = await listClassLearningResourceSummaries(
+    req.auth,
+    classId,
+    resourceSummaryLimit(req.query.limit),
+  );
+  return res.json({ success: true, resources });
+}));
+
+router.get('/classes/:classId/resources/:resourceId', asyncRoute(async (req, res) => {
+  const classId = requireUuid(req.params.classId, 'classId');
+  const resourceId = requireUuid(req.params.resourceId, 'resourceId');
+  const resource = await getClassLearningResource(req.auth, classId, resourceId);
+  return res.json({ success: true, resource });
 }));
 
 router.get('/classes/:classId/resource-chapters', asyncRoute(async (req, res) => {
@@ -716,7 +822,7 @@ router.post('/classes/:classId/resources', asyncRoute(async (req, res) => {
   const classId = requireUuid(req.params.classId, 'classId');
   const input = { ...(req.body ?? {}) };
   if (input.editorDraftId !== undefined) input.editorDraftId = requireUuid(input.editorDraftId, 'editorDraftId');
-  const resource = await createClassLearningResource(req.auth, classId, input);
+  const resource = await createClassLearningResource(req.auth, classId, input, { includeDetails: false });
   return res.status(201).json({ success: true, resource });
 }));
 
@@ -735,7 +841,14 @@ router.put('/classes/:classId/resources/:resourceId', parseResourceFile, asyncRo
       });
     }
   }
-  const resource = await updateClassLearningResource(req.auth, classId, resourceId, input, req.file);
+  const resource = await updateClassLearningResource(
+    req.auth,
+    classId,
+    resourceId,
+    input,
+    req.file,
+    { includeDetails: false },
+  );
   return res.json({ success: true, resource });
 }));
 
@@ -813,6 +926,17 @@ router.get('/teacher/lesson-drafts/:draftId/assets/:assetId', asyncRoute(async (
 router.get('/student/resources', requireRole('student'), asyncRoute(async (req, res) => {
   const resources = await listStudentLearningResources(req.auth);
   return res.json({ success: true, resources });
+}));
+
+router.get('/student/resources/summary', requireRole('student'), asyncRoute(async (req, res) => {
+  const resources = await listStudentLearningResourceSummaries(req.auth);
+  return res.json({ success: true, resources });
+}));
+
+router.get('/student/resources/:resourceId', requireRole('student'), asyncRoute(async (req, res) => {
+  const resourceId = requireUuid(req.params.resourceId, 'resourceId');
+  const resource = await getStudentLearningResource(req.auth, resourceId);
+  return res.json({ success: true, resource });
 }));
 
 router.get('/student/timetable', asyncRoute(async (req, res) => {
@@ -1016,9 +1140,25 @@ router.post('/classes/:classId/assignments', asyncRoute(async (req, res) => {
   return res.status(201).json({ success: true, assignment });
 }));
 
+router.get('/assignments/notification-summaries', requireRole('student'), asyncRoute(async (req, res) => {
+  const assignments = await listStudentAssignmentNotificationSummaries(req.auth);
+  return res.json({ success: true, assignments });
+}));
+
+router.get('/assignments/summary', requireRole('student'), asyncRoute(async (req, res) => {
+  const assignments = await listStudentAssignmentSummaries(req.auth);
+  return res.json({ success: true, assignments });
+}));
+
 router.get('/assignments', requireRole('student'), asyncRoute(async (req, res) => {
   const assignments = await listStudentAssignments(req.auth);
   return res.json({ success: true, assignments });
+}));
+
+router.get('/assignments/:assignmentId', requireRole('student'), asyncRoute(async (req, res) => {
+  const assignmentId = requireUuid(req.params.assignmentId, 'assignmentId');
+  const assignment = await getStudentAssignment(req.auth, assignmentId);
+  return res.json({ success: true, assignment });
 }));
 
 router.put('/assignments/:assignmentId/submission', requireRole('student'), parseAssignmentSubmissionFiles, asyncRoute(async (req, res) => {

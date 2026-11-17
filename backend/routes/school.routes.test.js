@@ -122,6 +122,7 @@ function makeFixture() {
     examRooms: new Map(),
     classAssignments: [],
     classAssignmentSubmissions: [],
+    classLearningResources: [],
     classTimetableEvents: new Map(),
     examSessions: new Map(),
     examSubmissionFiles: new Map(),
@@ -171,6 +172,15 @@ const fakePool = {
     const query = sql.replace(/\s+/g, ' ').trim();
     if (query.startsWith('SELECT payload, sections FROM teacher_exam_rooms')) {
       throw new Error('teacher_exam_rooms has no sections column.');
+    }
+    if (query.startsWith('SELECT id FROM teacher_exam_rooms')
+      && query.includes('teacher_user_id = $1 AND school_id = $2')) {
+      const [teacherUserId, schoolId] = values;
+      return {
+        rows: [...fixture.examRooms.values()]
+          .filter((room) => room.teacher_user_id === teacherUserId && room.school_id === schoolId)
+          .map(({ id }) => ({ id })),
+      };
     }
     if (query.startsWith('SELECT f.original_name, f.media_type, f.size_bytes, f.content')
       && query.includes('WHERE s.id = $1 AND f.id = $2 AND s.student_user_id = $3')
@@ -1090,6 +1100,146 @@ const fakePool = {
           .map(({ payload }) => ({ payload })),
       };
     }
+    if (query.startsWith('SELECT subject, academic_year, description FROM class_assignments')) {
+      const [assignmentId, classId, teacherId] = values;
+      const assignment = fixture.classAssignments.find((item) => item.id === assignmentId
+        && item.class_id === classId && item.teacher_user_id === teacherId);
+      return { rowCount: assignment ? 1 : 0, rows: assignment ? [{
+        subject: assignment.subject,
+        academic_year: assignment.academic_year,
+        description: assignment.description,
+      }] : [] };
+    }
+    if (query.includes('AS graded_count')) {
+      const [classId, teacherId, academicYear, semester, subject] = values;
+      const assignments = fixture.classAssignments
+        .filter((assignment) => assignment.class_id === classId
+          && assignment.teacher_user_id === teacherId
+          && assignment.academic_year === academicYear
+          && assignment.semester === semester
+          && assignment.subject === subject);
+      return {
+        rows: assignments.map((assignment) => {
+          const students = fixture.classMemberships
+            .filter((membership) => membership.class_id === classId && membership.status === 'active')
+            .filter((membership) => {
+              const user = fixture.users.get(membership.student_user_id);
+              return user && user.status === 'active' && user.role === 'student';
+            });
+          const studentIds = new Set(students.map((student) => student.student_user_id));
+          const submissions = fixture.classAssignmentSubmissions
+            .filter((submission) => submission.assignment_id === assignment.id
+              && studentIds.has(submission.student_user_id));
+          const ungraded = submissions.filter((submission) => submission.submitted_at && !submission.graded_at);
+          return {
+            ...assignment,
+            description_preview: (assignment.description ?? '').slice(0, 160),
+            student_count: students.length,
+            submitted_count: submissions.filter((submission) => submission.submitted_at).length,
+            graded_count: submissions.filter((submission) => submission.graded_at).length,
+            ungraded_count: ungraded.length,
+            latest_ungraded_submission_at: ungraded
+              .map((submission) => submission.submitted_at)
+              .sort((first, second) => second - first)[0] ?? null,
+            latest_graded_at: submissions
+              .map((submission) => submission.graded_at)
+              .filter(Boolean)
+              .sort((first, second) => second - first)[0] ?? null,
+          };
+        }),
+      };
+    }
+    if (query.includes('FROM class_assignments a') && query.includes('cm.student_user_id = $6')) {
+      const [classId, teacherId, academicYear, semester, subject, studentId] = values;
+      const classroom = fixture.classes.find((item) => item.id === classId);
+      const membership = fixture.classMemberships.find((item) => (
+        item.class_id === classId && item.student_user_id === studentId && item.status === 'active'
+      ));
+      const user = fixture.users.get(studentId);
+      const activeSchoolIds = getActiveSchoolIds(studentId);
+      const authorizedStudent = classroom && membership && user?.role === 'student' && user.status === 'active'
+        && activeSchoolIds.length === 1 && activeSchoolIds[0] === classroom.school_id;
+      return {
+        rows: authorizedStudent
+          ? fixture.classAssignments
+            .filter((assignment) => assignment.class_id === classId
+              && assignment.teacher_user_id === teacherId
+              && assignment.academic_year === academicYear
+              && assignment.semester === semester
+              && assignment.subject === subject)
+            .map((assignment) => {
+              const submission = fixture.classAssignmentSubmissions.find((item) => (
+                item.assignment_id === assignment.id && item.student_user_id === studentId
+              ));
+              return {
+                id: assignment.id,
+                title: assignment.title,
+                subject: assignment.subject,
+                due_at: assignment.due_at,
+                submitted_at: submission?.submitted_at ?? null,
+                score: submission?.score ?? null,
+                graded_at: submission?.graded_at ?? null,
+              };
+            })
+          : [],
+      };
+    }
+    if (query.includes('active_school_count')
+      && query.includes('FROM class_memberships cm')
+      && query.includes('class_assignment_submissions s')) {
+      const [classId, assignmentId] = values;
+      const rows = fixture.classMemberships
+        .filter((membership) => membership.class_id === classId && membership.status === 'active')
+        .map((membership) => {
+          const user = fixture.users.get(membership.student_user_id);
+          if (!user || user.status !== 'active' || user.role !== 'student') return null;
+          const activeSchoolIds = getActiveSchoolIds(membership.student_user_id);
+          const submission = fixture.classAssignmentSubmissions.find((item) => (
+            item.assignment_id === assignmentId && item.student_user_id === membership.student_user_id
+          ));
+          return {
+            id: membership.student_user_id,
+            full_name: user.full_name,
+            submitted_at: submission?.submitted_at ?? null,
+            score: submission?.score ?? null,
+            graded_at: submission?.graded_at ?? null,
+            active_school_count: activeSchoolIds.length,
+            active_school_id: activeSchoolIds[0] ?? null,
+          };
+        })
+        .filter(Boolean);
+      return { rows };
+    }
+    if (query.includes('JOIN class_assignment_submissions s')
+      && query.includes('s.response_text')
+      && query.includes('cm.student_user_id = $3')) {
+      const [classId, assignmentId, studentId] = values;
+      const membership = fixture.classMemberships.find((item) => (
+        item.class_id === classId && item.student_user_id === studentId && item.status === 'active'
+      ));
+      const user = fixture.users.get(studentId);
+      const submission = fixture.classAssignmentSubmissions.find((item) => (
+        item.assignment_id === assignmentId && item.student_user_id === studentId
+      ));
+      if (!membership || !user || user.status !== 'active' || user.role !== 'student' || !submission) {
+        return { rowCount: 0, rows: [] };
+      }
+      return {
+        rowCount: 1,
+        rows: [{
+          id: studentId,
+          full_name: user.full_name,
+          response_text: submission.response_text ?? null,
+          submitted_at: submission.submitted_at ?? null,
+          score: submission.score ?? null,
+          teacher_feedback: submission.teacher_feedback ?? '',
+          question_scores: submission.question_scores ?? {},
+          question_feedback: submission.question_feedback ?? {},
+          graded_at: submission.graded_at ?? null,
+          files: [],
+        }],
+      };
+    }
     if (query.includes('active_school_count') && query.includes('FROM class_memberships cm')) {
       const [classId] = values;
       const rows = fixture.classMemberships
@@ -1230,6 +1380,76 @@ const fakePool = {
       ));
       return { rowCount: assigned ? 1 : 0, rows: assigned ? [{ '?column?': 1 }] : [] };
     }
+    if (query.includes('c.code AS class_code')
+      && query.includes('FROM class_memberships cm')
+      && query.includes('JOIN class_assignments a')
+      && !query.includes('teacher.full_name AS teacher_name')) {
+      const [studentId, schoolId] = values;
+      const rows = fixture.classMemberships
+        .filter((membership) => membership.student_user_id === studentId && membership.status === 'active')
+        .flatMap((membership) => {
+          const classroom = fixture.classes.find((item) => item.id === membership.class_id);
+          if (!classroom || classroom.school_id !== schoolId || classroom.status !== 'active'
+            || fixture.schools.get(classroom.school_id)?.status !== 'active') return [];
+          return fixture.classAssignments
+            .filter((assignment) => assignment.class_id === classroom.id)
+            .map((assignment) => ({
+              id: assignment.id,
+              title: assignment.title,
+              subject: assignment.subject,
+              created_at: assignment.created_at,
+              due_at: assignment.due_at,
+              class_code: classroom.code,
+              submitted_at: fixture.classAssignmentSubmissions.find((submission) => (
+                submission.assignment_id === assignment.id && submission.student_user_id === studentId
+              ))?.submitted_at ?? null,
+            }));
+        });
+      return { rows };
+    }
+    if (query.includes('class_learning_resources r')) {
+      if (query.includes('cm.student_user_id = $1')) {
+        const [studentId, schoolId, resourceId] = values;
+        const rows = fixture.classLearningResources
+          .filter((resource) => !resourceId || resource.id === resourceId)
+          .filter((resource) => {
+            const classroom = fixture.classes.find((item) => item.id === resource.class_id);
+            return classroom && classroom.school_id === schoolId && classroom.status === 'active'
+              && fixture.schools.get(classroom.school_id)?.status === 'active'
+              && fixture.classMemberships.some((membership) => (
+                membership.class_id === classroom.id
+                && membership.student_user_id === studentId
+                && membership.status === 'active'
+              ));
+          })
+          .map((resource) => {
+            const classroom = fixture.classes.find((item) => item.id === resource.class_id);
+            const teacher = fixture.users.get(resource.teacher_user_id);
+            return {
+              ...resource,
+              class_name: classroom.name,
+              class_code: classroom.code,
+              teacher_name: teacher.full_name,
+            };
+          });
+        return { rows };
+      }
+      if (query.includes('r.id = $1')) {
+        const [resourceId, classId, teacherId] = values;
+        const resource = fixture.classLearningResources.find((item) => (
+          item.id === resourceId && item.class_id === classId && item.teacher_user_id === teacherId
+        ));
+        return { rowCount: resource ? 1 : 0, rows: resource ? [resource] : [] };
+      }
+      const [classId, teacherId, limit = 20] = values;
+      return {
+        rows: fixture.classLearningResources
+          .filter((resource) => resource.class_id === classId && resource.teacher_user_id === teacherId)
+          .sort((first, second) => second.created_at - first.created_at)
+          .slice(0, limit)
+          .map(({ content, editor_document, ...resource }) => resource),
+      };
+    }
     if (query.includes('FROM class_assignments a') && query.includes('jsonb_agg')) {
       const [classId, teacherId, academicYear, semester, subject] = values;
       const activeUserFilter = query.includes("u.status = 'active'") && query.includes("u.role = 'student'");
@@ -1264,6 +1484,73 @@ const fakePool = {
             students,
           };
         }),
+      };
+    }
+    if (query.includes('class_assignments a')
+      && query.includes('teacher.full_name AS teacher_name')
+      && query.includes('cm.student_user_id = $1')) {
+      const [studentId, schoolId, requestedAssignmentId] = values;
+      const assignments = fixture.classAssignments
+        .filter((assignment) => !requestedAssignmentId || assignment.id === requestedAssignmentId)
+        .flatMap((assignment) => {
+          const classroom = fixture.classes.find((item) => item.id === assignment.class_id);
+          const membership = fixture.classMemberships.find((item) => (
+            item.class_id === assignment.class_id && item.student_user_id === studentId
+              && item.status === 'active'
+          ));
+          const teacher = fixture.users.get(assignment.teacher_user_id);
+          if (!classroom || classroom.school_id !== schoolId || classroom.status !== 'active'
+            || !membership || !teacher) return [];
+          const submission = fixture.classAssignmentSubmissions.find((item) => (
+            item.assignment_id === assignment.id && item.student_user_id === studentId
+          ));
+          return [{
+            id: assignment.id,
+            title: assignment.title,
+            description: assignment.description,
+            subject: assignment.subject,
+            academic_year: assignment.academic_year,
+            semester: assignment.semester,
+            chapter: assignment.chapter ?? null,
+            lesson: assignment.lesson ?? null,
+            period: assignment.period ?? null,
+            due_at: assignment.due_at,
+            created_at: assignment.created_at,
+            class_id: classroom.id,
+            class_name: classroom.name,
+            class_code: classroom.code,
+            teacher_name: teacher.full_name,
+            response_text: submission?.response_text ?? null,
+            submitted_at: submission?.submitted_at ?? null,
+            score: submission?.score ?? null,
+            teacher_feedback: submission?.teacher_feedback ?? '',
+            question_scores: submission?.question_scores ?? {},
+            question_feedback: submission?.question_feedback ?? {},
+            graded_at: submission?.graded_at ?? null,
+            files: [],
+          }];
+        });
+      return { rows: assignments };
+    }
+    if (query.startsWith('WITH student_averages AS')) {
+      const [classId, subject, academicYear, semester] = values;
+      const graded = fixture.studentTermGrades.filter((grade) => (
+        grade.class_id === classId && grade.subject === subject
+          && grade.academic_year === academicYear && grade.semester === semester
+          && fixture.classMemberships.some((membership) => (
+            membership.class_id === classId && membership.student_user_id === grade.student_user_id
+              && membership.status === 'active'
+          ))
+          && fixture.users.get(grade.student_user_id)?.status === 'active'
+      ));
+      return {
+        rows: [{
+          average: graded.length
+            ? graded.reduce((sum, grade) => sum + grade.confirmed_average, 0) / graded.length
+            : null,
+          graded_students: graded.length,
+          concerns: [],
+        }],
       };
     }
     if (query.includes('FROM class_memberships cm')) {
@@ -1471,6 +1758,26 @@ test('authorized teacher can read active students, but student cannot read a ros
   assert.equal(forbidden.status, 403);
 });
 
+test('teacher dashboard gradebook summary returns aggregates without a roster', async () => {
+  const response = await request(
+    `/classes/${ids.classA}/gradebook-summary?academicYear=2026-2027&semester=Kỳ%201&subject=Ngữ%20văn`,
+    ids.teacherA,
+  );
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.deepEqual(response.body.summary, {
+    average: 8,
+    gradedStudents: 1,
+    concerns: [],
+  });
+  assert.equal('students' in response.body, false);
+
+  const forbidden = await request(
+    `/classes/${ids.classA}/gradebook-summary?academicYear=2026-2027&semester=Kỳ%201&subject=Ngữ%20văn`,
+    ids.studentA,
+  );
+  assert.equal(forbidden.status, 403);
+});
+
 test('teacher assignment lists hide disabled students and their submissions', async () => {
   const assignmentId = '40000000-0000-4000-8000-000000000002';
   fixture.classAssignments.push({
@@ -1505,6 +1812,179 @@ test('teacher assignment lists hide disabled students and their submissions', as
   assert.equal(response.body.assignments[0].studentCount, 2);
   assert.equal(response.body.assignments[0].submittedCount, 0);
   assert.ok(!response.body.assignments[0].students.some((student) => student.id === ids.disabledStudent));
+
+  const summaries = await request(
+    `/classes/${ids.classA}/assignment-summaries?academicYear=2026-2027&semester=Kỳ%201&subject=Ngữ%20văn`,
+    ids.teacherA,
+  );
+  assert.equal(summaries.status, 200, JSON.stringify(summaries.body));
+  assert.deepEqual(summaries.body.assignments[0], {
+    id: assignmentId,
+    title: 'Bài tập thử',
+    descriptionPreview: '',
+    subject: 'Ngữ văn',
+    academicYear: '2026-2027',
+    semester: 'Kỳ 1',
+    chapter: null,
+    lesson: null,
+    period: null,
+    dueAt: new Date('2026-11-07T10:00:00.000Z').toISOString(),
+    createdAt: new Date('2026-11-01T10:00:00.000Z').toISOString(),
+    studentCount: 2,
+    submittedCount: 0,
+    gradedCount: 0,
+    ungradedCount: 0,
+    latestUngradedSubmissionAt: null,
+    latestGradedAt: null,
+  });
+
+  const studentAssignmentSummaries = await request(
+    `/classes/${ids.classA}/students/${ids.studentA}/assignment-summaries?academicYear=2026-2027&semester=Kỳ%201&subject=Ngữ%20văn`,
+    ids.teacherA,
+  );
+  assert.equal(studentAssignmentSummaries.status, 200, JSON.stringify(studentAssignmentSummaries.body));
+  assert.deepEqual(studentAssignmentSummaries.body.assignments, [{
+    id: assignmentId,
+    title: 'Bài tập thử',
+    subject: 'Ngữ văn',
+    dueAt: new Date('2026-11-07T10:00:00.000Z').toISOString(),
+    submittedAt: null,
+    score: null,
+    gradedAt: null,
+  }]);
+
+  const studentAssignmentNotifications = await request('/assignments/notification-summaries', ids.studentA);
+  assert.equal(studentAssignmentNotifications.status, 200, JSON.stringify(studentAssignmentNotifications.body));
+  assert.deepEqual(studentAssignmentNotifications.body.assignments, [{
+    id: assignmentId,
+    title: 'Bài tập thử',
+    subject: 'Ngữ văn',
+    classCode: '10A1',
+    createdAt: new Date('2026-11-01T10:00:00.000Z').toISOString(),
+    dueAt: new Date('2026-11-07T10:00:00.000Z').toISOString(),
+    submittedAt: null,
+  }]);
+
+  const studentAssignmentSummary = await request('/assignments/summary', ids.studentA);
+  assert.equal(studentAssignmentSummary.status, 200, JSON.stringify(studentAssignmentSummary.body));
+  assert.deepEqual(studentAssignmentSummary.body.assignments[0], {
+    id: assignmentId,
+    title: 'Bài tập thử',
+    subject: 'Ngữ văn',
+    academicYear: '2026-2027',
+    semester: 'Kỳ 1',
+    chapter: '',
+    lesson: '',
+    period: null,
+    dueAt: new Date('2026-11-07T10:00:00.000Z').toISOString(),
+    createdAt: new Date('2026-11-01T10:00:00.000Z').toISOString(),
+    classId: ids.classA,
+    className: 'Lớp 10A1',
+    classCode: '10A1',
+    teacherName: 'Teacher A',
+    submittedAt: null,
+    score: null,
+    gradedAt: null,
+  });
+  assert.equal('description' in studentAssignmentSummary.body.assignments[0], false);
+  assert.equal('responseText' in studentAssignmentSummary.body.assignments[0], false);
+
+  fixture.classMemberships = fixture.classMemberships.filter(
+    (item) => item.student_user_id !== ids.inconsistentRosterStudent,
+  );
+  fixture.classAssignmentSubmissions.push({
+    assignment_id: assignmentId,
+    student_user_id: ids.studentA,
+    response_text: 'Nội dung bài làm',
+    submitted_at: new Date('2026-11-06T10:00:00.000Z'),
+    score: null,
+    teacher_feedback: '',
+    question_scores: {},
+    question_feedback: {},
+    graded_at: null,
+  });
+  const studentAssignmentDetail = await request(`/assignments/${assignmentId}`, ids.studentA);
+  assert.equal(studentAssignmentDetail.status, 200, JSON.stringify(studentAssignmentDetail.body));
+  assert.equal(studentAssignmentDetail.body.assignment.responseText, 'Nội dung bài làm');
+  assert.deepEqual(studentAssignmentDetail.body.assignment.files, []);
+  const inaccessibleAssignmentDetail = await request(`/assignments/${assignmentId}`, ids.studentB);
+  assert.equal(inaccessibleAssignmentDetail.status, 404);
+
+  const submissionSummaries = await request(
+    `/classes/${ids.classA}/assignments/${assignmentId}/submission-summaries`,
+    ids.teacherA,
+  );
+  assert.equal(submissionSummaries.status, 200, JSON.stringify(submissionSummaries.body));
+  assert.deepEqual(submissionSummaries.body.submissions, [{
+    studentId: ids.studentA,
+    studentName: 'Student A',
+    submittedAt: new Date('2026-11-06T10:00:00.000Z').toISOString(),
+    score: null,
+    gradedAt: null,
+  }]);
+
+  const submission = await request(
+    `/classes/${ids.classA}/assignments/${assignmentId}/submissions/${ids.studentA}`,
+    ids.teacherA,
+  );
+  assert.equal(submission.status, 200, JSON.stringify(submission.body));
+  assert.equal(submission.body.submission.responseText, 'Nội dung bài làm');
+});
+
+test('learning resource summaries omit lesson content until the detail endpoint is requested', async () => {
+  const resourceId = '50000000-0000-4000-8000-000000000001';
+  fixture.classLearningResources.push({
+    id: resourceId,
+    class_id: ids.classA,
+    teacher_user_id: ids.teacherA,
+    subject: 'Ngữ văn',
+    academic_year: '2026-2027',
+    semester: 'Kỳ 1',
+    chapter: 'Chương 1',
+    lesson: 'Bài 1',
+    period: null,
+    title: 'Tài liệu thử',
+    content: 'Nội dung bài giảng dài',
+    editor_document: null,
+    note: '',
+    created_at: new Date('2026-11-01T10:00:00.000Z'),
+    files: [],
+  });
+
+  const teacherSummaries = await request(`/classes/${ids.classA}/resource-summaries`, ids.teacherA);
+  assert.equal(teacherSummaries.status, 200, JSON.stringify(teacherSummaries.body));
+  assert.equal(teacherSummaries.body.resources.length, 1);
+  assert.ok(!('content' in teacherSummaries.body.resources[0]));
+  assert.ok(!('editor_document' in teacherSummaries.body.resources[0]));
+
+  fixture.classLearningResources.push({
+    ...fixture.classLearningResources[0],
+    id: '50000000-0000-4000-8000-000000000002',
+    title: 'Tài liệu mới hơn',
+    created_at: new Date('2026-11-02T10:00:00.000Z'),
+  });
+  const limitedTeacherSummaries = await request(`/classes/${ids.classA}/resource-summaries?limit=1`, ids.teacherA);
+  assert.equal(limitedTeacherSummaries.status, 200, JSON.stringify(limitedTeacherSummaries.body));
+  assert.deepEqual(limitedTeacherSummaries.body.resources.map((resource) => resource.id), [
+    '50000000-0000-4000-8000-000000000002',
+  ]);
+  const invalidResourceLimit = await request(`/classes/${ids.classA}/resource-summaries?limit=21`, ids.teacherA);
+  assert.equal(invalidResourceLimit.status, 400);
+  assert.equal(invalidResourceLimit.body.code, 'SCHOOL_INVALID_RESOURCE_LIMIT');
+
+  const teacherDetail = await request(`/classes/${ids.classA}/resources/${resourceId}`, ids.teacherA);
+  assert.equal(teacherDetail.status, 200, JSON.stringify(teacherDetail.body));
+  assert.equal(teacherDetail.body.resource.content, 'Nội dung bài giảng dài');
+
+  const studentSummaries = await request('/student/resources/summary', ids.studentA);
+  assert.equal(studentSummaries.status, 200, JSON.stringify(studentSummaries.body));
+  assert.equal(studentSummaries.body.resources.length, 2);
+  assert.ok(!('content' in studentSummaries.body.resources[0]));
+  assert.ok(!('editorDocument' in studentSummaries.body.resources[0]));
+
+  const studentDetail = await request(`/student/resources/${resourceId}`, ids.studentA);
+  assert.equal(studentDetail.status, 200, JSON.stringify(studentDetail.body));
+  assert.equal(studentDetail.body.resource.content, 'Nội dung bài giảng dài');
 });
 
 test('unauthenticated and malformed class requests are rejected', async () => {
@@ -1911,9 +2391,15 @@ test('teacher exam rooms are saved, isolated by owner, and only accept ready exa
       { studentId: ids.rosterStudent, status: 'not-started' },
     ],
   );
+  const listedRoomIds = await request('/teacher/exam-rooms?idsOnly=true', ids.teacherB);
+  assert.equal(listedRoomIds.status, 200);
+  assert.deepEqual(listedRoomIds.body.rooms, [{ id: room.id }]);
   const otherTeacher = await request('/teacher/exam-rooms', ids.teacherA);
   assert.equal(otherTeacher.status, 200);
   assert.deepEqual(otherTeacher.body.rooms, []);
+  const otherTeacherRoomIds = await request('/teacher/exam-rooms?idsOnly=true', ids.teacherA);
+  assert.equal(otherTeacherRoomIds.status, 200);
+  assert.deepEqual(otherTeacherRoomIds.body.rooms, []);
   const otherTeacherGrading = await request(`/teacher/exam-rooms/${room.id}/grading`, ids.teacherA);
   assert.equal(otherTeacherGrading.status, 404);
   const teacherExamResults = await request('/student/exam-results', ids.teacherB);

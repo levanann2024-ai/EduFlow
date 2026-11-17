@@ -519,6 +519,18 @@ async function listTeacherExamRooms(auth) {
   }));
 }
 
+async function listTeacherExamRoomIds(auth) {
+  const schoolId = await getSingleActiveSchool(auth.userId, 'lecturer');
+  const result = await getPool().query(
+    `SELECT id
+       FROM teacher_exam_rooms
+      WHERE teacher_user_id = $1 AND school_id = $2
+      ORDER BY starts_at DESC, created_at DESC`,
+    [auth.userId, schoolId],
+  );
+  return result.rows.map((row) => row.id);
+}
+
 function studentExamRoomForClient(payload) {
   const snapshot = payload.examSnapshot;
   const sourceQuestions = snapshot.questions.map((question, index) => ({
@@ -2527,6 +2539,86 @@ async function getClassGradebook(auth, classId, { academicYear, semester, subjec
   }));
 }
 
+async function getClassGradebookSummary(auth, classId, { academicYear, semester, subject }) {
+  validatePeriod(academicYear, semester, subject);
+  const classroom = await requireTeacherSubject(auth, classId, subject);
+  validateClassAcademicYear(classroom, academicYear);
+  const result = await getPool().query(
+    `WITH student_averages AS (
+       SELECT u.id AS student_id, u.full_name,
+              COALESCE(
+                g.confirmed_average,
+                (
+                  COALESCE(g.regular_1, 0) + COALESCE(g.regular_2, 0)
+                  + COALESCE(g.regular_3, 0) + COALESCE(g.regular_4, 0)
+                  + 2 * COALESCE(g.midterm, 0) + 3 * COALESCE(g.final, 0)
+                ) / NULLIF(
+                  (CASE WHEN g.regular_1 IS NULL THEN 0 ELSE 1 END)
+                  + (CASE WHEN g.regular_2 IS NULL THEN 0 ELSE 1 END)
+                  + (CASE WHEN g.regular_3 IS NULL THEN 0 ELSE 1 END)
+                  + (CASE WHEN g.regular_4 IS NULL THEN 0 ELSE 1 END)
+                  + (CASE WHEN g.midterm IS NULL THEN 0 ELSE 2 END)
+                  + (CASE WHEN g.final IS NULL THEN 0 ELSE 3 END),
+                  0
+                )
+              ) AS average,
+              g.previous_confirmed_average AS previous_average
+         FROM class_memberships cm
+         JOIN users u ON u.id = cm.student_user_id AND u.status = 'active'
+         JOIN student_profiles sp ON sp.user_id = u.id
+         LEFT JOIN student_term_grades g
+           ON g.class_id = cm.class_id AND g.student_user_id = cm.student_user_id
+          AND g.subject = $2 AND g.academic_year = $3 AND g.semester = $4
+        WHERE cm.class_id = $1 AND cm.status = 'active'
+          AND EXISTS (
+            SELECT 1 FROM teacher_class_assignments tca
+             WHERE tca.class_id = cm.class_id AND tca.teacher_user_id = $5
+               AND tca.school_id = $6 AND lower(trim(tca.subject)) = lower(trim($2))
+               AND tca.revoked_at IS NULL
+          )
+     )
+     SELECT avg(average) FILTER (WHERE average IS NOT NULL) AS average,
+            count(*) FILTER (WHERE average IS NOT NULL)::int AS graded_students,
+            COALESCE(
+              json_agg(json_build_object(
+                'studentId', student_id,
+                'studentName', full_name,
+                'average', average,
+                'previousAverage', previous_average,
+                'kind', CASE
+                  WHEN average < 5 THEN 'low'
+                  ELSE 'declining'
+                END
+              ) ORDER BY full_name, student_id)
+                FILTER (WHERE average < 5 OR (
+                  previous_average IS NOT NULL AND average < previous_average
+                )),
+              '[]'::json
+            ) AS concerns
+       FROM student_averages`,
+    [
+      classroom.id,
+      subject.trim(),
+      academicYear,
+      semester,
+      auth.userId,
+      classroom.school_id,
+    ],
+  );
+  const row = result.rows[0];
+  return {
+    average: row.average === null ? null : Number(row.average),
+    gradedStudents: Number(row.graded_students),
+    concerns: row.concerns.map((concern) => ({
+      studentId: concern.studentId,
+      studentName: concern.studentName,
+      average: Number(concern.average),
+      previousAverage: concern.previousAverage === null ? null : Number(concern.previousAverage),
+      kind: concern.kind,
+    })),
+  };
+}
+
 function validateScore(value, field) {
   if (value !== null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10)) {
     throw serviceError(400, 'SCHOOL_INVALID_GRADE', `${field} phải nằm trong khoảng từ 0 đến 10 hoặc để trống.`);
@@ -2734,6 +2826,113 @@ async function listClassAssignments(auth, classId, { academicYear, semester, sub
   }));
 }
 
+async function listClassAssignmentSummaries(auth, classId, { academicYear, semester, subject }) {
+  validatePeriod(academicYear, semester, subject);
+  const classroom = await requireTeacherSubject(auth, classId, subject);
+  validateClassAcademicYear(classroom, academicYear);
+  const result = await getPool().query(
+    `SELECT a.id, a.title, left(a.description, 160) AS description_preview,
+            a.subject, a.academic_year, a.semester,
+            a.chapter, a.lesson, a.period, a.due_at, a.created_at,
+            count(DISTINCT u.id)::int AS student_count,
+            (count(DISTINCT s.student_user_id) FILTER (WHERE s.submitted_at IS NOT NULL AND u.id IS NOT NULL))::int AS submitted_count,
+            (count(DISTINCT s.student_user_id) FILTER (WHERE s.graded_at IS NOT NULL AND u.id IS NOT NULL))::int AS graded_count,
+            max(s.submitted_at) FILTER (
+              WHERE s.submitted_at IS NOT NULL AND s.graded_at IS NULL AND u.id IS NOT NULL
+            ) AS latest_ungraded_submission_at,
+            max(s.graded_at) FILTER (WHERE s.graded_at IS NOT NULL AND u.id IS NOT NULL) AS latest_graded_at,
+            (count(DISTINCT s.student_user_id) FILTER (
+              WHERE s.submitted_at IS NOT NULL AND s.graded_at IS NULL AND u.id IS NOT NULL
+            ))::int AS ungraded_count
+       FROM class_assignments a
+       LEFT JOIN class_memberships cm
+         ON cm.class_id = a.class_id AND cm.status = 'active'
+       LEFT JOIN users u
+         ON u.id = cm.student_user_id AND u.status = 'active' AND u.role = 'student'
+       LEFT JOIN class_assignment_submissions s
+         ON s.assignment_id = a.id AND s.student_user_id = cm.student_user_id
+        AND u.id IS NOT NULL
+      WHERE a.class_id = $1 AND a.teacher_user_id = $2
+        AND a.academic_year = $3 AND a.semester = $4 AND a.subject = $5
+        AND EXISTS (
+          SELECT 1 FROM teacher_class_assignments tca
+           WHERE tca.class_id = a.class_id AND tca.teacher_user_id = a.teacher_user_id
+             AND tca.school_id = a.school_id AND lower(trim(tca.subject)) = lower(trim(a.subject))
+             AND tca.revoked_at IS NULL
+        )
+      GROUP BY a.id
+      ORDER BY a.due_at, a.created_at`,
+    [classroom.id, auth.userId, academicYear, semester, subject.trim()],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    descriptionPreview: row.description_preview,
+    subject: row.subject,
+    academicYear: row.academic_year,
+    semester: row.semester,
+    chapter: row.chapter,
+    lesson: row.lesson,
+    period: row.period,
+    dueAt: row.due_at.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    studentCount: row.student_count,
+    submittedCount: row.submitted_count,
+    gradedCount: row.graded_count,
+    ungradedCount: row.ungraded_count,
+    latestUngradedSubmissionAt: row.latest_ungraded_submission_at?.toISOString() ?? null,
+    latestGradedAt: row.latest_graded_at?.toISOString() ?? null,
+  }));
+}
+
+async function listClassStudentAssignmentSummaries(
+  auth,
+  classId,
+  studentId,
+  { academicYear, semester, subject },
+) {
+  validatePeriod(academicYear, semester, subject);
+  const classroom = await requireTeacherSubject(auth, classId, subject);
+  validateClassAcademicYear(classroom, academicYear);
+  const result = await getPool().query(
+    `SELECT a.id, a.title, a.subject, a.due_at, s.submitted_at, s.score, s.graded_at
+       FROM class_assignments a
+       JOIN class_memberships cm
+         ON cm.class_id = a.class_id AND cm.student_user_id = $6 AND cm.status = 'active'
+       JOIN users u ON u.id = cm.student_user_id AND u.status = 'active' AND u.role = 'student'
+       JOIN student_profiles sp ON sp.user_id = u.id
+       LEFT JOIN class_assignment_submissions s
+         ON s.assignment_id = a.id AND s.student_user_id = cm.student_user_id
+      WHERE a.class_id = $1 AND a.teacher_user_id = $2
+        AND a.academic_year = $3 AND a.semester = $4 AND a.subject = $5
+        AND (SELECT count(DISTINCT active_school.id)
+               FROM school_memberships sm
+               JOIN schools active_school ON active_school.id = sm.school_id AND active_school.status = 'active'
+              WHERE sm.user_id = u.id AND sm.status = 'active') = 1
+        AND EXISTS (
+          SELECT 1 FROM school_memberships sm
+           WHERE sm.user_id = u.id AND sm.school_id = $7 AND sm.status = 'active'
+        )
+        AND EXISTS (
+          SELECT 1 FROM teacher_class_assignments tca
+           WHERE tca.class_id = a.class_id AND tca.teacher_user_id = a.teacher_user_id
+             AND tca.school_id = a.school_id AND lower(trim(tca.subject)) = lower(trim(a.subject))
+             AND tca.revoked_at IS NULL
+        )
+      ORDER BY a.due_at, a.created_at`,
+    [classroom.id, auth.userId, academicYear, semester, subject.trim(), studentId, classroom.school_id],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    subject: row.subject,
+    dueAt: row.due_at.toISOString(),
+    submittedAt: row.submitted_at?.toISOString() ?? null,
+    score: row.score === null ? null : Number(row.score),
+    gradedAt: row.graded_at?.toISOString() ?? null,
+  }));
+}
+
 async function findTeacherAssignment(auth, classId, assignmentId) {
   const assignmentResult = await getPool().query(
     `SELECT subject, academic_year, description
@@ -2747,7 +2946,12 @@ async function findTeacherAssignment(auth, classId, assignmentId) {
   const assignment = assignmentResult.rows[0];
   const classroom = await requireTeacherSubject(auth, classId, assignment.subject);
   validateClassAcademicYear(classroom, assignment.academic_year);
-  return assignment;
+  return { ...assignment, classroom };
+}
+
+async function getClassAssignmentDescription(auth, classId, assignmentId) {
+  const assignment = await findTeacherAssignment(auth, classId, assignmentId);
+  return { id: assignmentId, description: assignment.description };
 }
 
 function assignmentQuestionCount(description) {
@@ -2803,6 +3007,92 @@ async function listClassAssignmentSubmissions(auth, classId, assignmentId) {
         gradedAt: row.graded_at?.toISOString() ?? null,
         files: row.files,
       })),
+  };
+}
+
+async function listClassAssignmentSubmissionSummaries(auth, classId, assignmentId) {
+  const assignment = await findTeacherAssignment(auth, classId, assignmentId);
+  const result = await getPool().query(
+    `SELECT u.id, u.full_name, s.submitted_at, s.score, s.graded_at,
+            count(DISTINCT active_school.id)::int AS active_school_count,
+            MIN(active_school.id::text)::uuid AS active_school_id
+       FROM class_memberships cm
+       JOIN users u ON u.id = cm.student_user_id AND u.status = 'active' AND u.role = 'student'
+       JOIN student_profiles sp ON sp.user_id = u.id
+       LEFT JOIN school_memberships sm ON sm.user_id = u.id AND sm.status = 'active'
+       LEFT JOIN schools active_school
+         ON active_school.id = sm.school_id AND active_school.status = 'active'
+       LEFT JOIN class_assignment_submissions s
+         ON s.assignment_id = $2 AND s.student_user_id = cm.student_user_id
+      WHERE cm.class_id = $1 AND cm.status = 'active'
+      GROUP BY u.id, u.full_name, s.submitted_at, s.score, s.graded_at
+      ORDER BY u.full_name, u.id`,
+    [assignment.classroom.id, assignmentId],
+  );
+  if (result.rows.some((student) => (
+    student.active_school_count !== 1 || student.active_school_id !== assignment.classroom.school_id
+  ))) {
+    throw serviceError(
+      409,
+      'SCHOOL_MEMBERSHIP_INVARIANT_VIOLATION',
+      'Có học sinh trong lớp không thuộc đúng một trường đang hoạt động.',
+    );
+  }
+  return {
+    assignmentId,
+    submissions: result.rows.map((row) => ({
+      studentId: row.id,
+      studentName: row.full_name,
+      submittedAt: row.submitted_at?.toISOString() ?? null,
+      score: row.score === null ? null : Number(row.score),
+      gradedAt: row.graded_at?.toISOString() ?? null,
+    })),
+  };
+}
+
+async function getClassAssignmentSubmission(auth, classId, assignmentId, studentId) {
+  const assignment = await findTeacherAssignment(auth, classId, assignmentId);
+  const result = await getPool().query(
+    `SELECT u.id, u.full_name, s.response_text, s.submitted_at,
+            s.score, s.teacher_feedback, s.question_scores, s.question_feedback, s.graded_at,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', f.id, 'name', f.original_name, 'mediaType', f.media_type, 'sizeBytes', f.size_bytes
+              ) ORDER BY f.created_at, f.id)
+                FROM class_assignment_submission_files f
+               WHERE f.submission_id = s.id
+            ), '[]'::json) AS files
+       FROM class_memberships cm
+       JOIN users u ON u.id = cm.student_user_id AND u.status = 'active' AND u.role = 'student'
+       JOIN student_profiles sp ON sp.user_id = u.id
+       JOIN class_assignment_submissions s
+         ON s.assignment_id = $2 AND s.student_user_id = cm.student_user_id
+      WHERE cm.class_id = $1 AND cm.student_user_id = $3 AND cm.status = 'active'
+        AND (SELECT count(DISTINCT active_school.id)
+               FROM school_memberships sm
+               JOIN schools active_school ON active_school.id = sm.school_id AND active_school.status = 'active'
+              WHERE sm.user_id = u.id AND sm.status = 'active') = 1
+        AND EXISTS (
+          SELECT 1 FROM school_memberships sm
+           WHERE sm.user_id = u.id AND sm.school_id = $4 AND sm.status = 'active'
+        )`,
+    [classId, assignmentId, studentId, assignment.classroom.school_id],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_ASSIGNMENT_SUBMISSION_NOT_FOUND', 'Không tìm thấy bài nộp của học sinh trong lớp.');
+  }
+  const row = result.rows[0];
+  return {
+    studentId: row.id,
+    studentName: row.full_name,
+    responseText: row.response_text,
+    submittedAt: row.submitted_at?.toISOString() ?? null,
+    score: row.score === null ? null : Number(row.score),
+    teacherFeedback: row.teacher_feedback ?? '',
+    questionScores: row.question_scores ?? {},
+    questionFeedback: row.question_feedback ?? {},
+    gradedAt: row.graded_at?.toISOString() ?? null,
+    files: row.files,
   };
 }
 
@@ -3323,11 +3613,12 @@ async function getStudentTimetable(auth, semester, weekStart) {
   };
 }
 
-async function listStudentAssignments(auth) {
+async function queryStudentAssignments(auth, assignmentId = null) {
   if (auth.role !== 'student') {
     throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ học sinh được xem danh sách bài tập cá nhân.');
   }
   const schoolId = await getSingleActiveSchool(auth.userId, 'student');
+  const assignmentFilter = assignmentId ? 'AND a.id = $3' : '';
   const result = await getPool().query(
     `SELECT a.id, a.title, a.description, a.subject, a.academic_year, a.semester,
             a.chapter, a.lesson, a.period, a.due_at, a.created_at,
@@ -3350,8 +3641,9 @@ async function listStudentAssignments(auth) {
        LEFT JOIN class_assignment_submissions s
          ON s.assignment_id = a.id AND s.student_user_id = cm.student_user_id
       WHERE cm.student_user_id = $1 AND cm.status = 'active'
+        ${assignmentFilter}
       ORDER BY a.due_at, a.created_at`,
-    [auth.userId, schoolId],
+    assignmentId ? [auth.userId, schoolId, assignmentId] : [auth.userId, schoolId],
   );
   return result.rows.map((row) => ({
     id: row.id,
@@ -3377,6 +3669,90 @@ async function listStudentAssignments(auth) {
     questionFeedback: row.question_feedback ?? {},
     gradedAt: row.graded_at?.toISOString() ?? null,
     files: row.files,
+  }));
+}
+
+async function listStudentAssignments(auth) {
+  return queryStudentAssignments(auth);
+}
+
+async function getStudentAssignment(auth, assignmentId) {
+  const assignments = await queryStudentAssignments(auth, assignmentId);
+  if (assignments.length === 0) {
+    throw serviceError(404, 'SCHOOL_ASSIGNMENT_NOT_FOUND', 'Không tìm thấy bài tập trong phạm vi lớp học.');
+  }
+  return assignments[0];
+}
+
+async function listStudentAssignmentSummaries(auth) {
+  if (auth.role !== 'student') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ học sinh được xem danh sách bài tập cá nhân.');
+  }
+  const schoolId = await getSingleActiveSchool(auth.userId, 'student');
+  const result = await getPool().query(
+    `SELECT a.id, a.title, a.subject, a.academic_year, a.semester,
+            a.chapter, a.lesson, a.period, a.due_at, a.created_at,
+            c.id AS class_id, c.name AS class_name, c.code AS class_code,
+            teacher.full_name AS teacher_name,
+            s.submitted_at, s.score, s.graded_at
+       FROM class_memberships cm
+       JOIN classes c ON c.id = cm.class_id AND c.school_id = $2 AND c.status = 'active'
+       JOIN schools sc ON sc.id = c.school_id AND sc.status = 'active'
+       JOIN class_assignments a ON a.class_id = c.id
+       JOIN users teacher ON teacher.id = a.teacher_user_id
+       LEFT JOIN class_assignment_submissions s
+         ON s.assignment_id = a.id AND s.student_user_id = cm.student_user_id
+      WHERE cm.student_user_id = $1 AND cm.status = 'active'
+      ORDER BY a.due_at, a.created_at`,
+    [auth.userId, schoolId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    subject: row.subject,
+    academicYear: row.academic_year,
+    semester: row.semester,
+    chapter: row.chapter ?? '',
+    lesson: row.lesson ?? '',
+    period: row.period,
+    dueAt: row.due_at.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    classId: row.class_id,
+    className: row.class_name,
+    classCode: row.class_code,
+    teacherName: row.teacher_name,
+    submittedAt: row.submitted_at?.toISOString() ?? null,
+    score: row.score === null ? null : Number(row.score),
+    gradedAt: row.graded_at?.toISOString() ?? null,
+  }));
+}
+
+async function listStudentAssignmentNotificationSummaries(auth) {
+  if (auth.role !== 'student') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ học sinh được xem danh sách bài tập cá nhân.');
+  }
+  const schoolId = await getSingleActiveSchool(auth.userId, 'student');
+  const result = await getPool().query(
+    `SELECT a.id, a.title, a.subject, a.created_at, a.due_at,
+            c.code AS class_code, s.submitted_at
+       FROM class_memberships cm
+       JOIN classes c ON c.id = cm.class_id AND c.school_id = $2 AND c.status = 'active'
+       JOIN schools sc ON sc.id = c.school_id AND sc.status = 'active'
+       JOIN class_assignments a ON a.class_id = c.id
+       LEFT JOIN class_assignment_submissions s
+         ON s.assignment_id = a.id AND s.student_user_id = cm.student_user_id
+      WHERE cm.student_user_id = $1 AND cm.status = 'active'
+      ORDER BY a.due_at, a.created_at`,
+    [auth.userId, schoolId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    subject: row.subject,
+    classCode: row.class_code,
+    createdAt: row.created_at.toISOString(),
+    dueAt: row.due_at.toISOString(),
+    submittedAt: row.submitted_at?.toISOString() ?? null,
   }));
 }
 
@@ -3756,9 +4132,12 @@ function validateLearningResource(input) {
   }
 }
 
-async function createClassLearningResource(auth, classId, input) {
+async function createClassLearningResource(auth, classId, input, { includeDetails = true } = {}) {
   validateLearningResource(input);
   const { academicYear, semester, subject, chapter, lesson, period, title, content, note = '' } = input;
+  const returningColumns = includeDetails
+    ? 'id, class_id, subject, academic_year, semester, chapter, lesson, period, title, content, note, editor_document, created_at'
+    : 'id';
   const classroom = await requireTeacherSubject(auth, classId, subject);
   validateClassAcademicYear(classroom, academicYear);
   if (input.editorDraftId) {
@@ -3792,8 +4171,7 @@ async function createClassLearningResource(auth, classId, input) {
                  AND tca.school_id = c.school_id AND lower(trim(tca.subject)) = lower(trim($5))
                  AND tca.revoked_at IS NULL
             )
-         RETURNING id, class_id, subject, academic_year, semester, chapter, lesson, period,
-                   title, content, note, editor_document, created_at`,
+         RETURNING ${returningColumns}`,
         [
           resourceId, classroom.id, classroom.school_id, auth.userId, subject.trim(), academicYear,
           semester, chapter.trim(), lesson.trim(), period?.trim() || null, title.trim(), content.trim(),
@@ -3830,8 +4208,7 @@ async function createClassLearningResource(auth, classId, input) {
         `UPDATE class_learning_resources
             SET editor_document = $2
           WHERE id = $1
-          RETURNING id, class_id, subject, academic_year, semester, chapter, lesson, period,
-                    title, content, note, editor_document, created_at`,
+          RETURNING ${returningColumns}`,
         [resourceId, publishedDocument],
       );
       await client.query('COMMIT');
@@ -3856,8 +4233,7 @@ async function createClassLearningResource(auth, classId, input) {
              AND tca.school_id = c.school_id AND lower(trim(tca.subject)) = lower(trim($5))
              AND tca.revoked_at IS NULL
         )
-     RETURNING id, class_id, subject, academic_year, semester, chapter, lesson, period,
-               title, content, note, created_at`,
+     RETURNING ${returningColumns}`,
     [
       randomUUID(), classroom.id, classroom.school_id, auth.userId, subject.trim(), academicYear,
       semester, chapter.trim(), lesson.trim(), period?.trim() || null, title.trim(), content.trim(), note.trim(),
@@ -3897,12 +4273,15 @@ function lessonEditorResourceAssetIds(document, resourceId) {
   return [...ids];
 }
 
-async function updateClassLearningResource(auth, classId, resourceId, input, file) {
+async function updateClassLearningResource(auth, classId, resourceId, input, file, { includeDetails = true } = {}) {
   const { academicYear, semester, subject, chapter, lesson, period, title, content, note = '', fileName } = input;
   const uploadedFile = file ? validateResourceFile(file) : null;
   const editorDocument = input.editorDocument === undefined
     ? undefined
     : validateLessonEditorDocument(input.editorDocument, { resourceId });
+  const returningColumns = includeDetails
+    ? 'r.id, r.class_id, r.subject, r.academic_year, r.semester, r.chapter, r.lesson, r.period, r.title, r.content, r.note, r.editor_document, r.created_at'
+    : 'r.id';
   validatePeriod(academicYear, semester, subject);
   if (typeof chapter !== 'string' || chapter.trim().length === 0 || chapter.length > 160
     || typeof lesson !== 'string' || lesson.trim().length === 0 || lesson.length > 200
@@ -3966,8 +4345,7 @@ async function updateClassLearningResource(auth, classId, resourceId, input, fil
                AND tca.school_id = r.school_id AND lower(trim(tca.subject)) = lower(trim($5))
                AND tca.revoked_at IS NULL
           )
-       RETURNING r.id, r.class_id, r.subject, r.academic_year, r.semester, r.chapter,
-                 r.lesson, r.period, r.title, r.content, r.note, r.editor_document, r.created_at`,
+       RETURNING ${returningColumns}`,
       [
         resourceId, classroom.id, classroom.school_id, auth.userId, subject.trim(), academicYear,
         semester, chapter.trim(), lesson.trim(), period?.trim() || null, title.trim(), content.trim(), note.trim(),
@@ -4430,6 +4808,77 @@ async function listClassLearningResources(auth, classId) {
   return result.rows;
 }
 
+async function listClassLearningResourceSummaries(auth, classId, limit = 20) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+    throw serviceError(400, 'SCHOOL_INVALID_RESOURCE_LIMIT', 'Giới hạn tài liệu không hợp lệ.');
+  }
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được xem tài liệu đã đăng của lớp.');
+  }
+  const classroom = await findAccessibleClass(auth, classId);
+  if (!classroom) {
+    throw serviceError(404, 'SCHOOL_CLASS_NOT_FOUND', 'Không tìm thấy lớp trong phạm vi truy cập.');
+  }
+  const result = await getPool().query(
+    `SELECT r.id, r.class_id, r.subject, r.academic_year, r.semester, r.chapter,
+            r.lesson, r.period, r.title, r.note, r.created_at,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', f.id, 'name', f.original_name, 'mediaType', f.media_type, 'sizeBytes', f.size_bytes
+              ))
+                FROM class_learning_resource_files f
+               WHERE f.resource_id = r.id
+            ), '[]'::json) AS files
+       FROM class_learning_resources r
+      WHERE r.class_id = $1 AND r.teacher_user_id = $2
+        AND EXISTS (
+          SELECT 1 FROM teacher_class_assignments tca
+           WHERE tca.class_id = r.class_id AND tca.teacher_user_id = r.teacher_user_id
+             AND tca.school_id = r.school_id AND lower(trim(tca.subject)) = lower(trim(r.subject))
+             AND tca.revoked_at IS NULL
+        )
+      ORDER BY r.created_at DESC
+      LIMIT $3`,
+    [classroom.id, auth.userId, limit],
+  );
+  return result.rows;
+}
+
+async function getClassLearningResource(auth, classId, resourceId) {
+  if (auth.role !== 'lecturer') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ giáo viên được xem tài liệu đã đăng của lớp.');
+  }
+  const classroom = await findAccessibleClass(auth, classId);
+  if (!classroom) {
+    throw serviceError(404, 'SCHOOL_CLASS_NOT_FOUND', 'Không tìm thấy lớp trong phạm vi truy cập.');
+  }
+  const result = await getPool().query(
+    `SELECT r.id, r.class_id, r.subject, r.academic_year, r.semester, r.chapter,
+            r.lesson, r.period, r.title, r.content, r.note, r.editor_document, r.created_at,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', f.id, 'name', f.original_name, 'mediaType', f.media_type, 'sizeBytes', f.size_bytes
+              ))
+                FROM class_learning_resource_files f
+               WHERE f.resource_id = r.id
+            ), '[]'::json) AS files
+       FROM class_learning_resources r
+      WHERE r.id = $1 AND r.class_id = $2 AND r.teacher_user_id = $3
+        AND EXISTS (
+          SELECT 1 FROM teacher_class_assignments tca
+           WHERE tca.class_id = r.class_id AND tca.teacher_user_id = r.teacher_user_id
+             AND tca.school_id = r.school_id AND lower(trim(tca.subject)) = lower(trim(r.subject))
+             AND tca.revoked_at IS NULL
+        )
+      LIMIT 1`,
+    [resourceId, classroom.id, auth.userId],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_LEARNING_RESOURCE_NOT_FOUND', 'Không tìm thấy tài liệu trong lớp hiện tại.');
+  }
+  return result.rows[0];
+}
+
 async function listStudentLearningResources(auth) {
   if (auth.role !== 'student') {
     throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ học sinh được xem tài liệu lớp học.');
@@ -4475,6 +4924,102 @@ async function listStudentLearningResources(auth) {
     teacherName: row.teacher_name,
     files: row.files,
   }));
+}
+
+async function listStudentLearningResourceSummaries(auth) {
+  if (auth.role !== 'student') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ học sinh được xem tài liệu lớp học.');
+  }
+  const schoolId = await getSingleActiveSchool(auth.userId, 'student');
+  const result = await getPool().query(
+    `SELECT r.id, r.class_id, c.name AS class_name, c.code AS class_code,
+            r.subject, r.academic_year, r.semester, r.chapter, r.lesson, r.period,
+            r.title, r.note, r.created_at,
+            teacher.full_name AS teacher_name,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', f.id, 'name', f.original_name, 'mediaType', f.media_type, 'sizeBytes', f.size_bytes
+              ))
+                FROM class_learning_resource_files f
+               WHERE f.resource_id = r.id
+            ), '[]'::json) AS files
+       FROM class_memberships cm
+       JOIN classes c ON c.id = cm.class_id AND c.school_id = $2 AND c.status = 'active'
+       JOIN schools sc ON sc.id = c.school_id AND sc.status = 'active'
+       JOIN class_learning_resources r ON r.class_id = c.id
+       JOIN users teacher ON teacher.id = r.teacher_user_id
+      WHERE cm.student_user_id = $1 AND cm.status = 'active'
+      ORDER BY r.created_at DESC`,
+    [auth.userId, schoolId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    classId: row.class_id,
+    className: row.class_name,
+    classCode: row.class_code,
+    subject: row.subject,
+    academicYear: row.academic_year,
+    semester: row.semester,
+    chapter: row.chapter,
+    lesson: row.lesson,
+    period: row.period,
+    title: row.title,
+    note: row.note,
+    createdAt: row.created_at.toISOString(),
+    teacherName: row.teacher_name,
+    files: row.files,
+  }));
+}
+
+async function getStudentLearningResource(auth, resourceId) {
+  if (auth.role !== 'student') {
+    throw serviceError(403, 'SCHOOL_ROLE_FORBIDDEN', 'Chỉ học sinh được xem tài liệu lớp học.');
+  }
+  const schoolId = await getSingleActiveSchool(auth.userId, 'student');
+  const result = await getPool().query(
+    `SELECT r.id, r.class_id, c.name AS class_name, c.code AS class_code,
+            r.subject, r.academic_year, r.semester, r.chapter, r.lesson, r.period,
+            r.title, r.content, r.note, r.editor_document, r.created_at,
+            teacher.full_name AS teacher_name,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                'id', f.id, 'name', f.original_name, 'mediaType', f.media_type, 'sizeBytes', f.size_bytes
+              ))
+                FROM class_learning_resource_files f
+               WHERE f.resource_id = r.id
+            ), '[]'::json) AS files
+       FROM class_memberships cm
+       JOIN classes c ON c.id = cm.class_id AND c.school_id = $2 AND c.status = 'active'
+       JOIN schools sc ON sc.id = c.school_id AND sc.status = 'active'
+       JOIN class_learning_resources r ON r.class_id = c.id
+       JOIN users teacher ON teacher.id = r.teacher_user_id
+      WHERE cm.student_user_id = $1 AND cm.status = 'active' AND r.id = $3
+      LIMIT 1`,
+    [auth.userId, schoolId, resourceId],
+  );
+  if (result.rowCount === 0) {
+    throw serviceError(404, 'SCHOOL_LEARNING_RESOURCE_NOT_FOUND', 'Không tìm thấy tài liệu trong lớp hiện tại.');
+  }
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    classId: row.class_id,
+    className: row.class_name,
+    classCode: row.class_code,
+    subject: row.subject,
+    academicYear: row.academic_year,
+    semester: row.semester,
+    chapter: row.chapter,
+    lesson: row.lesson,
+    period: row.period,
+    title: row.title,
+    content: row.content,
+    note: row.note,
+    editorDocument: row.editor_document,
+    createdAt: row.created_at.toISOString(),
+    teacherName: row.teacher_name,
+    files: row.files,
+  };
 }
 
 async function getClassLearningResourceAsset(auth, resourceId, assetId) {
@@ -4700,16 +5245,24 @@ module.exports = {
   deleteClassLearningResourceChapter,
   getClass,
   getHomeroomClassGradeSummary,
+  getClassAssignmentDescription,
+  getClassAssignmentSubmission,
   listClassAssignmentSubmissions,
+  listClassAssignmentSubmissionSummaries,
   getClassAssignmentSubmissionFile,
   getClassLearningResourceFile,
+  getClassLearningResource,
   getClassLearningResourceAsset,
   getTeacherLessonDraft,
   getTeacherLessonDraftAsset,
   getClassGradebook,
+  getClassGradebookSummary,
   listClasses,
   listClassAssignments,
+  listClassAssignmentSummaries,
+  listClassStudentAssignmentSummaries,
   listClassLearningResources,
+  listClassLearningResourceSummaries,
   listClassLearningResourceChapters,
   updateTeacherLessonDraft,
   createTeacherLessonDraftAsset,
@@ -4720,7 +5273,12 @@ module.exports = {
   getStudentExamResultFile,
   publishTeacherExamRoomGrades,
   listStudentAssignments,
+  getStudentAssignment,
+  listStudentAssignmentSummaries,
+  listStudentAssignmentNotificationSummaries,
   listStudentLearningResources,
+  listStudentLearningResourceSummaries,
+  getStudentLearningResource,
   getStudentTimetable,
   listStudentSubjectAverages,
   assignmentQuestionCount,
@@ -4728,6 +5286,7 @@ module.exports = {
   listTeacherClassSubjects,
   listTeacherAssessments,
   listTeacherExamRooms,
+  listTeacherExamRoomIds,
   getTeacherExamRoomGrading,
   getTeacherExamGradeEvidenceFile,
   getTeacherExamSubmissionFile,

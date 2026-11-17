@@ -116,6 +116,7 @@ function App() {
   const [onboardingStorageError, setOnboardingStorageError] = useState('');
   const [page, setPage] = useState<Page>(() => teacherPageByPath[window.location.pathname] ?? 'dashboard');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const refreshNotificationsRef = useRef<(() => Promise<void>) | null>(null);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState('');
@@ -494,10 +495,13 @@ function App() {
     }
 
     let active = true;
+    let refreshing = false;
     if (demoNotificationReadIds.current.userId !== notificationUserId) {
       demoNotificationReadIds.current = { userId: notificationUserId, ids: new Set() };
     }
     const refresh = async () => {
+      if (refreshing || document.hidden) return;
+      refreshing = true;
       setNotificationsLoading(true);
       try {
         const feed = notificationIsDemo
@@ -516,16 +520,28 @@ function App() {
         setNotificationsError(error instanceof Error ? error.message : 'Không thể tải thông báo.');
       } finally {
         if (active) setNotificationsLoading(false);
+        refreshing = false;
       }
     };
 
+    refreshNotificationsRef.current = refresh;
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     void refresh();
     const refreshTimer = window.setInterval(() => { void refresh(); }, 5 * 60_000);
     return () => {
       active = false;
+      if (refreshNotificationsRef.current === refresh) refreshNotificationsRef.current = null;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.clearInterval(refreshTimer);
     };
-  }, [notificationIsDemo, notificationRole, notificationUserId, notificationsOpen, userSettings.language]);
+  }, [notificationIsDemo, notificationRole, notificationUserId, userSettings.language]);
+
+  useEffect(() => {
+    if (notificationsOpen) void refreshNotificationsRef.current?.();
+  }, [notificationsOpen]);
 
   if (window.location.pathname === '/upload-mobile') {
     return <MobileExamUploadPage />;

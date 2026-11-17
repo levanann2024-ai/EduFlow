@@ -56,6 +56,18 @@ export interface GradebookStudent extends ClassStudent {
   };
 }
 
+export interface ClassGradebookSummary {
+  average: number | null;
+  gradedStudents: number;
+  concerns: Array<{
+    studentId: string;
+    studentName: string;
+    average: number;
+    previousAverage: number | null;
+    kind: 'low' | 'declining';
+  }>;
+}
+
 export interface TeacherProgressAnalysis {
   classOverview: string;
   learningAdvice: string;
@@ -160,9 +172,27 @@ export interface ClassAssignment {
   students: AssignmentStudentStatus[];
 }
 
+export interface ClassAssignmentSummary extends Omit<ClassAssignment, 'description' | 'students'> {
+  descriptionPreview: string;
+  gradedCount: number;
+  ungradedCount: number;
+  latestUngradedSubmissionAt: string | null;
+  latestGradedAt: string | null;
+}
+
 export interface AssignmentStudentStatus {
   id: string;
   fullName: string;
+  submittedAt: string | null;
+  score: number | null;
+  gradedAt: string | null;
+}
+
+export interface ClassStudentAssignmentSummary {
+  id: string;
+  title: string;
+  subject: string;
+  dueAt: string;
   submittedAt: string | null;
   score: number | null;
   gradedAt: string | null;
@@ -181,11 +211,26 @@ export interface AssignmentSubmission {
   gradedAt: string | null;
 }
 
+export interface AssignmentSubmissionSummary {
+  studentId: string;
+  studentName: string;
+  submittedAt: string | null;
+  score: number | null;
+  gradedAt: string | null;
+}
+
 export interface AssignmentSubmissionFile {
   id: string;
   name: string;
   mediaType: string;
   sizeBytes: number;
+}
+
+export interface SubmittedAssignmentResult {
+  assignmentId: string;
+  responseText: string;
+  submittedAt: string;
+  files: AssignmentSubmissionFile[];
 }
 
 export interface StudentAssignment extends Omit<ClassAssignment, 'studentCount' | 'submittedCount' | 'students'> {
@@ -201,6 +246,36 @@ export interface StudentAssignment extends Omit<ClassAssignment, 'studentCount' 
   questionScores: Record<string, number>;
   questionFeedback: Record<string, string>;
   gradedAt: string | null;
+}
+
+export interface StudentAssignmentSummary {
+  id: string;
+  title: string;
+  subject: string;
+  academicYear: string;
+  semester: string;
+  chapter: string;
+  lesson: string;
+  period: string | null;
+  dueAt: string;
+  createdAt?: string;
+  classId: string;
+  className: string;
+  classCode: string;
+  teacherName: string;
+  submittedAt: string | null;
+  score: number | null;
+  gradedAt: string | null;
+}
+
+export interface StudentAssignmentNotificationSummary {
+  id: string;
+  title: string;
+  subject: string;
+  classCode: string;
+  createdAt: string;
+  dueAt: string;
+  submittedAt: string | null;
 }
 
 export interface ClassLearningResource {
@@ -220,6 +295,8 @@ export interface ClassLearningResource {
   files: LearningResourceFile[];
 }
 
+export type ClassLearningResourceSummary = Omit<ClassLearningResource, 'content' | 'editorDocument'>;
+
 export interface LearningResourceFile {
   id: string;
   name: string;
@@ -232,6 +309,8 @@ export interface StudentLearningResource extends ClassLearningResource {
   classCode: string;
   teacherName: string;
 }
+
+export type StudentLearningResourceSummary = Omit<StudentLearningResource, 'content' | 'editorDocument'>;
 
 export interface StudentTimetable {
   semester: ProgressSemester;
@@ -613,6 +692,22 @@ export async function listTeacherExamRooms<T extends { id: string }>(): Promise<
     throw new Error('Phản hồi danh sách phòng thi không đúng định dạng.');
   }
   return body.rooms as T[];
+}
+
+export async function listTeacherExamRoomIds(): Promise<string[]> {
+  const response = await authenticatedFetch('/api/teacher/exam-rooms?idsOnly=true', { method: 'GET' });
+  const body = await readResponse(response);
+  if (!Array.isArray(body.rooms) || !body.rooms.every((room) => (
+    isRecord(room) && typeof room.id === 'string'
+  ))) {
+    throw new Error('Phản hồi danh sách mã phòng thi không đúng định dạng.');
+  }
+  return body.rooms.map((room) => {
+    if (!isRecord(room) || typeof room.id !== 'string') {
+      throw new Error('Phản hồi danh sách mã phòng thi không đúng định dạng.');
+    }
+    return room.id;
+  });
 }
 
 export interface TeacherExamGradingQuestion {
@@ -1390,6 +1485,39 @@ export async function getClassGradebook(
   return body.students;
 }
 
+function isClassGradebookSummary(value: unknown): value is ClassGradebookSummary {
+  return isRecord(value)
+    && (value.average === null || (typeof value.average === 'number' && Number.isFinite(value.average)))
+    && Number.isInteger(value.gradedStudents)
+    && Array.isArray(value.concerns)
+    && value.concerns.every((concern) => isRecord(concern)
+      && typeof concern.studentId === 'string'
+      && typeof concern.studentName === 'string'
+      && typeof concern.average === 'number'
+      && Number.isFinite(concern.average)
+      && (concern.previousAverage === null
+        || (typeof concern.previousAverage === 'number' && Number.isFinite(concern.previousAverage)))
+      && (concern.kind === 'low' || concern.kind === 'declining'));
+}
+
+export async function getClassGradebookSummary(
+  classId: string,
+  academicYear: string,
+  semester: string,
+  subject: string,
+): Promise<ClassGradebookSummary> {
+  const query = new URLSearchParams({ academicYear, semester, subject });
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/gradebook-summary?${query.toString()}`,
+    { method: 'GET' },
+  );
+  const body = await readResponse(response);
+  if (!isClassGradebookSummary(body.summary)) {
+    throw new Error('Phản hồi tóm tắt sổ điểm không đúng định dạng.');
+  }
+  return body.summary;
+}
+
 function isTeacherProgressAnalysis(value: unknown): value is TeacherProgressAnalysis {
   return isRecord(value)
     && typeof value.classOverview === 'string'
@@ -1538,6 +1666,7 @@ function isClassAssignment(value: unknown): value is ClassAssignment {
   return isRecord(value)
     && typeof value.id === 'string'
     && typeof value.title === 'string'
+    && typeof value.descriptionPreview === 'string'
     && typeof value.description === 'string'
     && typeof value.subject === 'string'
     && typeof value.academicYear === 'string'
@@ -1558,6 +1687,26 @@ function isClassAssignment(value: unknown): value is ClassAssignment {
       && (student.gradedAt === null || typeof student.gradedAt === 'string'));
 }
 
+function isClassAssignmentSummary(value: unknown): value is ClassAssignmentSummary {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.title === 'string'
+    && typeof value.subject === 'string'
+    && typeof value.academicYear === 'string'
+    && typeof value.semester === 'string'
+    && typeof value.chapter === 'string'
+    && typeof value.lesson === 'string'
+    && (value.period === null || typeof value.period === 'string')
+    && typeof value.dueAt === 'string'
+    && (value.createdAt === undefined || typeof value.createdAt === 'string')
+    && typeof value.studentCount === 'number'
+    && typeof value.submittedCount === 'number'
+    && typeof value.gradedCount === 'number'
+    && typeof value.ungradedCount === 'number'
+    && (value.latestUngradedSubmissionAt === null || typeof value.latestUngradedSubmissionAt === 'string')
+    && (value.latestGradedAt === null || typeof value.latestGradedAt === 'string');
+}
+
 function isAssignmentSubmission(value: unknown): value is AssignmentSubmission {
   return isRecord(value)
     && typeof value.studentId === 'string'
@@ -1573,12 +1722,30 @@ function isAssignmentSubmission(value: unknown): value is AssignmentSubmission {
     && (value.gradedAt === null || typeof value.gradedAt === 'string')
 }
 
+function isAssignmentSubmissionSummary(value: unknown): value is AssignmentSubmissionSummary {
+  return isRecord(value)
+    && typeof value.studentId === 'string'
+    && typeof value.studentName === 'string'
+    && (value.submittedAt === null || typeof value.submittedAt === 'string')
+    && (value.score === null || (typeof value.score === 'number' && Number.isFinite(value.score)))
+    && (value.gradedAt === null || typeof value.gradedAt === 'string');
+}
+
 function isAssignmentSubmissionFile(value: unknown): value is AssignmentSubmissionFile {
   return isRecord(value)
     && typeof value.id === 'string'
     && typeof value.name === 'string'
     && typeof value.mediaType === 'string'
     && typeof value.sizeBytes === 'number';
+}
+
+function isSubmittedAssignmentResult(value: unknown): value is SubmittedAssignmentResult {
+  return isRecord(value)
+    && typeof value.assignmentId === 'string'
+    && typeof value.responseText === 'string'
+    && typeof value.submittedAt === 'string'
+    && Array.isArray(value.files)
+    && value.files.every(isAssignmentSubmissionFile);
 }
 
 export async function saveStudentGrades(
@@ -1659,6 +1826,65 @@ export async function listClassAssignments(
   return body.assignments;
 }
 
+export async function listClassAssignmentSummaries(
+  classId: string,
+  academicYear: string,
+  semester: string,
+  subject: string,
+): Promise<ClassAssignmentSummary[]> {
+  const query = new URLSearchParams({ academicYear, semester, subject });
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignment-summaries?${query.toString()}`,
+    { method: 'GET' },
+  );
+  const body = await parseAssignmentResponse(response);
+  if (!Array.isArray(body.assignments) || !body.assignments.every(isClassAssignmentSummary)) {
+    throw new Error('Phản hồi tóm tắt bài tập không đúng định dạng.');
+  }
+  return body.assignments;
+}
+
+export async function listClassStudentAssignmentSummaries(
+  classId: string,
+  studentId: string,
+  academicYear: string,
+  semester: string,
+  subject: string,
+): Promise<ClassStudentAssignmentSummary[]> {
+  const query = new URLSearchParams({ academicYear, semester, subject });
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/students/${encodeURIComponent(studentId)}/assignment-summaries?${query.toString()}`,
+    { method: 'GET' },
+  );
+  const body = await parseAssignmentResponse(response);
+  if (!Array.isArray(body.assignments) || !body.assignments.every((assignment) => (
+    isRecord(assignment)
+    && typeof assignment.id === 'string'
+    && typeof assignment.title === 'string'
+    && typeof assignment.subject === 'string'
+    && typeof assignment.dueAt === 'string'
+    && (assignment.submittedAt === null || typeof assignment.submittedAt === 'string')
+    && (assignment.score === null || (typeof assignment.score === 'number' && Number.isFinite(assignment.score)))
+    && (assignment.gradedAt === null || typeof assignment.gradedAt === 'string')
+  ))) {
+    throw new Error('Phản hồi tiến độ bài tập học sinh không đúng định dạng.');
+  }
+  return body.assignments;
+}
+
+export async function getClassAssignmentDescription(classId: string, assignmentId: string): Promise<string> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}/detail`,
+    { method: 'GET' },
+  );
+  const body = await parseAssignmentResponse(response);
+  if (!isRecord(body.assignment) || body.assignment.id !== assignmentId
+    || typeof body.assignment.description !== 'string') {
+    throw new Error('Phản hồi nội dung bài tập không đúng định dạng.');
+  }
+  return body.assignment.description;
+}
+
 export async function listClassAssignmentSubmissions(
   classId: string,
   assignmentId: string,
@@ -1674,6 +1900,39 @@ export async function listClassAssignmentSubmissions(
     throw new Error('Phản hồi danh sách bài nộp không đúng định dạng.');
   }
   return body.submissions;
+}
+
+export async function listClassAssignmentSubmissionSummaries(
+  classId: string,
+  assignmentId: string,
+): Promise<AssignmentSubmissionSummary[]> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}/submission-summaries`,
+    { method: 'GET' },
+  );
+  const body = await parseAssignmentResponse(response);
+  if (body.assignmentId !== assignmentId
+    || !Array.isArray(body.submissions)
+    || !body.submissions.every(isAssignmentSubmissionSummary)) {
+    throw new Error('Phản hồi tóm tắt bài nộp không đúng định dạng.');
+  }
+  return body.submissions;
+}
+
+export async function getClassAssignmentSubmission(
+  classId: string,
+  assignmentId: string,
+  studentId: string,
+): Promise<AssignmentSubmission> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}/submissions/${encodeURIComponent(studentId)}`,
+    { method: 'GET' },
+  );
+  const body = await parseAssignmentResponse(response);
+  if (!isAssignmentSubmission(body.submission)) {
+    throw new Error('Phản hồi bài nộp chi tiết không đúng định dạng.');
+  }
+  return body.submission;
 }
 
 export async function saveClassAssignmentGrade(
@@ -1867,6 +2126,8 @@ interface RawClassLearningResource {
   files: LearningResourceFile[];
 }
 
+type RawClassLearningResourceSummary = Omit<RawClassLearningResource, 'content' | 'editor_document'>;
+
 function isLearningResourceFile(value: unknown): value is LearningResourceFile {
   return isRecord(value)
     && typeof value.id === 'string'
@@ -1894,6 +2155,23 @@ function isClassLearningResource(value: unknown): value is RawClassLearningResou
     && value.files.every(isLearningResourceFile);
 }
 
+function isClassLearningResourceSummary(value: unknown): value is RawClassLearningResourceSummary {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.class_id === 'string'
+    && typeof value.subject === 'string'
+    && typeof value.academic_year === 'string'
+    && typeof value.semester === 'string'
+    && typeof value.chapter === 'string'
+    && typeof value.lesson === 'string'
+    && (value.period === null || typeof value.period === 'string')
+    && typeof value.title === 'string'
+    && typeof value.note === 'string'
+    && typeof value.created_at === 'string'
+    && Array.isArray(value.files)
+    && value.files.every(isLearningResourceFile);
+}
+
 function mapClassLearningResource(value: RawClassLearningResource): ClassLearningResource {
   return {
     id: value.id,
@@ -1913,6 +2191,23 @@ function mapClassLearningResource(value: RawClassLearningResource): ClassLearnin
   };
 }
 
+function mapClassLearningResourceSummary(value: RawClassLearningResourceSummary): ClassLearningResourceSummary {
+  return {
+    id: value.id,
+    classId: value.class_id,
+    subject: value.subject,
+    academicYear: value.academic_year,
+    semester: value.semester,
+    chapter: value.chapter,
+    lesson: value.lesson,
+    period: value.period,
+    title: value.title,
+    note: value.note,
+    createdAt: value.created_at,
+    files: value.files,
+  };
+}
+
 export async function listClassLearningResources(classId: string): Promise<ClassLearningResource[]> {
   const response = await authenticatedFetch(`/api/classes/${encodeURIComponent(classId)}/resources`, { method: 'GET' });
   const body = await readResponse(response);
@@ -1920,6 +2215,34 @@ export async function listClassLearningResources(classId: string): Promise<Class
     throw new Error('Phản hồi tài liệu lớp không đúng định dạng.');
   }
   return body.resources.map(mapClassLearningResource);
+}
+
+export async function listClassLearningResourceSummaries(
+  classId: string,
+  limit?: number,
+): Promise<ClassLearningResourceSummary[]> {
+  const query = limit === undefined ? '' : `?limit=${encodeURIComponent(String(limit))}`;
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resource-summaries${query}`,
+    { method: 'GET' },
+  );
+  const body = await readResponse(response);
+  if (!Array.isArray(body.resources) || !body.resources.every(isClassLearningResourceSummary)) {
+    throw new Error('Phản hồi tóm tắt tài liệu lớp không đúng định dạng.');
+  }
+  return body.resources.map(mapClassLearningResourceSummary);
+}
+
+export async function getClassLearningResource(classId: string, resourceId: string): Promise<ClassLearningResource> {
+  const response = await authenticatedFetch(
+    `/api/classes/${encodeURIComponent(classId)}/resources/${encodeURIComponent(resourceId)}`,
+    { method: 'GET' },
+  );
+  const body = await readResponse(response);
+  if (!isClassLearningResource(body.resource)) {
+    throw new Error('Phản hồi tài liệu lớp không đúng định dạng.');
+  }
+  return mapClassLearningResource(body.resource);
 }
 
 export async function listClassLearningResourceChapters(
@@ -2342,6 +2665,26 @@ function isStudentLearningResource(value: unknown): value is StudentLearningReso
     && value.files.every(isLearningResourceFile);
 }
 
+function isStudentLearningResourceSummary(value: unknown): value is StudentLearningResourceSummary {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.classId === 'string'
+    && typeof value.className === 'string'
+    && typeof value.classCode === 'string'
+    && typeof value.subject === 'string'
+    && typeof value.academicYear === 'string'
+    && typeof value.semester === 'string'
+    && typeof value.chapter === 'string'
+    && typeof value.lesson === 'string'
+    && (value.period === null || typeof value.period === 'string')
+    && typeof value.title === 'string'
+    && typeof value.note === 'string'
+    && typeof value.createdAt === 'string'
+    && typeof value.teacherName === 'string'
+    && Array.isArray(value.files)
+    && value.files.every(isLearningResourceFile);
+}
+
 export async function listStudentLearningResources(): Promise<StudentLearningResource[]> {
   const response = await authenticatedFetch('/api/student/resources', { method: 'GET' });
   const body = await readResponse(response);
@@ -2349,6 +2692,27 @@ export async function listStudentLearningResources(): Promise<StudentLearningRes
     throw new Error('Phản hồi tài liệu học sinh không đúng định dạng.');
   }
   return body.resources;
+}
+
+export async function listStudentLearningResourceSummaries(): Promise<StudentLearningResourceSummary[]> {
+  const response = await authenticatedFetch('/api/student/resources/summary', { method: 'GET' });
+  const body = await readResponse(response);
+  if (!Array.isArray(body.resources) || !body.resources.every(isStudentLearningResourceSummary)) {
+    throw new Error('Phản hồi tóm tắt tài liệu học sinh không đúng định dạng.');
+  }
+  return body.resources;
+}
+
+export async function getStudentLearningResource(resourceId: string): Promise<StudentLearningResource> {
+  const response = await authenticatedFetch(
+    `/api/student/resources/${encodeURIComponent(resourceId)}`,
+    { method: 'GET' },
+  );
+  const body = await readResponse(response);
+  if (!isStudentLearningResource(body.resource)) {
+    throw new Error('Phản hồi tài liệu học sinh không đúng định dạng.');
+  }
+  return body.resource;
 }
 
 function isStudentTimetableResponse(value: unknown): value is StudentTimetableResponse {
@@ -2615,6 +2979,68 @@ export async function listStudentAssignments(): Promise<StudentAssignment[]> {
   return body.assignments;
 }
 
+function isStudentAssignmentSummary(value: unknown): value is StudentAssignmentSummary {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.title === 'string'
+    && typeof value.subject === 'string'
+    && typeof value.academicYear === 'string'
+    && typeof value.semester === 'string'
+    && typeof value.chapter === 'string'
+    && typeof value.lesson === 'string'
+    && (value.period === null || typeof value.period === 'string')
+    && typeof value.dueAt === 'string'
+    && (value.createdAt === undefined || typeof value.createdAt === 'string')
+    && typeof value.classId === 'string'
+    && typeof value.className === 'string'
+    && typeof value.classCode === 'string'
+    && typeof value.teacherName === 'string'
+    && (value.submittedAt === null || typeof value.submittedAt === 'string')
+    && (value.score === null || (typeof value.score === 'number' && Number.isFinite(value.score)))
+    && (value.gradedAt === null || typeof value.gradedAt === 'string');
+}
+
+export async function listStudentAssignmentSummaries(signal?: AbortSignal): Promise<StudentAssignmentSummary[]> {
+  const response = await authenticatedFetch('/api/assignments/summary', { method: 'GET', signal });
+  const body = await parseAssignmentResponse(response);
+  if (!Array.isArray(body.assignments) || !body.assignments.every(isStudentAssignmentSummary)) {
+    throw new Error('Phản hồi tóm tắt bài tập học sinh không đúng định dạng.');
+  }
+  return body.assignments;
+}
+
+export async function getStudentAssignment(assignmentId: string, signal?: AbortSignal): Promise<StudentAssignment> {
+  const response = await authenticatedFetch(`/api/assignments/${encodeURIComponent(assignmentId)}`, {
+    method: 'GET',
+    signal,
+  });
+  const body = await parseAssignmentResponse(response);
+  if (!isStudentAssignment(body.assignment)) {
+    throw new Error('Phản hồi chi tiết bài tập học sinh không đúng định dạng.');
+  }
+  return body.assignment;
+}
+
+function isStudentAssignmentNotificationSummary(value: unknown): value is StudentAssignmentNotificationSummary {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.title === 'string'
+    && typeof value.subject === 'string'
+    && typeof value.classCode === 'string'
+    && typeof value.createdAt === 'string'
+    && typeof value.dueAt === 'string'
+    && (value.submittedAt === null || typeof value.submittedAt === 'string');
+}
+
+export async function listStudentAssignmentNotificationSummaries(): Promise<StudentAssignmentNotificationSummary[]> {
+  const response = await authenticatedFetch('/api/assignments/notification-summaries', { method: 'GET' });
+  const body = await parseAssignmentResponse(response);
+  if (!Array.isArray(body.assignments) || !body.assignments.every(isStudentAssignmentNotificationSummary)) {
+    throw new Error('Phản hồi tóm tắt thông báo bài tập không đúng định dạng.');
+  }
+  return body.assignments;
+}
+
 function isStudentSubjectAverage(value: unknown): value is StudentSubjectAverage {
   return isRecord(value)
     && typeof value.classId === 'string'
@@ -2792,7 +3218,7 @@ export async function submitAssignment(
   assignmentId: string,
   responseText: string,
   files: File[] = [],
-): Promise<void> {
+): Promise<SubmittedAssignmentResult> {
   const formData = new FormData();
   formData.set('responseText', responseText);
   files.forEach((file) => formData.append('files', file, file.name));
@@ -2803,5 +3229,10 @@ export async function submitAssignment(
       body: formData,
     },
   );
-  await readResponse(response);
+  const body = await readResponse(response);
+  const submission = body.submission;
+  if (!isSubmittedAssignmentResult(submission) || submission.assignmentId !== assignmentId) {
+    throw new Error('Phản hồi bài nộp không đúng định dạng.');
+  }
+  return submission;
 }
