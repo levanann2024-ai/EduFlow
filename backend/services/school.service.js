@@ -2170,6 +2170,17 @@ async function listClasses(auth, requestedSchoolId) {
               (SELECT count(*)::int
                  FROM class_assignments assignment
                 WHERE assignment.class_id = c.id
+                  AND assignment.school_id = c.school_id
+                  AND assignment.teacher_user_id = $1
+                  AND assignment.academic_year = c.academic_year
+                  AND EXISTS (
+                    SELECT 1 FROM teacher_class_assignments assignment_teacher
+                     WHERE assignment_teacher.class_id = c.id
+                       AND assignment_teacher.teacher_user_id = $1
+                       AND assignment_teacher.school_id = c.school_id
+                       AND lower(trim(assignment_teacher.subject)) = lower(trim(assignment.subject))
+                       AND assignment_teacher.revoked_at IS NULL
+                  )
                   AND EXISTS (
                     SELECT 1
                       FROM class_memberships cm

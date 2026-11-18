@@ -1368,6 +1368,30 @@ const fakePool = {
               ? grades.reduce((total, grade) => total + grade.confirmed_average, 0) / grades.length
               : null;
           }
+          if (query.includes('AS pending_assignment_count')) {
+            row.pending_assignment_count = fixture.classAssignments.filter((assignment) => (
+              assignment.class_id === classroom.id
+              && assignment.school_id === classroom.school_id
+              && assignment.teacher_user_id === teacherId
+              && assignment.academic_year === classroom.academic_year
+              && fixture.teacherAssignments.some((teacherAssignment) => (
+                teacherAssignment.class_id === classroom.id
+                && teacherAssignment.teacher_user_id === teacherId
+                && teacherAssignment.school_id === classroom.school_id
+                && teacherAssignment.revoked_at === null
+                && teacherAssignment.subject.trim().toLowerCase() === assignment.subject.trim().toLowerCase()
+              ))
+              && fixture.classMemberships.some((membership) => {
+                if (membership.class_id !== classroom.id || membership.status !== 'active') return false;
+                const user = fixture.users.get(membership.student_user_id);
+                if (!user || user.status !== 'active' || user.role !== 'student') return false;
+                const submission = fixture.classAssignmentSubmissions.find((item) => (
+                  item.assignment_id === assignment.id && item.student_user_id === membership.student_user_id
+                ));
+                return !submission || !submission.submitted_at;
+              })
+            )).length;
+          }
           return row;
         });
       return { rows };
@@ -1671,6 +1695,39 @@ test('teacher sees only assigned classes and cannot read a class after assignmen
   fixture.teacherAssignments[0].revoked_at = new Date();
   const revoked = await request(`/classes/${ids.classA}`, ids.teacherA);
   assert.equal(revoked.status, 404);
+});
+
+test('class pending assignment count only includes current-year assignments visible to the teacher', async () => {
+  fixture.classAssignments.push(
+    {
+      id: '40000000-0000-4000-8000-000000000101',
+      class_id: ids.classA,
+      school_id: ids.schoolA,
+      teacher_user_id: ids.teacherA,
+      subject: 'Ngữ văn',
+      academic_year: '2026-2027',
+    },
+    {
+      id: '40000000-0000-4000-8000-000000000102',
+      class_id: ids.classA,
+      school_id: ids.schoolA,
+      teacher_user_id: ids.teacherA,
+      subject: 'Ngữ văn',
+      academic_year: '2025-2026',
+    },
+    {
+      id: '40000000-0000-4000-8000-000000000103',
+      class_id: ids.classA,
+      school_id: ids.schoolA,
+      teacher_user_id: ids.teacherB,
+      subject: 'Ngữ văn',
+      academic_year: '2026-2027',
+    },
+  );
+
+  const response = await request('/classes', ids.teacherA);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.classes[0].pending_assignment_count, 1);
 });
 
 test('a former homeroom teacher loses current class access after the assignment ends', async () => {

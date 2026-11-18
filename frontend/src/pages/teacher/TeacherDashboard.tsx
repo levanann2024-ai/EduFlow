@@ -37,6 +37,7 @@ import type { Page } from '@/types';
 import { AiImageAttachment } from '@/components/AiImageAttachment';
 import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
+import { getIncompleteTeacherScheduleEntries, getUpcomingTeacherSchedule } from '@/utils/teacherDashboardSchedule';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
 import type { ExamRoomRecord } from './examRoomDemoData';
 
@@ -116,14 +117,6 @@ function getWeekStart(date: Date) {
   const month = String(monday.getMonth() + 1).padStart(2, '0');
   const day = String(monday.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function getWeekDate(weekStart: string, weekday: number) {
-  const [year, month, day] = weekStart.split('-').map(Number);
-  if (!year || !month || !day || weekday < 1 || weekday > 7) return null;
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + weekday - 1);
-  return date;
 }
 
 function getCalendarDate(value: string) {
@@ -375,23 +368,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
 
   const upcomingSchedule = useMemo(() => {
     if (!dashboard) return null;
-    const weekTimetables = [dashboard.timetable, dashboard.tomorrowTimetable]
-      .filter((timetable, index, all): timetable is TeacherTimetableResponse => (
-        Boolean(timetable)
-        && all.findIndex((candidate) => candidate?.timetable?.weekStart === timetable?.timetable?.weekStart) === index
-      ));
-    for (let daysAhead = 1; daysAhead <= 7; daysAhead += 1) {
-      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysAhead);
-      const weekday = ((date.getDay() + 6) % 7) + 1;
-      const weekStart = getWeekStart(date);
-      const week = weekTimetables.find((candidate) => candidate.timetable?.weekStart === weekStart);
-      if (!week || week.timetable?.isTemplate) continue;
-      const entries = week.entries
-        .filter((entry) => entry.weekday === weekday && entry.type !== 'cancelled')
-        .sort((first, second) => first.period - second.period);
-      if (entries.length > 0) return { date, entries };
-    }
-    return null;
+    return getUpcomingTeacherSchedule([dashboard.timetable, dashboard.tomorrowTimetable], now);
   }, [dashboard, now]);
   const upcomingWork = useMemo(() => {
     return [...(dashboard?.timetable?.upcomingWork ?? [])]
@@ -403,18 +380,25 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       .sort((first, second) => new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime())
   ), [dashboard, now]);
   const pendingAppeals = dashboard?.appeals.filter((appeal) => appeal.status === 'pending') ?? [];
+  const incompleteTimetableEntries = getIncompleteTeacherScheduleEntries(
+    dashboard?.timetable ?? null,
+    currentWeekStart,
+  );
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const nextSevenDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
   const scheduleWeeks = [dashboard?.timetable, dashboard?.tomorrowTimetable]
     .filter((response, index, all): response is TeacherTimetableResponse => (
-      Boolean(response?.timetable && !response.timetable.isTemplate)
+      Boolean(response?.timetable)
       && all.findIndex((candidate) => candidate?.timetable?.weekStart === response?.timetable?.weekStart) === index
     ));
   const scheduleExamKeys = new Set<string>();
   const timetableAttentionItems = scheduleWeeks.flatMap(({ timetable, entries }) => (
     entries.flatMap((entry) => {
-      const scheduledDate = getWeekDate(timetable?.weekStart ?? '', entry.weekday);
-      if (!scheduledDate || scheduledDate > nextSevenDays) return [];
+      const [year, month, day] = (timetable?.weekStart ?? '').split('-').map(Number);
+      if (!year || !month || !day || entry.weekday < 1 || entry.weekday > 7) return [];
+      const scheduledDate = new Date(year, month - 1, day);
+      scheduledDate.setDate(scheduledDate.getDate() + entry.weekday - 1);
+      if (scheduledDate > nextSevenDays) return [];
       const items = [];
       if (entry.hasExam) {
         const examDateTime = entry.examStartsAt || entry.dueAt;
@@ -554,6 +538,18 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
       onClick: () => onNavigate('schedule'),
     }]
     : [];
+  const incompleteTimetableItem = incompleteTimetableEntries.length > 0
+    ? [{
+      id: `timetable-incomplete-${currentWeekStart}`,
+      title: `Còn ${incompleteTimetableEntries.length} tiết chưa ghi đề mục trong TKB tuần này`,
+      detail: `${incompleteTimetableEntries.slice(0, 3).map((entry) => (
+        `${entry.classCode} · ${entry.subject} · ${weekdayLabels[entry.weekday]}, tiết ${entry.period}`
+      )).join(' | ')}${incompleteTimetableEntries.length > 3 ? ` · và ${incompleteTimetableEntries.length - 3} tiết khác` : ''}`,
+      tone: 'amber' as const,
+      icon: CalendarDays,
+      onClick: () => onNavigate('schedule'),
+    }]
+    : [];
 
   const submitChatPrompt = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -563,6 +559,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
   };
 
   const attentionItems = [
+    ...incompleteTimetableItem,
     ...timetableNoteItem,
     ...timetableAttentionItems,
     ...upcomingExams
