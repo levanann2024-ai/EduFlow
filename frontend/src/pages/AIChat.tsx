@@ -452,7 +452,7 @@ function ChatMessageList({
         )}
         <div className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
           <ChatAvatar role={message.role} userAvatar={userAvatar} userInitials={userInitials} />
-          <div className={`relative max-w-[85%] sm:max-w-[75%] ${message.role === 'user' ? 'text-right' : ''}`}>
+          <div className={`relative min-w-0 max-w-[90%] sm:max-w-[88%] lg:max-w-[75%] ${message.role === 'user' ? 'text-right' : ''}`}>
             <div className={`inline-block rounded-2xl px-4 py-3 text-left text-sm leading-relaxed ${message.role === 'user' ? 'bg-blue-600 text-white chat-user-markdown' : 'border border-slate-200 bg-slate-50 text-slate-700 markdown-body'}`}>
               {role === 'student' && message.role === 'assistant' && messageIndex > 0 && (
                 <button type="button" disabled={bookmarkDisabled} onClick={() => onBookmark(message, messageIndex)}
@@ -606,9 +606,9 @@ function useMobileKeyboardInset() {
 }
 
 function useIsMobileChat() {
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 1279px)').matches);
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const mediaQuery = window.matchMedia('(max-width: 1279px)');
     const update = () => setIsMobile(mediaQuery.matches);
     mediaQuery.addEventListener('change', update);
     return () => mediaQuery.removeEventListener('change', update);
@@ -616,7 +616,7 @@ function useIsMobileChat() {
   return isMobile;
 }
 
-export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gender, initialSubject, initialPrompt, initialImage, onInitialImageConsumed, initialConversationId, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; avatarUrl?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; initialImage?: File | null; onInitialImageConsumed?: () => void; initialConversationId?: string; onExit?: () => void; isDemo?: boolean }) {
+export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gender, initialSubject, initialPrompt, autoSendInitialPrompt = false, onInitialPromptConsumed, initialImage, onInitialImageConsumed, initialConversationId, onExit, isDemo = false }: { role: Role; userName: string; userId?: string; avatarUrl?: string; studentId?: string; gender?: AuthUser['gender']; initialSubject?: string; initialPrompt?: string; autoSendInitialPrompt?: boolean; onInitialPromptConsumed?: () => void; initialImage?: File | null; onInitialImageConsumed?: () => void; initialConversationId?: string; onExit?: () => void; isDemo?: boolean }) {
   const language = useAppLanguage();
   const userInitials = userName.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toLocaleUpperCase('vi');
   const [messages, setMessages] = useState<ChatMessage[]>(() => getInitialMessages(role, gender, language));
@@ -634,7 +634,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
   const [historyLoading, setHistoryLoading] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(
-    () => window.matchMedia('(min-width: 768px)').matches,
+    () => window.matchMedia('(min-width: 1280px)').matches,
   );
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
@@ -646,6 +646,8 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const autoSendStartedRef = useRef(false);
+  const handleSendRef = useRef<((text?: string) => Promise<void>) | null>(null);
   const { composerStyle: mobileComposerStyle } = useMobileKeyboardInset();
   const isMobileChat = useIsMobileChat();
 
@@ -695,7 +697,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
   }, [role, userId]);
 
   useEffect(() => {
-    const desktopViewport = window.matchMedia('(min-width: 768px)');
+    const desktopViewport = window.matchMedia('(min-width: 1280px)');
     const syncHistoryVisibility = () => setHistoryOpen(desktopViewport.matches);
     desktopViewport.addEventListener('change', syncHistoryVisibility);
     return () => desktopViewport.removeEventListener('change', syncHistoryVisibility);
@@ -762,7 +764,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
     setMessages(getInitialMessages(role, gender, language));
     setInput('');
     setSelectedImage(null);
-    if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
+    if (!window.matchMedia('(min-width: 1280px)').matches) setHistoryOpen(false);
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (cameraInputRef.current) cameraInputRef.current.value = '';
     setError('');
@@ -786,7 +788,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
       setMessages(conversation.messages.map((message) => toChatMessage(message, conversation.id)));
       setInput('');
       removeSelectedImage();
-      if (!window.matchMedia('(min-width: 768px)').matches) setHistoryOpen(false);
+      if (!window.matchMedia('(min-width: 1280px)').matches) setHistoryOpen(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Không thể mở cuộc trò chuyện.');
     } finally {
@@ -936,6 +938,18 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
     }
   };
 
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
+
+  useEffect(() => {
+    const prompt = initialPrompt?.trim();
+    if (!autoSendInitialPrompt || !prompt || autoSendStartedRef.current) return;
+    autoSendStartedRef.current = true;
+    onInitialPromptConsumed?.();
+    if (handleSendRef.current) void handleSendRef.current(prompt);
+  }, [autoSendInitialPrompt, initialPrompt, onInitialPromptConsumed]);
+
   const updateExplanationStyle = (style: ExplanationStyle) => {
     if (!userId) {
       setError('Không thể xác định tài khoản để lưu thiết lập AI.');
@@ -1005,7 +1019,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
       >
         {historyOpen && <button type="button" aria-label={t(language, "Đóng lịch sử chat")} onClick={() => setHistoryOpen(false)} className="absolute inset-0 z-10 bg-slate-950/40 md:hidden" />}
         {historyOpen && (
-          <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(50vw,20rem)] flex-col border-r border-slate-200 bg-white shadow-xl md:relative md:w-64 md:shrink-0 md:bg-slate-50 md:shadow-none lg:w-72">
+          <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(50vw,20rem)] flex-col border-r border-slate-200 bg-white shadow-xl md:relative md:w-56 md:shrink-0 md:bg-slate-50 md:shadow-none xl:w-72">
             <div className="p-1 md:p-3">
               <button type="button" aria-label={t(language, "Cuộc trò chuyện mới")} disabled={thinking} onClick={startNewConversation} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-2 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:px-3">
                 <Plus className="h-4 w-4 shrink-0" /> <span className="md:hidden">{t(language, "Chat mới")}</span><span className="hidden md:inline">{t(language, "Cuộc trò chuyện mới")}</span>
@@ -1083,11 +1097,11 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                 </button>
               </div>
             )}
-            <div className="flex flex-col gap-2 md:flex-row md:items-end">
-              <div className="flex min-w-0 items-end gap-1.5 md:flex-1 md:gap-2">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-end">
+              <div className="flex min-w-0 items-end gap-1.5 xl:flex-1 xl:gap-2">
                 <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
                 <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
-                <div className="relative shrink-0 md:hidden">
+                <div className="relative shrink-0 xl:hidden">
                   <button type="button" disabled={thinking} onClick={() => setMobileToolsOpen((open) => !open)} aria-label={t(language, "Thêm tùy chọn")} aria-expanded={mobileToolsOpen} className="rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">
                     <Plus className="h-5 w-5" />
                   </button>
@@ -1105,7 +1119,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                     </div>
                   )}
                 </div>
-                <div className="hidden shrink-0 items-end gap-1 md:flex">
+                <div className="hidden shrink-0 items-end gap-1 xl:flex">
                   <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label={t(language, "Đính kèm ảnh")} title={t(language, "Chọn ảnh hoặc dán ảnh")} className="shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                     <Paperclip className="h-5 w-5" />
                   </button>
@@ -1121,15 +1135,15 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                   onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleSend(); } }}
                   placeholder={isMobileChat ? t(language, "Nhập câu hỏi...") : t(language, "Nhập câu hỏi hoặc dán ảnh...")}
                   rows={1}
-                  className="min-h-10 max-h-40 min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-5 text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 md:resize-y sm:px-4 sm:py-3"
+                  className="min-h-10 max-h-40 min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-slate-200 px-3 py-2.5 text-sm leading-5 text-slate-800 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 xl:resize-y sm:px-4 sm:py-3"
                 />
-                <div className="flex shrink-0 items-center gap-0.5 md:hidden">
+                <div className="flex shrink-0 items-center gap-0.5 xl:hidden">
                   <SpeechButton speech={speech} disabled={thinking} />
                   <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label={t(language, "Chụp ảnh")} title={t(language, "Chụp ảnh bằng camera")} className="chat-camera-control shrink-0 rounded-xl p-2.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                     <Camera className="h-5 w-5" />
                   </button>
                 </div>
-                <button type="submit" onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault(); }} disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:hidden" aria-label={t(language, "Gửi tin nhắn")}>
+                <button type="submit" onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault(); }} disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 xl:hidden" aria-label={t(language, "Gửi tin nhắn")}>
                   <Send className="h-4 w-4" />
                 </button>
               </div>
@@ -1140,16 +1154,16 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                   value={explanationStyle}
                   onChange={(event) => updateExplanationStyle(event.target.value as ExplanationStyle)}
                   disabled={thinking}
-                  className="hidden h-11 w-[184px] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 md:block md:px-3 md:text-sm"
+                  className="hidden h-11 w-[184px] shrink-0 rounded-xl border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50 xl:block xl:px-3 xl:text-sm"
                 >
                   <option value="concise">{t(language, "Ngắn gọn — giải luôn")}</option>
                   <option value="detailed">{t(language, "Chi tiết — giải đầy đủ")}</option>
                   <option value="thinking">{t(language, "Tư duy — hỏi gợi mở")}</option>
                 </select>
-                <div className="hidden md:block">
+                <div className="hidden xl:block">
                   <SpeechButton speech={speech} disabled={thinking} />
                 </div>
-                <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="hidden h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:inline-flex">
+                <button type="submit" disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="hidden h-11 shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 xl:inline-flex">
                   {t(language, "Gửi")} <Send className="h-4 w-4" />
                 </button>
               </div>
@@ -1166,7 +1180,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
     >
       {historyOpen && <button type="button" aria-label="Đóng lịch sử chat" onClick={() => setHistoryOpen(false)} className="absolute inset-0 z-10 bg-slate-950/40 md:hidden" />}
       {historyOpen && (
-        <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(50vw,20rem)] flex-col border-r border-slate-200 bg-white shadow-xl md:relative md:w-64 md:shrink-0 md:bg-slate-50 md:shadow-none lg:w-72">
+        <aside className="absolute inset-y-0 left-0 z-20 flex w-[min(50vw,20rem)] flex-col border-r border-slate-200 bg-white shadow-xl md:relative md:w-56 md:shrink-0 md:bg-slate-50 md:shadow-none xl:w-72">
           <div className="p-1 md:p-3">
             <button type="button" aria-label="Cuộc trò chuyện mới" disabled={thinking} onClick={startNewConversation} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-2 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 md:px-3">
               <Plus className="h-4 w-4 shrink-0" /> <span className="md:hidden">Chat mới</span><span className="hidden md:inline">Cuộc trò chuyện mới</span>
@@ -1237,7 +1251,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
             )}
             <div className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <ChatAvatar role={msg.role} userAvatar={avatarUrl} userInitials={userInitials} />
-              <div className={`max-w-[75%] ${msg.role === 'user' ? 'text-right' : ''}`}>
+              <div className={`min-w-0 max-w-[90%] sm:max-w-[88%] lg:max-w-[75%] ${msg.role === 'user' ? 'text-right' : ''}`}>
                 <div className={`inline-block rounded-2xl px-4 py-3 text-left text-sm leading-relaxed ${msg.role === 'user' ? 'bg-blue-600 text-white chat-user-markdown' : 'border border-slate-200 bg-slate-50 text-slate-700 markdown-body'}`}>
                   {msg.imagePath || msg.imagePreviewUrl ? (
                     <ChatImageAttachment imagePath={msg.imagePath} previewUrl={msg.imagePreviewUrl} imageName={msg.imageName} />
@@ -1287,7 +1301,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
           <div className="flex items-end gap-2">
             <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
             <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => { handleImageSelection(event.target.files?.[0]); event.target.value = ''; }} />
-            <div className="relative shrink-0 md:hidden">
+            <div className="relative shrink-0 xl:hidden">
               <button type="button" disabled={thinking} onClick={() => setMobileToolsOpen((open) => !open)} aria-label="Thêm tùy chọn" aria-expanded={mobileToolsOpen} className="rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50">
                 <Plus className="h-5 w-5" />
               </button>
@@ -1305,7 +1319,7 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
                 </div>
               )}
             </div>
-            <div className="hidden shrink-0 items-center gap-1 md:flex">
+            <div className="hidden shrink-0 items-center gap-1 xl:flex">
               <button type="button" disabled={thinking} onClick={() => imageInputRef.current?.click()} aria-label="Đính kèm ảnh" title="Chọn ảnh hoặc dán ảnh" className="shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                 <Paperclip className="h-4 w-4" />
               </button>
@@ -1321,15 +1335,15 @@ export function AIChat({ role, userName, userId, avatarUrl = '', studentId, gend
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleSend(); } }}
               placeholder={isMobileChat ? 'Nhập câu hỏi...' : 'Nhập câu hỏi hoặc dán ảnh...'}
               rows={1}
-              className="min-h-10 max-h-40 min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-slate-200 px-3 py-2 text-sm leading-5 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 md:resize-y"
+              className="min-h-10 max-h-40 min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-slate-200 px-3 py-2 text-sm leading-5 transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 xl:resize-y"
             />
-            <div className="flex shrink-0 items-center gap-0.5 md:hidden">
+            <div className="flex shrink-0 items-center gap-0.5 xl:hidden">
               <SpeechButton speech={speech} disabled={thinking} />
               <button type="button" disabled={thinking} onClick={() => cameraInputRef.current?.click()} aria-label="Chụp ảnh" title="Chụp ảnh bằng camera" className="chat-camera-control shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50">
                 <Camera className="h-4 w-4" />
               </button>
             </div>
-            <div className="hidden md:block">
+            <div className="hidden xl:block">
               <SpeechButton speech={speech} disabled={thinking} />
             </div>
             <button type="submit" onPointerDown={(event) => { if (event.pointerType === 'touch') event.preventDefault(); }} disabled={(!input.trim() && !selectedImage) || thinking || speech.listening} className="btn-primary h-9 shrink-0 disabled:cursor-not-allowed disabled:opacity-50">

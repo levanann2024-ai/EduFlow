@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import type { QuizQuestion } from '@/types';
 import { authenticatedFetch } from '@/auth/authApi';
 import { getAISubjectExamples } from './aiSubjectExamples';
@@ -1518,7 +1519,7 @@ function EmptyState({ assessmentType }: { assessmentType?: 'practice' | 'officia
 function MathText({ text, className = '' }: { text: string; className?: string }) {
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}>
         {text}
       </ReactMarkdown>
     </div>

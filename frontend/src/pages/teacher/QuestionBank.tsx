@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import { saveTeacherAssessment } from '@/api/schoolApi';
 import { showToast } from '@/components/toast';
 import { defaultAssessmentSections, readQuestionSets, writeQuestionSets, type ExamQuestion, type QuestionSet, type SavedAssignment } from '@/pages/teacher/assessmentStorage';
@@ -485,7 +486,7 @@ export function QuestionBank({ ownerEmail }: { ownerEmail: string }) {
 function MathText({ text, className = '' }: { text: string; className?: string }) {
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}>{text}</ReactMarkdown>
     </div>
   );
 }

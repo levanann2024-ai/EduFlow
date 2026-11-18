@@ -5,13 +5,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
 import { authenticatedFetch } from '@/auth/authApi';
 import { clampLessonImageWidth } from '@/utils/lessonImage';
+import { formatInlineMathLayout } from '@/utils/inlineMathLayout';
 import 'katex/dist/katex.min.css';
 
 export function InlineMathView({ node, editor, getPos }: NodeViewProps) {
   const latex = typeof node.attrs.latex === 'string' ? node.attrs.latex : '';
   const display = node.attrs.display === true;
   const html = useMemo(
-    () => katex.renderToString(latex, { displayMode: display, throwOnError: false }),
+    () => katex.renderToString(display ? latex : formatInlineMathLayout(latex), { displayMode: display, throwOnError: false }),
     [display, latex],
   );
   return (

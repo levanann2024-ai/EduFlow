@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LoaderCircle, Pencil, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import {
   buildCalendarFile,
   createDeadlineCalendarEvent,
@@ -1488,7 +1492,8 @@ export function StudentSchedule({ studentId }: StudentScheduleProps) {
                 ) : (
                   <div className="relative mt-2 text-sm leading-7 text-slate-700">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}
                       components={{
                         h1: ({ children }) => <h3 className="mb-3 mt-7 text-lg font-bold text-indigo-950">{children}</h3>,
                         h2: ({ children }) => <h3 className="mb-3 mt-7 text-lg font-bold text-indigo-950">{children}</h3>,

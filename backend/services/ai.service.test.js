@@ -86,6 +86,14 @@ test('student AI instructions consistently use toi-ban address', () => {
   }
 });
 
+test('student and teacher chat instructions answer directly without repeating the request', () => {
+  for (const type of ['student-chat', 'teacher-chat']) {
+    const instruction = getSystemInstruction(type);
+    assert.match(instruction, /không nhắc lại/i);
+    assert.match(instruction, /đưa đáp án ngay câu đầu|đưa kết luận\/đáp án trước/i);
+  }
+});
+
 test('AI question generation instructions stay within the provided grade curriculum', () => {
   const instruction = getSystemInstruction('questions');
   assert.match(instruction, /bám sát chương trình phổ thông đến khối đó/);

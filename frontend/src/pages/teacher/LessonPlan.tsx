@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import { authenticatedFetch } from '@/auth/authApi';
 import { MathText } from '@/components/MathText';
 import { LessonEditor } from '@/components/LessonEditor';
@@ -431,7 +432,7 @@ export function LessonPlan({
                     <div className="space-y-2 pl-7 text-sm leading-relaxed text-slate-600">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
+                        rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}
                         components={{
                           p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
                           ul: ({ children }) => <ul className="list-disc pl-5">{children}</ul>,

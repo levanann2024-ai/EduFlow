@@ -125,6 +125,7 @@ function App() {
   const [userSettings, setUserSettings] = useState<UserSettings>(DEFAULT_USER_SETTINGS);
   const [userSettingsError, setUserSettingsError] = useState('');
   const [studentChatSeed, setStudentChatSeed] = useState<{ subject: string; prompt: string } | null>(null);
+  const [autoSendStudentChatSeed, setAutoSendStudentChatSeed] = useState(false);
   const [teacherChatPrompt, setTeacherChatPrompt] = useState('');
   const [initialChatImage, setInitialChatImage] = useState<File | null>(null);
   const [practiceSeed, setPracticeSeed] = useState<SavedQuiz | null>(null);
@@ -260,6 +261,7 @@ function App() {
     setInitialSubjectTopic(null);
     if (nextPage !== 'ai-chat') {
       setStudentChatSeed(null);
+      setAutoSendStudentChatSeed(false);
       setTeacherChatPrompt('');
       setInitialChatImage(null);
     }
@@ -392,17 +394,20 @@ function App() {
 
   const askStudentAI = (prompt: string, subject = '') => {
     setStudentChatSeed({ subject, prompt });
+    setAutoSendStudentChatSeed(false);
     navigateToPage('ai-chat');
   };
 
-  const askStudentDashboardAI = (prompt: string, image?: File) => {
+  const askStudentDashboardAI = (prompt: string) => {
     setStudentChatSeed({ subject: '', prompt });
-    setInitialChatImage(image ?? null);
+    setAutoSendStudentChatSeed(true);
+    setInitialChatImage(null);
     navigateToPage('ai-chat');
   };
 
   const askTeacherDashboardAI = (prompt: string, image?: File) => {
     setTeacherChatPrompt(prompt);
+    setAutoSendStudentChatSeed(false);
     setInitialChatImage(image ?? null);
     navigateToPage('ai-chat');
   };
@@ -721,7 +726,7 @@ function App() {
                   : <Dashboard onNavigate={navigateToPage} role={role} />)}
               {activePage === 'classes' && <ClassManagement />}
               {activePage === 'ai-learning' && <AILearning onNavigate={navigateToPage} />}
-              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} avatarUrl={userSettings.avatar} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} initialImage={initialChatImage} onInitialImageConsumed={() => setInitialChatImage(null)} initialConversationId={initialChatConversationId ?? undefined} />}
+              {activePage === 'ai-chat' && <AIChat role={role} userName={authUser.fullName} userId={authUser.id} avatarUrl={userSettings.avatar} studentId={role === 'student' ? authUser.id : undefined} gender={authUser.gender} isDemo={authUser.isDemo} onExit={role === 'student' ? () => navigateToPage('ai-learning') : undefined} initialSubject={role === 'student' ? studentChatSeed?.subject : undefined} initialPrompt={role === 'student' ? studentChatSeed?.prompt : teacherChatPrompt || undefined} autoSendInitialPrompt={role === 'student' && autoSendStudentChatSeed} onInitialPromptConsumed={() => setAutoSendStudentChatSeed(false)} initialImage={initialChatImage} onInitialImageConsumed={() => setInitialChatImage(null)} initialConversationId={initialChatConversationId ?? undefined} />}
               {role === 'lecturer' && lessonsWorkspaceVisited && (
                 <div className={activePage === 'lessons' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
                   <LessonRepository

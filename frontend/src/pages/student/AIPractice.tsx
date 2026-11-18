@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import type { QuizQuestion } from '@/types';
 import { useSavedItems } from './savedItems';
 import { authenticatedFetch } from '@/auth/authApi';
@@ -13,6 +14,7 @@ import { localizeStudentSubject, t } from '@/i18n/i18n';
 
 type PracticeMode = 'practice' | 'test';
 type PracticePhase = 'setup' | 'ready' | 'answering' | 'results';
+type AnswerFeedbackTiming = 'immediate' | 'after-submit';
 
 const subjects = [
   { name: 'Toán học', icon: '∑', description: 'Luyện công thức và giải bài từng bước', color: 'from-blue-600 to-sky-600', surface: 'bg-blue-50 text-blue-700' },
@@ -94,6 +96,7 @@ export function AIPractice({
   const [quantity, setQuantity] = useState(5);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [testMinutes, setTestMinutes] = useState(15);
+  const [answerFeedbackTiming, setAnswerFeedbackTiming] = useState<AnswerFeedbackTiming>('immediate');
   const [questions, setQuestions] = useState<QuizQuestion[]>(initialQuestions);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [phase, setPhase] = useState<PracticePhase>(initialQuestions.length > 0 ? 'ready' : 'setup');
@@ -313,6 +316,13 @@ export function AIPractice({
                     <option value="test">{t(language, "Làm đề có tính giờ")}</option>
                   </select>
                 </label>
+                <label className="text-sm font-medium text-slate-700">
+                  {t(language, "Khi nào xem đúng/sai?")}
+                  <select className="input-field mt-2" value={answerFeedbackTiming} onChange={(event) => setAnswerFeedbackTiming(event.target.value as AnswerFeedbackTiming)}>
+                    <option value="immediate">{t(language, "Ngay sau khi chọn")}</option>
+                    <option value="after-submit">{t(language, "Sau khi nộp bài")}</option>
+                  </select>
+                </label>
                 {mode === 'test' && (
                   <label className="text-sm font-medium text-slate-700 sm:col-span-2">
                     {t(language, "Thời gian làm đề")}
@@ -404,6 +414,13 @@ export function AIPractice({
                   </select>
                 </label>
               </div>
+              <label className="block text-sm font-medium text-slate-700">
+                {t(language, "Khi nào xem đúng/sai?")}
+                <select className="input-field mt-2" value={answerFeedbackTiming} onChange={(event) => setAnswerFeedbackTiming(event.target.value as AnswerFeedbackTiming)}>
+                  <option value="immediate">{t(language, "Ngay sau khi chọn")}</option>
+                  <option value="after-submit">{t(language, "Sau khi nộp bài")}</option>
+                </select>
+              </label>
               {mode === 'test' && (
                 <label className="block text-sm font-medium text-slate-700">
                   {t(language, "Thời gian làm đề")}
@@ -487,8 +504,10 @@ export function AIPractice({
                 </div>
                 <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-blue-900">
                   {mode === 'practice'
-                    ? t(language, "Bạn sẽ làm lần lượt từng câu. Sau mỗi lựa chọn, đáp án đúng và lời giải sẽ hiện ra để bạn tự kiểm tra.")
-                    : t(language, 'aiPractice.test.instructions', { minutes: testMinutes })}
+                    ? answerFeedbackTiming === 'immediate'
+                      ? t(language, "Bạn sẽ làm lần lượt từng câu. Sau mỗi lựa chọn, đáp án đúng và lời giải sẽ hiện ra để bạn tự kiểm tra.")
+                      : t(language, "Bạn sẽ làm lần lượt từng câu. Đáp án và lời giải sẽ hiện sau khi bạn hoàn thành bài.")
+                    : t(language, answerFeedbackTiming === 'immediate' ? 'aiPractice.test.immediateInstructions' : 'aiPractice.test.instructions', { minutes: testMinutes })}
                 </div>
                 <div className="rounded-xl border border-slate-200 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t(language, "Câu 1 - Xem trước")}</p>
@@ -546,7 +565,7 @@ export function AIPractice({
                   <div className="mt-5 space-y-3">
                     {currentQuestion.options.map((option, optionIndex) => {
                       const selected = currentAnswer === optionIndex;
-                      const revealAnswer = mode === 'practice' && currentAnswer !== undefined;
+                      const revealAnswer = answerFeedbackTiming === 'immediate' && currentAnswer !== undefined;
                       const correct = optionIndex === currentQuestion.correctIndex;
                       const optionStyle = revealAnswer && correct
                         ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
@@ -563,7 +582,7 @@ export function AIPractice({
                       );
                     })}
                   </div>
-                  {mode === 'practice' && currentAnswer !== undefined && (
+                  {answerFeedbackTiming === 'immediate' && currentAnswer !== undefined && (
                     <div className="mt-4 rounded-xl bg-blue-50 p-4 text-sm leading-6 text-slate-700">
                       <p className="font-semibold text-blue-900">{currentAnswer === currentQuestion.correctIndex ? t(language, "Chính xác!") : t(language, "Mình cùng xem lại nhé.")}</p>
                       <MathText text={currentQuestion.explanation} className="mt-1" />
@@ -653,7 +672,7 @@ function MathText({ text, className = '' }: { text: string; className?: string }
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}
         components={{ p: ({ children }) => <p className="m-0">{children}</p> }}
       >
         {text}

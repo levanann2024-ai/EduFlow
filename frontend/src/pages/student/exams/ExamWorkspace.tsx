@@ -20,6 +20,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import type { ExamQuestion } from './examQuestions';
 import { authenticatedFetch } from '@/auth/authApi';
 import type { AppLanguage } from '@/settings/userSettings';
@@ -162,7 +163,7 @@ function MathText({ text, className = '' }: { text: string; className?: string }
     <span className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}
         components={{ p: ({ children }) => <span className="block">{children}</span> }}
       >
         {normalizeMathDelimiters(text)}

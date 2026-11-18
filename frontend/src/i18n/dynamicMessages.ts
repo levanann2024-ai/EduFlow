@@ -3,6 +3,7 @@ import type { AppLanguage } from '@/settings/userSettings';
 export const dynamicMessages: Record<AppLanguage, Record<string, string>> = {
   vi: {
     'aiPractice.test.instructions': 'Bài làm có {minutes} phút. Đáp án và điểm số chỉ hiển thị sau khi bạn nộp bài.',
+    'aiPractice.test.immediateInstructions': 'Bài làm có {minutes} phút. Đúng/sai và lời giải hiện ngay sau khi chọn; điểm tổng kết hiện sau khi nộp bài.',
     'chat.conversation.delete': 'Xóa cuộc trò chuyện {title}',
     'chat.history.collapse': 'Thu gọn lịch sử chat',
     'chat.history.expand': 'Mở lịch sử chat',
@@ -24,6 +25,7 @@ export const dynamicMessages: Record<AppLanguage, Record<string, string>> = {
   },
   en: {
     'aiPractice.test.instructions': 'You have {minutes} minutes. Answers and scores are shown after submission.',
+    'aiPractice.test.immediateInstructions': 'You have {minutes} minutes. Correctness and explanations appear after each choice; your score appears after submission.',
     'chat.conversation.delete': 'Delete conversation {title}',
     'chat.history.collapse': 'Collapse chat history',
     'chat.history.expand': 'Open chat history',

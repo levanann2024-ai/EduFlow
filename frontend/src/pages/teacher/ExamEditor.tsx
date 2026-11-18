@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 import {
   defaultAssessmentSections,
   normalizeAssessmentSections,
@@ -708,7 +709,7 @@ function MathPreview({ value, compact = false }: { value: string; compact?: bool
 function MathText({ text, className = '' }: { text: string; className?: string }) {
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}>
         {normalizeMathDelimiters(text)}
       </ReactMarkdown>
     </div>

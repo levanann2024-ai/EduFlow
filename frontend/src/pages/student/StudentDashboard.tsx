@@ -26,7 +26,6 @@ import {
   type StudentTimetableResponse,
 } from '@/api/schoolApi';
 import type { Page } from '@/types';
-import { AiImageAttachment } from '@/components/AiImageAttachment';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
 import { StudentSubjectCard } from './StudentSubjectCard';
 import { getStudentDashboardGradeSummary, getStudentDashboardSubjects } from '@/utils/studentDashboardGrades';
@@ -40,7 +39,7 @@ interface StudentDashboardProps {
   onOpenAssignment: (subject: string, assignmentId?: string) => void;
   onOpenResources: (subjectCode: string) => void;
   onOpenAssignments: (subjectCode: string, topic?: string) => void;
-  onAskAI: (prompt: string, image?: File) => void;
+  onAskAI: (prompt: string) => void;
 }
 
 function getWeekStart(date: Date) {
@@ -236,7 +235,6 @@ export function StudentDashboard({
   const language = useAppLanguage();
   const locale = studentLocale(language);
   const [chatPrompt, setChatPrompt] = useState('');
-  const [chatImage, setChatImage] = useState<File | null>(null);
   const [activityFilter, setActivityFilter] = useState<'upcoming' | 'submitted' | 'graded'>('upcoming');
   const [liveProgress, setLiveProgress] = useState<StudentProgressData | null>(null);
   const [tomorrowTimetable, setTomorrowTimetable] = useState<StudentTimetableResponse | null>(null);
@@ -576,8 +574,8 @@ export function StudentDashboard({
   const submitChatPrompt = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const prompt = chatPrompt.trim();
-    if (!prompt && !chatImage) return;
-    onAskAI(prompt, chatImage ?? undefined);
+    if (!prompt) return;
+    onAskAI(prompt);
   };
 
   return (
@@ -613,13 +611,12 @@ export function StudentDashboard({
                   <button
                     type="submit"
                     aria-label={t(language, "Gửi câu hỏi cho AI")}
-                    disabled={!chatPrompt.trim() && !chatImage}
+                    disabled={!chatPrompt.trim()}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Send className="h-4 w-4" />
                   </button>
                 </div>
-                <AiImageAttachment file={chatImage} onChange={setChatImage} />
               </form>
 
               <nav aria-label="Lối tắt công cụ AI" className="mt-3 flex flex-wrap gap-2">

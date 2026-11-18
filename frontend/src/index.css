@@ -7,6 +7,9 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  .katex .sizing.reset-size6.size3 {
+    font-size: 0.6em;
+  }
   html {
     font-size: calc(100% * var(--app-font-scale, 1));
   }

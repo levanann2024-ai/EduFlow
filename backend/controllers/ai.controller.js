@@ -58,10 +58,10 @@ async function chatAI(req, res) {
       ? req.body.explanationStyle
       : 'detailed';
     const styleInstruction = explanationStyle === 'concise'
-      ? 'Giải thẳng vào yêu cầu, đưa lời giải hoặc đáp án trực tiếp, dùng ít lời; không hỏi gợi mở ở cuối. Chỉ hỏi lại khi thiếu dữ kiện thiết yếu.'
+      ? 'Đưa đáp án trực tiếp ngay câu đầu; không nhắc lại hoặc diễn đạt lại câu hỏi, không mở đầu dài dòng; dùng ít lời. Chỉ hỏi lại khi thiếu dữ kiện thiết yếu.'
       : explanationStyle === 'thinking'
-        ? 'Dẫn dắt người dùng tự suy nghĩ từng bước: nêu một gợi ý ngắn rồi hỏi một câu cụ thể để người dùng trả lời. Chưa đưa đáp án cuối cùng ngay, trừ khi người dùng yêu cầu xem lời giải trực tiếp.'
-        : 'Giải trực tiếp và đầy đủ từng bước, giải thích lý do và nêu kết quả rõ ràng; không hỏi gợi mở ở cuối. Chỉ hỏi lại khi thiếu dữ kiện thiết yếu.';
+        ? 'Dẫn dắt người dùng tự suy nghĩ từng bước mà không nhắc lại đề; nêu một gợi ý ngắn rồi hỏi một câu cụ thể để người dùng trả lời. Chưa đưa đáp án cuối cùng ngay, trừ khi người dùng yêu cầu xem lời giải trực tiếp.'
+        : 'Nêu kết luận trực tiếp trước, sau đó giải thích các bước cần thiết; không nhắc lại hoặc diễn đạt lại câu hỏi và không lặp cùng một kết luận. Không hỏi gợi mở ở cuối. Chỉ hỏi lại khi thiếu dữ kiện thiết yếu.';
     if (message.length > 12000) {
       const error = new Error('Câu hỏi không được vượt quá 12.000 ký tự.');
       error.statusCode = 413;

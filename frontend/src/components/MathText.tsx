@@ -4,6 +4,7 @@ import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
 import { normalizeLessonMaterialMarkdown } from '@/utils/lessonMaterialMarkdown';
+import { rehypeInlineMathLayout } from '@/utils/rehypeInlineMathLayout';
 
 const compactMarkdownComponents = {
   p: ({ children }: { children?: React.ReactNode }) => (
@@ -98,7 +99,7 @@ export function MathText({
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={variant === 'lesson' ? [remarkGfm, remarkMath] : [remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeInlineMathLayout, rehypeKatex]}
         components={singleLine
           ? singleLineMarkdownComponents
           : variant === 'lesson'
