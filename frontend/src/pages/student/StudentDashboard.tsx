@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { FormEvent, TransitionEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties, FormEvent, TransitionEvent } from 'react';
 import {
   ArrowRight,
   BarChart3,
@@ -29,7 +29,7 @@ import type { Page } from '@/types';
 import { AiImageAttachment } from '@/components/AiImageAttachment';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
 import { StudentSubjectCard } from './StudentSubjectCard';
-import { getStudentDashboardGradeSummary } from '@/utils/studentDashboardGrades';
+import { getStudentDashboardGradeSummary, getStudentDashboardSubjects } from '@/utils/studentDashboardGrades';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
 import { useAppLanguage } from '@/i18n/AppLanguageContext';
 import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
@@ -42,19 +42,6 @@ interface StudentDashboardProps {
   onOpenAssignments: (subjectCode: string, topic?: string) => void;
   onAskAI: (prompt: string, image?: File) => void;
 }
-
-const subjects = [
-  { code: 'TOAN10', name: 'Toán học', lessons: '18/35', resources: 12, tasks: 3, progress: 51 },
-  { code: 'VAN10', name: 'Ngữ văn', lessons: '20/35', resources: 10, tasks: 0, progress: 57 },
-  { code: 'LY10', name: 'Vật lý', lessons: '14/28', resources: 8, tasks: 2, progress: 50 },
-  { code: 'HOA10', name: 'Hóa học', lessons: '12/28', resources: 6, tasks: 1, progress: 43 },
-  { code: 'ANH10', name: 'Tiếng Anh', lessons: '22/28', resources: 10, tasks: 1, progress: 78 },
-  { code: 'TIN10', name: 'Tin học', lessons: '32/35', resources: 8, tasks: 0, progress: 91 },
-  { code: 'SINH10', name: 'Sinh học', lessons: '22/35', resources: 8, tasks: 0, progress: 63 },
-  { code: 'SU10', name: 'Lịch sử', lessons: '24/35', resources: 7, tasks: 1, progress: 69 },
-  { code: 'DIA10', name: 'Địa lý', lessons: '0/1', resources: 1, tasks: 0, progress: 0 },
-  { code: 'GDTC10', name: 'Giáo dục thể chất', lessons: '0/1', resources: 1, tasks: 0, progress: 0 },
-] as const;
 
 function getWeekStart(date: Date) {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -105,27 +92,39 @@ function getCurrentSemester(date: Date): ProgressSemester {
 }
 
 function SubjectCarousel({
+  subjects,
+  loading,
+  error,
   onNavigate,
   onOpenResources,
   onOpenAssignments,
 }: {
+  subjects: ReturnType<typeof getStudentDashboardSubjects>;
+  loading: boolean;
+  error: string;
   onNavigate: (page: Page) => void;
   onOpenResources: (subjectCode: string) => void;
   onOpenAssignments: (subjectCode: string, topic?: string) => void;
 }) {
   const language = useAppLanguage();
   const repeatedSubjects = [...subjects, ...subjects];
+  const visibleCards = Math.min(3, subjects.length) || 1;
   const [slideIndex, setSlideIndex] = useState(0);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (paused) return undefined;
+    if (paused || subjects.length < 2) return undefined;
     const interval = window.setInterval(() => {
       setSlideIndex((index) => index + 1);
     }, 5000);
     return () => window.clearInterval(interval);
-  }, [paused]);
+  }, [paused, subjects.length]);
+
+  useEffect(() => {
+    setSlideIndex(0);
+    setTransitionEnabled(true);
+  }, [subjects]);
 
   const handleSlideTransitionEnd = (event: TransitionEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || slideIndex !== subjects.length) return;
@@ -160,49 +159,68 @@ function SubjectCarousel({
           <button type="button" onClick={() => onNavigate('my-classes')} className="mr-2 text-[0.625rem] font-semibold text-blue-700 hover:text-blue-900">
             {t(language, "Xem tất cả")} <ArrowRight className="ml-0.5 inline h-3 w-3" />
           </button>
-          <button type="button" aria-label={t(language, "Môn học trước")} onClick={showPreviousSubject} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button type="button" aria-label={t(language, "Môn học tiếp theo")} onClick={() => setSlideIndex((index) => index + 1)} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          {subjects.length > 1 && (
+            <>
+              <button type="button" aria-label={t(language, "Môn học trước")} onClick={showPreviousSubject} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button type="button" aria-label={t(language, "Môn học tiếp theo")} onClick={() => setSlideIndex((index) => index + 1)} className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-600 hover:border-blue-300 hover:text-blue-700">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </>
+          )}
         </div>
       </div>
-      <div
-        className="student-subject-marquee"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        onFocus={() => setPaused(true)}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
-        }}
-      >
+      {subjects.length === 0 ? (
+        <p className="py-6 text-center text-xs leading-5 text-slate-500">
+          {loading
+            ? language === 'en' ? 'Loading subjects…' : 'Đang tải môn học…'
+            : error || (language === 'en' ? 'No subjects are assigned yet.' : 'Chưa có môn học được phân công.')}
+        </p>
+      ) : (
         <div
-          className="student-subject-marquee-track"
-          onTransitionEnd={handleSlideTransitionEnd}
-          style={{
-            transform: `translateX(-${slideIndex * 5}%)`,
-            transition: transitionEnabled ? 'transform 700ms ease-in-out' : 'none',
+          className="student-subject-marquee"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+          onFocus={() => setPaused(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
           }}
+          style={{
+            '--student-subject-track-width': `${repeatedSubjects.length * 100 / visibleCards}%`,
+            '--student-subject-mobile-track-width': `${repeatedSubjects.length * 100}%`,
+          } as CSSProperties}
         >
-          {repeatedSubjects.map((subject, index) => (
-            <span key={`${subject.code}-${index}`} aria-hidden={index >= subjects.length} className="student-subject-card">
-              <StudentSubjectCard
-                artworkKey={subject.code}
-                name={`${subject.name} 10`}
-                lessons={subject.lessons}
-                resources={subject.resources}
-                assignments={subject.tasks}
-                progress={subject.progress}
-                isClone={index >= subjects.length}
-                onLessonsClick={() => onNavigate('schedule')}
-                onResourcesClick={() => onOpenResources(subject.code)}
-                onAssignmentsClick={() => onOpenAssignments(subject.code)}
-              />
-            </span>
-          ))}
+          <div
+            className="student-subject-marquee-track"
+            onTransitionEnd={handleSlideTransitionEnd}
+            style={{
+              transform: `translateX(-${slideIndex * 100 / repeatedSubjects.length}%)`,
+              transition: transitionEnabled ? 'transform 700ms ease-in-out' : 'none',
+            }}
+          >
+            {repeatedSubjects.map((subject, index) => (
+              <span
+                key={`${subject.name}-${index}`}
+                aria-hidden={index >= subjects.length}
+                className="student-subject-card"
+                style={{ flexBasis: `${100 / repeatedSubjects.length}%` }}
+              >
+                <StudentSubjectCard
+                  artworkKey={subject.artworkKey}
+                  name={subject.name}
+                  resources={subject.resources}
+                  assignments={subject.assignments}
+                  isClone={index >= subjects.length}
+                  onLessonsClick={() => onNavigate('schedule')}
+                  onResourcesClick={() => onOpenResources(subject.name)}
+                  onAssignmentsClick={() => onOpenAssignments(subject.name)}
+                />
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -231,6 +249,10 @@ export function StudentDashboard({
   const [liveDataError, setLiveDataError] = useState('');
   const [progressError, setProgressError] = useState('');
   const [loadingLiveData, setLoadingLiveData] = useState(true);
+  const dashboardSubjects = useMemo(
+    () => getStudentDashboardSubjects(liveProgress),
+    [liveProgress],
+  );
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const tomorrow = new Date(startOfToday);
@@ -917,7 +939,14 @@ export function StudentDashboard({
             </div>
           </section>
 
-          <SubjectCarousel onNavigate={onNavigate} onOpenResources={onOpenResources} onOpenAssignments={onOpenAssignments} />
+          <SubjectCarousel
+            subjects={dashboardSubjects}
+            loading={loadingLiveData}
+            error={progressError}
+            onNavigate={onNavigate}
+            onOpenResources={onOpenResources}
+            onOpenAssignments={onOpenAssignments}
+          />
         </aside>
       </div>
     </div>

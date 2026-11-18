@@ -1,8 +1,37 @@
-import type { StudentProgressAverage, StudentProgressClass } from '@/api/schoolApi';
+import type { StudentProgressAverage, StudentProgressClass, StudentProgressData } from '@/api/schoolApi';
+import { getStudentSubjectCode, getStudentSubjectSlug } from '@/pages/student/studentSubjectRoutes';
 
 export interface StudentDashboardGradeSummary {
   subjectScores: { subject: string; average: number | null }[];
   allAverage: number | null;
+}
+
+export interface StudentDashboardSubject {
+  name: string;
+  artworkKey: string;
+  resources: number;
+  assignments: number;
+}
+
+export function getStudentDashboardSubjects(
+  progress: Pick<StudentProgressData, 'classes' | 'resources' | 'assignments'> | null,
+): StudentDashboardSubject[] {
+  if (!progress) return [];
+
+  const subjectNames = [...new Set(progress.classes.flatMap((classItem) => classItem.subjects))];
+  return subjectNames.map((name) => {
+    const normalizedName = name.trim().toLocaleLowerCase('vi');
+    return {
+      name,
+      artworkKey: getStudentSubjectCode(getStudentSubjectSlug(name)) ?? name,
+      resources: progress.resources.filter((resource) => (
+        resource.subject.trim().toLocaleLowerCase('vi') === normalizedName
+      )).length,
+      assignments: progress.assignments.filter((assignment) => (
+        assignment.subject.trim().toLocaleLowerCase('vi') === normalizedName
+      )).length,
+    };
+  });
 }
 
 export function getStudentDashboardGradeSummary(

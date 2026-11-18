@@ -2,6 +2,7 @@ import {
   Atom,
   Binary,
   BookOpen,
+  CalendarDays,
   Calculator,
   Dna,
   Dumbbell,
@@ -30,10 +31,8 @@ const subjectArtwork = {
 interface StudentSubjectCardProps {
   artworkKey: string;
   name: string;
-  lessons: string;
   resources: number;
   assignments: number;
-  progress: number;
   isClone?: boolean;
   onLessonsClick: () => void;
   onResourcesClick: () => void;
@@ -43,19 +42,17 @@ interface StudentSubjectCardProps {
 export function StudentSubjectCard({
   artworkKey,
   name,
-  lessons,
   resources,
   assignments,
-  progress,
   isClone = false,
   onLessonsClick,
   onResourcesClick,
   onAssignmentsClick,
 }: StudentSubjectCardProps) {
-  const artwork = subjectArtwork[artworkKey as keyof typeof subjectArtwork] ?? subjectArtwork.TOAN10;
+  const artwork = subjectArtwork[artworkKey as keyof typeof subjectArtwork] ?? { Icon: BookOpen, ink: 'text-blue-700' };
   const { Icon } = artwork;
   const language = useAppLanguage();
-  const displayName = localizeStudentSubject(name.replace(' 10', ''), language);
+  const displayName = localizeStudentSubject(name, language);
 
   return (
     <article className="relative isolate h-full w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
@@ -65,10 +62,12 @@ export function StudentSubjectCard({
         </span>
         <h3 className="min-w-0 truncate text-xs font-bold text-slate-900">{displayName}</h3>
       </div>
-      <p className="mt-2 truncate text-[0.5625rem] text-slate-500">{lessons} {t(language, "tiết")} - {resources} {t(language, "tài liệu")}</p>
+      <p className="mt-2 truncate text-[0.5625rem] text-slate-500">
+        {resources} {t(language, "tài liệu")} · {assignments} {t(language, "phrase:Bài tập::Assignments")}
+      </p>
       <div className="mt-2 flex items-center gap-1.5">
-        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onLessonsClick} aria-label={t(language, 'studentSubject.timetable.open', { lessons, subject: language === 'en' ? displayName : name })} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
-          <BookOpen className="h-2.5 w-2.5" />{lessons}
+        <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onLessonsClick} aria-label={t(language, 'studentSubject.timetable.open', { subject: language === 'en' ? displayName : name })} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+          <CalendarDays className="h-2.5 w-2.5" />{language === 'en' ? 'Schedule' : 'Lịch'}
         </button>
         <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onResourcesClick} aria-label={t(language, 'studentSubject.resources.open', { subject: language === 'en' ? displayName : name })} className="flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] text-slate-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
           <FileText className="h-2.5 w-2.5" />{resources}
@@ -76,22 +75,6 @@ export function StudentSubjectCard({
         <button type="button" tabIndex={isClone ? -1 : undefined} onClick={onAssignmentsClick} aria-label={t(language, `studentSubject.assignments.open.${assignments === 1 ? 'one' : 'many'}`, { count: assignments, subject: language === 'en' ? displayName : name })} className={`flex h-5 min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-slate-50 text-[0.5rem] hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${assignments > 0 ? 'text-rose-700' : 'text-slate-600'}`}>
           <FileText className="h-2.5 w-2.5" />{assignments}
         </button>
-      </div>
-      <div className="mt-2">
-        <div className="mb-1 flex justify-between text-[0.5625rem]">
-          <span className="text-slate-500">{t(language, "Tiến độ")}</span>
-          <span className="font-semibold text-slate-700">{progress}%</span>
-        </div>
-        <div
-          className="h-1.5 overflow-hidden rounded-full bg-slate-100"
-          role="progressbar"
-          aria-label={t(language, 'studentSubject.progress.label', { subject: language === 'en' ? displayName : name })}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progress}
-        >
-          <div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} />
-        </div>
       </div>
     </article>
   );

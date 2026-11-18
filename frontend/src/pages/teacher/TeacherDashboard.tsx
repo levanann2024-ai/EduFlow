@@ -39,7 +39,6 @@ import { getTeacherHonorific } from '@/auth/teacherHonorific';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
 import { getIncompleteTeacherScheduleEntries, getUpcomingTeacherSchedule } from '@/utils/teacherDashboardSchedule';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
-import type { ExamRoomRecord } from './examRoomDemoData';
 
 interface TeacherDashboardProps {
   userName: string;
@@ -92,6 +91,14 @@ interface RecentSentDocument {
   createdAt: string;
 }
 
+interface TeacherDashboardExamRoom {
+  id: string;
+  title: string;
+  classNames: string[];
+  startsAt: string;
+  status: 'draft' | 'scheduled' | 'open' | 'closed' | 'completed';
+}
+
 interface TeacherDashboardData {
   classes: SchoolClass[];
   academicYear: string;
@@ -101,7 +108,7 @@ interface TeacherDashboardData {
   progress: ClassProgress[];
   recentDocuments: RecentSentDocument[];
   appeals: ExamAppeal[];
-  examRooms: ExamRoomRecord[];
+  examRooms: TeacherDashboardExamRoom[];
   sectionErrors: string[];
 }
 
@@ -319,7 +326,7 @@ export function TeacherDashboard({ userName, userGender, onNavigate, onAskAI }: 
             : Promise.resolve(null)),
           nextWeekTimetableRequest,
           loadSection('Yêu cầu phúc khảo', listTeacherExamAppeals()),
-          loadSection('Lịch kiểm tra', listTeacherExamRooms<ExamRoomRecord>()),
+          loadSection('Lịch kiểm tra', listTeacherExamRooms<TeacherDashboardExamRoom>()),
           Promise.all(currentYearClasses.map((classItem) => (
             loadSection(`Tiến độ ${classItem.name}`, loadClassProgress(classItem, academicYear, semester))
           ))),

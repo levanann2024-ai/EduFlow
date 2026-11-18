@@ -376,12 +376,11 @@ button.student-utility-tile:hover .student-utility-arrow {
 
 .student-subject-marquee-track {
   display: flex;
-  width: 666.6667%;
+  width: var(--student-subject-track-width);
 }
 
 .student-subject-card {
   box-sizing: border-box;
-  flex: 0 0 5%;
   padding-inline: 0.375rem;
 }
 
@@ -399,7 +398,7 @@ button.student-utility-tile:hover .student-utility-arrow {
 
 @container (max-width: 399px) {
   .student-subject-marquee-track {
-    width: 2000%;
+    width: var(--student-subject-mobile-track-width);
   }
 }
 
