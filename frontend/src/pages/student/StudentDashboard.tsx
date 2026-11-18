@@ -12,7 +12,6 @@ import {
   FileText,
   Send,
   Sparkles,
-  TrendingDown,
   Trophy,
 } from 'lucide-react';
 import {
@@ -29,8 +28,8 @@ import {
 import type { Page } from '@/types';
 import { AiImageAttachment } from '@/components/AiImageAttachment';
 import studentAiBannerBackground from '@/assets/student-ai-banner-background.jpg';
-import { studentResults } from './studentResults';
 import { StudentSubjectCard } from './StudentSubjectCard';
+import { getStudentDashboardGradeSummary } from '@/utils/studentDashboardGrades';
 import { useDashboardCycle } from '@/hooks/useDashboardCycle';
 import { useAppLanguage } from '@/i18n/AppLanguageContext';
 import { localizeStudentSubject, studentLocale, t } from '@/i18n/i18n';
@@ -56,15 +55,6 @@ const subjects = [
   { code: 'DIA10', name: 'Địa lý', lessons: '0/1', resources: 1, tasks: 0, progress: 0 },
   { code: 'GDTC10', name: 'Giáo dục thể chất', lessons: '0/1', resources: 1, tasks: 0, progress: 0 },
 ] as const;
-
-function parseVietnameseDate(value: string) {
-  const [day, month, year] = value.split('/').map(Number);
-  if (!day || !month || !year) return null;
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
-    ? date
-    : null;
-}
 
 function getWeekStart(date: Date) {
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -356,49 +346,7 @@ export function StudentDashboard({
     && item.academicYear === progressClass.academicYear
     && item.semester === progressSemester
   ));
-  const subjectNames = progressClass
-    ? [...new Set([...progressClass.subjects, ...officialAverages.map((item) => item.subject)])]
-    : [...new Set(studentResults.map((result) => result.subject))];
-  const subjectScores = subjectNames
-    .map((subject) => {
-      if (progressClass) {
-        const averages = officialAverages
-          .flatMap((item) => item.subject === subject && item.average !== null ? [item.average] : []);
-        return {
-          subject,
-          average: averages.length > 0
-            ? averages.reduce((sum, average) => sum + average, 0) / averages.length
-            : null,
-        };
-      }
-      const scores = studentResults.filter((result) => result.subject === subject);
-      return {
-        subject,
-        average: scores.length > 0
-          ? scores.reduce((sum, result) => sum + result.score, 0) / scores.length
-          : null,
-      };
-    })
-    .sort((first, second) => (second.average ?? -Infinity) - (first.average ?? -Infinity));
-  const scoredSubjectScores = subjectScores.filter(
-    (item): item is { subject: string; average: number } => item.average !== null,
-  );
-  const allAverage = scoredSubjectScores.length > 0
-    ? scoredSubjectScores.reduce((sum, item) => sum + item.average, 0) / scoredSubjectScores.length
-    : null;
-  const decreasingSubjects = [...new Set(studentResults.map((result) => result.subject))]
-    .flatMap((subject) => {
-      const results = studentResults
-        .filter((result) => result.subject === subject)
-        .sort((first, second) => (
-          (parseVietnameseDate(first.date)?.getTime() ?? 0)
-          - (parseVietnameseDate(second.date)?.getTime() ?? 0)
-        ));
-      if (results.length < 2) return [];
-      const latest = results[results.length - 1];
-      const previous = results[results.length - 2];
-      return latest.score < previous.score ? [{ subject, latest, previous }] : [];
-    });
+  const { subjectScores, allAverage } = getStudentDashboardGradeSummary(progressClass, officialAverages);
   const greetingName = userName.trim().split(/\s+/).pop() || userName;
   const scheduleExamKeys = new Set<string>();
   const scheduleAttentionItems = upcomingTimetables.flatMap(({ weekStart, timetable }) => (
@@ -533,15 +481,6 @@ export function StudentDashboard({
       cardClass: 'border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50',
       iconClass: 'text-emerald-700',
       Icon: Trophy,
-    })),
-    ...decreasingSubjects.map(({ subject, latest, previous }) => ({
-      id: `decrease-${subject}`,
-      title: `${t(language, "phrase:Điểm::Your")} ${localizeStudentSubject(subject, language)} ${t(language, "có dấu hiệu giảm")}`,
-      detail: `${latest.score}/10 - bài trước ${previous.score}/10`,
-      onClick: () => onNavigate('my-results'),
-      cardClass: 'border-blue-100 bg-blue-50/70 hover:bg-blue-50',
-      iconClass: 'text-blue-700',
-      Icon: TrendingDown,
     })),
     ...(focusAssignment ? [{
       id: `assignment-${focusAssignment.id}`,
